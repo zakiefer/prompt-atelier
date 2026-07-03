@@ -5,7 +5,9 @@ import {
   analyzeArchetypeClusters,
   buildGeneratorPresets,
   buildCodexBuildPack,
+  buildEvaluationHistoryReport,
   buildExperimentLeaderboard,
+  buildExportPresets,
   buildLearnedGeneratorVariants,
   buildPatternDashboard,
   buildProjectExportPack,
@@ -16,6 +18,8 @@ import {
   createDatasetVersionSnapshot,
   curatePromptCorpus,
   evaluatePrompt,
+  auditPromptImportBatch,
+  parsePromptBatch,
   type BuildRunRecord,
   type PairwiseReviewRecord,
   type OutcomeRecord,
@@ -144,19 +148,34 @@ const learnedVariants = buildLearnedGeneratorVariants(
   {
     brandName: "Atlas",
     industry: "AI research",
+    audience: "research founders",
+    goal: "prove the product is serious in the first viewport",
     stack: "React + TypeScript + Vite + Tailwind CSS",
     siteType: "single-page hero",
+    vibe: "cinematic and exact",
     visualStyle: "cinematic video hero with exact typography",
     assets: "exact video URL and logo SVG",
     constraints: "no vague placeholders",
+    outputTarget: "Codex build prompt",
     strictness: 9,
   },
   profile,
   presets,
   outcomes,
 );
-assert.equal(learnedVariants.length, 3, "Learned generator should create three variants.");
+assert.equal(learnedVariants.length, 5, "Learned generator should create five variants.");
 assert.ok(learnedVariants[0].prompt.includes("PROJECT-SPECIFIC REQUIREMENTS"), "Generator variant should include project requirements.");
+
+const importAudit = auditPromptImportBatch(
+  [
+    ...parsePromptBatch(exactPrompt, "test batch"),
+    ...parsePromptBatch(JSON.stringify({ prompts: [examples[0]] }), "duplicate json"),
+  ],
+  examples,
+);
+assert.ok(importAudit.total >= 2, "Import audit should inspect batch candidates.");
+assert.ok(importAudit.exactDuplicates >= 1, "Import audit should detect exact duplicates.");
+assert.ok(importAudit.recommendations.length >= 2, "Import audit should return recommendations.");
 
 const pack = buildReusableMemoryPack({
   failureMemory: {
@@ -205,4 +224,28 @@ const codexBuildPack = buildCodexBuildPack({
 assert.ok(codexBuildPack.files.some((file) => file.path === "codex-task.md"), "Codex build pack should include a task file.");
 assert.ok(codexBuildPack.markdown.includes("Acceptance Gates"), "Codex build pack should include gates.");
 
-console.log(JSON.stringify({ ok: true, assertions: 30, score: score.score, snapshot: snapshot.label }, null, 2));
+const exportPresets = buildExportPresets({
+  codexBuildPack,
+  prompt: examples[0],
+  promptMemory: {
+    markdown: "# Memory\n- exact assets win",
+    json: "{}",
+    sections: [{ title: "Rules", items: ["Exact assets win"] }],
+  },
+  qualityGate,
+  visualRegression,
+});
+assert.equal(exportPresets.length, 5, "Export presets should cover five target formats.");
+assert.ok(exportPresets.some((preset) => preset.id === "v0"), "Export presets should include v0.");
+
+const evaluationHistory = buildEvaluationHistoryReport({
+  buildRuns,
+  modelEvaluations: [{ promptId: examples[0].id, title: examples[0].title, score: 91, readiness: "excellent", mode: "test", createdAt: new Date().toISOString() }],
+  outcomes,
+  pairwiseReviews,
+  screenshots,
+});
+assert.ok(evaluationHistory.items.length >= 4, "Evaluation history should combine labels, builds, screenshots, pairwise reviews, and model rows.");
+assert.ok(evaluationHistory.summary.length >= 2, "Evaluation history should summarize trends.");
+
+console.log(JSON.stringify({ ok: true, assertions: 38, score: score.score, snapshot: snapshot.label }, null, 2));

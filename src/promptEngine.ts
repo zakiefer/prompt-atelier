@@ -496,6 +496,28 @@ export type PromptImportCandidate = {
   summary: string[];
 };
 
+export type PromptImportAuditItem = {
+  candidate: PromptImportCandidate;
+  duplicate: DuplicateSignal;
+  cluster: string;
+  decision: "gold" | "learn" | "review" | "quarantine";
+  reasons: string[];
+};
+
+export type PromptImportAudit = {
+  total: number;
+  importable: number;
+  exactDuplicates: number;
+  nearDuplicates: number;
+  goldCandidates: number;
+  reviewCandidates: number;
+  quarantineCandidates: number;
+  averageScore: number;
+  topClusters: { label: string; count: number }[];
+  items: PromptImportAuditItem[];
+  recommendations: string[];
+};
+
 export type PromptMemoryExport = {
   markdown: string;
   json: string;
@@ -697,11 +719,15 @@ export type ExperimentLeaderboardReport = {
 export type LearnedGeneratorInput = {
   brandName: string;
   industry: string;
+  audience?: string;
+  goal?: string;
   stack: string;
   siteType: string;
+  vibe?: string;
   visualStyle: string;
   assets: string;
   constraints: string;
+  outputTarget?: string;
   strictness: number;
 };
 
@@ -722,6 +748,47 @@ export type CodexBuildPack = {
     content: string;
   }[];
   commands: string[];
+};
+
+export type ExportPreset = {
+  id: "codex" | "v0" | "claude-artifact" | "lovable" | "implementation-spec";
+  title: string;
+  target: string;
+  filename: string;
+  summary: string;
+  content: string;
+};
+
+export type ModelEvaluationRecord = {
+  promptId: string;
+  title: string;
+  score: number;
+  readiness: string;
+  mode: string;
+  createdAt: string;
+};
+
+export type EvaluationHistoryItem = {
+  id: string;
+  title: string;
+  kind: "outcome" | "build" | "model" | "pairwise" | "screenshot";
+  score: number;
+  status: string;
+  createdAt: string;
+  detail: string;
+};
+
+export type EvaluationHistoryReport = {
+  score: number;
+  summary: string[];
+  items: EvaluationHistoryItem[];
+  trends: {
+    goldRate: number;
+    passRate: number;
+    averageBuildScore: number;
+    averageModelScore: number;
+    visualGreatRate: number;
+  };
 };
 
 const CATEGORY_LABELS: Record<CategoryKey, string> = {
@@ -3525,20 +3592,22 @@ export function buildLearnedGeneratorVariants(
   presets: GeneratorPreset[] = [],
   outcomes: OutcomeRecord[] = [],
 ): LearnedGeneratorVariant[] {
-  const sources = (presets.length ? presets : buildGeneratorPresets(profile, [], outcomes)).slice(0, 3);
+  const fallbackPresets = buildGeneratorPresets(profile, [], outcomes);
+  const sourcePool = presets.length ? presets : fallbackPresets;
+  const sources = Array.from({ length: 5 }, (_, index) => sourcePool[index % Math.max(1, sourcePool.length)] || fallbackPresets[0]).filter(Boolean);
   const strictness = Math.max(1, Math.min(10, input.strictness || 8));
   return sources.map((preset, index) => {
-    const mode = ["cinematic proof", "conversion-first", "systems-grade"][index] ?? "learned";
+    const mode = ["cinematic proof", "conversion-first", "systems-grade", "editorial premium", "implementation-max"][index] ?? "learned";
     const prompt = composeOutcomeAwarePrompt(
       profile,
       {
-        brief: `${input.industry || "digital product"} ${input.siteType || "landing page"} for ${input.brandName || "Northstar"} using a ${mode} angle`,
+        brief: `${input.industry || "digital product"} ${input.siteType || "landing page"} for ${input.brandName || "Northstar"} using a ${mode} angle for ${input.audience || "quality-obsessed builders"}`,
         brandName: input.brandName || "Northstar",
         siteType: input.siteType || "single-page landing hero",
         visualSignature: `${input.visualStyle || preset.signals.join(", ") || "specific first viewport"}; assets: ${input.assets || "require exact URLs or generated bitmap assets"}`,
         archetype: preset.archetype || preset.title,
-        mood: `premium, exact, learned from ${preset.title}, strictness ${strictness}/10`,
-        outputFlavor: "Codex-build-ready generated variant",
+        mood: `${input.vibe || "premium, exact, learned"} from ${preset.title}, ${mode}, strictness ${strictness}/10`,
+        outputFlavor: input.outputTarget || "Codex-build-ready generated variant",
         detailLevel: strictness,
         creativity: Math.max(4, 11 - strictness),
         rigor: strictness,
@@ -3550,6 +3619,7 @@ export function buildLearnedGeneratorVariants(
       [],
     );
     const requirements = `\n\nPROJECT-SPECIFIC REQUIREMENTS\n- Stack: ${input.stack || "React + TypeScript + Vite + Tailwind CSS"}.\n- Industry/audience: ${input.industry || "product builders who care about polish"}.\n- Required assets: ${input.assets || "name exact image/video/logo sources or create explicit fallbacks"}.\n- Constraints: ${input.constraints || "avoid vague placeholders, decorative filler, and unverified responsive behavior"}.\n- Output must include desktop/mobile QA, media checks, console checks, and text-fit checks.`;
+    const goals = `\n- Primary audience: ${input.audience || "builders evaluating a premium product"}.\n- Conversion goal: ${input.goal || "make the first viewport feel specific, inspectable, and ready to build"}.\n- Output target: ${input.outputTarget || "Codex build prompt"}.\n- Creative vibe: ${input.vibe || "cinematic, exact, restrained, high-fidelity"}.`;
     const fullPrompt = `${prompt}${requirements}`;
     return {
       id: `learned-generator-${index + 1}-${slugify(preset.title)}`,
@@ -3557,7 +3627,7 @@ export function buildLearnedGeneratorVariants(
       score: evaluatePrompt(fullPrompt).score,
       bestFor: preset.bestFor,
       signals: preset.signals,
-      prompt: fullPrompt,
+      prompt: `${fullPrompt}${goals}`,
     };
   });
 }
@@ -3617,6 +3687,150 @@ ${promptMemory.markdown}
     json: JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), prompt, qualityGate, visualRegression, files, commands }, null, 2),
     files,
     commands,
+  };
+}
+
+export function buildExportPresets({
+  codexBuildPack,
+  prompt,
+  promptMemory,
+  qualityGate,
+  visualRegression,
+}: {
+  codexBuildPack: CodexBuildPack;
+  prompt?: PromptExample;
+  promptMemory: PromptMemoryExport;
+  qualityGate: QualityGateReport;
+  visualRegression: VisualRegressionReport;
+}): ExportPreset[] {
+  const title = prompt?.title || "selected prompt";
+  const text = prompt?.text || "Select or generate a prompt before exporting.";
+  const gates = [
+    `Prompt quality gate: ${qualityGate.score}`,
+    `Visual QA gate: ${visualRegression.score}`,
+    "Verify desktop and mobile screenshots, console health, nonblank render, media integrity, text fit, and mobile fit.",
+  ];
+  const memory = promptMemory.sections.map((section) => `## ${section.title}\n${section.items.map((item) => `- ${item}`).join("\n")}`).join("\n\n");
+  return [
+    {
+      id: "codex",
+      title: "Codex build prompt",
+      target: "Codex",
+      filename: "codex-build-prompt.md",
+      summary: "Full task, memory, queue, and acceptance gates.",
+      content: codexBuildPack.markdown,
+    },
+    {
+      id: "v0",
+      title: "v0 prompt",
+      target: "v0",
+      filename: "v0-website-prompt.md",
+      summary: "Compressed implementation prompt with exact UI and QA constraints.",
+      content: [`Build this website from the following high-fidelity prompt.`, "", text, "", "Acceptance:", ...gates.map((gate) => `- ${gate}`)].join("\n"),
+    },
+    {
+      id: "claude-artifact",
+      title: "Claude artifact prompt",
+      target: "Claude",
+      filename: "claude-artifact-prompt.md",
+      summary: "Artifact-friendly brief with learned memory and explicit QA checklist.",
+      content: [`You are building a React website artifact for: ${title}.`, "", "Use the prompt exactly:", text, "", "Learned memory:", memory, "", "QA gates:", ...gates.map((gate) => `- ${gate}`)].join("\n"),
+    },
+    {
+      id: "lovable",
+      title: "Lovable prompt",
+      target: "Lovable",
+      filename: "lovable-website-prompt.md",
+      summary: "Product-builder wording with stack, assets, and visual proof requirements.",
+      content: [`Create a polished single-page website.`, "", `Source prompt: ${title}`, text, "", "Do not add auth, database, routing, or extra product flows unless the prompt explicitly asks for them.", ...gates.map((gate) => `- ${gate}`)].join("\n"),
+    },
+    {
+      id: "implementation-spec",
+      title: "Raw implementation spec",
+      target: "Any coding agent",
+      filename: "implementation-spec.md",
+      summary: "Neutral spec plus learned rules for agents that dislike tool-specific phrasing.",
+      content: [`# Implementation Spec`, "", `## Source`, title, "", `## Prompt`, text, "", `## Learned Memory`, memory, "", `## Acceptance Gates`, ...gates.map((gate) => `- ${gate}`)].join("\n"),
+    },
+  ];
+}
+
+export function buildEvaluationHistoryReport({
+  buildRuns = [],
+  modelEvaluations = [],
+  outcomes = [],
+  pairwiseReviews = [],
+  screenshots = [],
+}: {
+  examples?: PromptExample[];
+  buildRuns?: BuildRunRecord[];
+  modelEvaluations?: ModelEvaluationRecord[];
+  outcomes?: OutcomeRecord[];
+  pairwiseReviews?: PairwiseReviewRecord[];
+  screenshots?: ScreenshotRecord[];
+}): EvaluationHistoryReport {
+  const items: EvaluationHistoryItem[] = [
+    ...outcomes.map((outcome) => ({
+      id: `outcome-${outcome.promptId}-${outcome.updatedAt}`,
+      title: outcome.title,
+      kind: "outcome" as const,
+      score: outcome.status === "gold" ? 95 : outcome.rating === "great" ? 86 : outcome.status === "avoid" || outcome.rating === "bad" ? 18 : 52,
+      status: `${outcome.status}/${outcome.rating}`,
+      createdAt: outcome.updatedAt || outcome.createdAt,
+      detail: outcome.notes || "Outcome label updated.",
+    })),
+    ...buildRuns.map((run) => ({
+      id: `build-${run.id}`,
+      title: run.promptTitle,
+      kind: "build" as const,
+      score: run.score || 0,
+      status: run.status,
+      createdAt: run.updatedAt || run.createdAt,
+      detail: run.resultUrl || run.folderPath || run.notes || "Build run recorded.",
+    })),
+    ...modelEvaluations.map((row) => ({
+      id: `model-${row.promptId}-${row.createdAt}`,
+      title: row.title,
+      kind: "model" as const,
+      score: row.score || 0,
+      status: row.readiness || row.mode,
+      createdAt: row.createdAt,
+      detail: row.mode || "model evaluation",
+    })),
+    ...pairwiseReviews.map((review) => ({
+      id: `pairwise-${review.id}`,
+      title: "Pairwise review",
+      kind: "pairwise" as const,
+      score: 82,
+      status: "winner selected",
+      createdAt: review.createdAt,
+      detail: review.reason || `${review.winnerId} beat ${review.loserId}`,
+    })),
+    ...screenshots.map((screenshot) => ({
+      id: `screenshot-${screenshot.id}`,
+      title: screenshot.title,
+      kind: "screenshot" as const,
+      score: screenshot.rating === "great" ? 88 : screenshot.rating === "okay" ? 62 : screenshot.rating === "bad" ? 20 : 48,
+      status: screenshot.rating,
+      createdAt: screenshot.createdAt,
+      detail: screenshot.notes || screenshot.url,
+    })),
+  ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  const goldRate = Math.round((outcomes.filter((outcome) => outcome.status === "gold").length / Math.max(1, outcomes.length)) * 100);
+  const passRate = Math.round((buildRuns.filter((run) => run.status === "passed").length / Math.max(1, buildRuns.length)) * 100);
+  const averageBuildScore = Math.round(buildRuns.reduce((sum, run) => sum + (run.score || 0), 0) / Math.max(1, buildRuns.length));
+  const averageModelScore = Math.round(modelEvaluations.reduce((sum, row) => sum + (row.score || 0), 0) / Math.max(1, modelEvaluations.length));
+  const visualGreatRate = Math.round((screenshots.filter((screenshot) => screenshot.rating === "great").length / Math.max(1, screenshots.length)) * 100);
+  const score = Math.round((goldRate + passRate + averageBuildScore + averageModelScore + visualGreatRate) / 5);
+  return {
+    score,
+    items: items.slice(0, 80),
+    trends: { goldRate, passRate, averageBuildScore, averageModelScore, visualGreatRate },
+    summary: [
+      `${items.length} evaluation event(s) are tracked across labels, builds, model scores, pairwise reviews, and screenshots.`,
+      `Gold rate ${goldRate}%, build pass rate ${passRate}%, visual great rate ${visualGreatRate}%.`,
+      score >= 70 ? "Evaluation history is trending healthy." : "Add build proof, model calibration, and screenshot labels to strengthen history.",
+    ],
   };
 }
 
@@ -4782,6 +4996,66 @@ export function parsePromptBatch(raw: string, sourceName = "pasted batch"): Prom
       };
     });
   }
+}
+
+export function auditPromptImportBatch(candidates: PromptImportCandidate[], existing: PromptExample[] = []): PromptImportAudit {
+  const clusterCounts = new Map<string, number>();
+  const items = candidates.map((candidate) => {
+    const duplicate = detectDuplicatePrompt(candidate.text, existing);
+    const cluster = candidate.analysis.archetypes[0]?.label || "Unclustered";
+    clusterCounts.set(cluster, (clusterCounts.get(cluster) || 0) + 1);
+    const hasAssets = candidate.analysis.assetCount > 0;
+    const hasStack = candidate.analysis.stack.length > 0;
+    const hasQa = candidate.analysis.tags.includes("qa") || /verify|screenshot|mobile|desktop|console|responsive/i.test(candidate.text);
+    const hasConstraints = /no |must|exact|do not|avoid|only/i.test(candidate.text);
+    const reasons = [
+      `${candidate.score} prompt score`,
+      duplicate.kind !== "none" ? `${duplicate.kind} duplicate signal` : "distinct text/structure",
+      hasStack ? "explicit stack" : "stack missing",
+      hasAssets ? `${candidate.analysis.assetCount} asset(s)` : "asset-light",
+      hasQa ? "QA signals" : "QA missing",
+      hasConstraints ? "constraints present" : "constraints light",
+      cluster,
+    ];
+    const decision =
+      duplicate.kind === "exact" || candidate.score < 38
+        ? "quarantine"
+        : duplicate.kind === "near" || candidate.score < 58
+          ? "review"
+          : candidate.score >= 74 && hasStack && (hasAssets || hasQa) && hasConstraints
+            ? "gold"
+            : "learn";
+    return { candidate, duplicate, cluster, decision, reasons } satisfies PromptImportAuditItem;
+  });
+  const importable = items.filter((item) => item.duplicate.kind !== "exact" && item.decision !== "quarantine").length;
+  const exactDuplicates = items.filter((item) => item.duplicate.kind === "exact").length;
+  const nearDuplicates = items.filter((item) => item.duplicate.kind === "near").length;
+  const goldCandidates = items.filter((item) => item.decision === "gold").length;
+  const reviewCandidates = items.filter((item) => item.decision === "review").length;
+  const quarantineCandidates = items.filter((item) => item.decision === "quarantine").length;
+  const averageScore = Math.round(items.reduce((sum, item) => sum + item.candidate.score, 0) / Math.max(1, items.length));
+  const topClusters = Array.from(clusterCounts.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, 6);
+  return {
+    total: items.length,
+    importable,
+    exactDuplicates,
+    nearDuplicates,
+    goldCandidates,
+    reviewCandidates,
+    quarantineCandidates,
+    averageScore,
+    topClusters,
+    items,
+    recommendations: [
+      importable ? `${importable} prompt(s) are safe to import now.` : "No safe import candidates yet.",
+      goldCandidates ? `${goldCandidates} candidate(s) look gold-worthy.` : "Add exact assets, stack, QA, and constraints to create gold candidates.",
+      nearDuplicates ? `${nearDuplicates} near duplicate(s) should be reviewed before training.` : "No near-duplicate pressure detected.",
+      topClusters.length ? `Dominant cluster: ${topClusters[0].label}.` : "No cluster signal yet.",
+    ],
+  };
 }
 
 export function importCorpus(raw: string): PromptExample[] {

@@ -496,6 +496,21 @@ async function handle(request, response) {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/visual/qa") {
+      const body = await readBody(request);
+      if (!body.url) {
+        jsonResponse(response, 400, { ok: false, error: "Missing url." });
+        return;
+      }
+      const args = ["--url", body.url, "--out", body.out || join("output", "visual-qa", "api-qa")];
+      if (body.desktop) args.push("--desktop", body.desktop);
+      if (body.mobile) args.push("--mobile", body.mobile);
+      const result = runNodeScript("visualQa.mjs", args, 120000);
+      logEvent("visual-qa", { url: body.url, ok: result.ok, score: result.parsed?.score ?? 0 });
+      jsonResponse(response, result.ok ? 200 : 500, result);
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/result/import") {
       const body = await readBody(request);
       const normalized = normalizeImportedResult(body.result || body);

@@ -3,7 +3,7 @@
 Prompt Atelier is split into two deployment surfaces:
 
 1. Static frontend: deploys to GitHub Pages from `dist/`.
-2. API/worker: runs locally or as a hosted Docker service for SQLite persistence, snapshot sync, and model evaluation. Heavy queue execution and screenshot capture are still best run on a trusted local worker.
+2. API/worker: runs locally or as a hosted Docker service for SQLite persistence, snapshot sync, model evaluation, API event history, and visual QA. Heavy queue execution is still best run on a trusted local worker.
 
 ## GitHub Pages
 
@@ -65,6 +65,13 @@ Hosted services should not run arbitrary Codex agent commands unless the environ
 npm run run:queue -- --queue prompt-lab-queue.json --scaffold --install --capture --preview-port 4320
 ```
 
+For automated desktop/mobile visual QA against a reachable result URL:
+
+```bash
+npm run visual:qa -- --url https://zakiefer.github.io/prompt-atelier/ --out output/visual-qa/pages
+# add --api-token <token> when validating against a token-protected API
+```
+
 Blueprint deeplink after this file is merged to `main`:
 
 ```text
@@ -91,4 +98,5 @@ For browser proof:
 npm run dev
 npm run api
 npm run capture:result -- --url http://127.0.0.1:5173 --out output/playwright/prompt-atelier
+npm run visual:qa -- --url http://127.0.0.1:5173 --out output/visual-qa/local
 ```
