@@ -791,6 +791,68 @@ export type EvaluationHistoryReport = {
   };
 };
 
+export type LeakageGuardFinding = {
+  promptId: string;
+  title: string;
+  source: PromptExample["source"];
+  severity: "block" | "review";
+  matches: string[];
+  recommendation: string;
+};
+
+export type LeakageGuardReport = {
+  score: number;
+  status: "clean" | "review" | "blocked";
+  checked: number;
+  blockers: number;
+  warnings: number;
+  findings: LeakageGuardFinding[];
+  recommendations: string[];
+};
+
+export type SourceSafetyReport = {
+  score: number;
+  sourceBreakdown: {
+    source: PromptExample["source"];
+    total: number;
+    learn: number;
+    review: number;
+    quarantine: number;
+    blocked: number;
+  }[];
+  unsafeItems: {
+    promptId: string;
+    title: string;
+    source: PromptExample["source"];
+    category: CorpusCurationCategory;
+    recommendation: CorpusCurationItem["recommendation"];
+    reasons: string[];
+    unsafeHits: string[];
+  }[];
+  recommendations: string[];
+};
+
+export type DnaScoreExplanation = {
+  overall: number;
+  summary: string[];
+  dimensions: {
+    key: DnaKey;
+    label: string;
+    score: number;
+    why: string;
+    evidence: string[];
+    nextAction: string;
+  }[];
+};
+
+export type BuildFeedbackReport = {
+  score: number;
+  status: "ready-to-promote" | "needs-proof" | "needs-repair";
+  summary: string[];
+  checks: VisualQaItem[];
+  nextActions: string[];
+};
+
 const CATEGORY_LABELS: Record<CategoryKey, string> = {
   stack: "Stack",
   assets: "Assets",
@@ -1343,6 +1405,131 @@ export function curatePromptCorpus(
       counts.review ? `${counts.review} prompt(s) need manual review.` : "No manual-review prompts detected.",
     ],
   };
+}
+
+const LEAKAGE_PATTERNS: {
+  label: string;
+  severity: LeakageGuardFinding["severity"];
+  pattern: RegExp;
+  recommendation: string;
+}[] = [
+  {
+    label: "Kapital Next operational task",
+    severity: "block",
+    pattern: /\b(?:kapital-next|review-read-manifest|next-auth\.session-token|fresh sibling clone|merge lane|launchctl)\b/i,
+    recommendation: "Remove this item from the website-prompt corpus and keep it in the original project thread.",
+  },
+  {
+    label: "Helios repository reference",
+    severity: "block",
+    pattern: /\b(?:jkiefer89\/helios|helios echart|helios frontend)\b/i,
+    recommendation: "Quarantine unrelated repo-operation material before training.",
+  },
+  {
+    label: "Operational task phrasing",
+    severity: "block",
+    pattern: /\b(?:you are firing|hotfix #\d+|staged diff|pull request instructions|commit instructions)\b/i,
+    recommendation: "Keep agent execution instructions out of prompt-design examples.",
+  },
+  {
+    label: "Likely secret token",
+    severity: "block",
+    pattern: /\b(?:sk-ant-api\d{2}-[A-Za-z0-9_-]{16,}|sk-(?:proj|live|test)-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16})\b/,
+    recommendation: "Delete the secret from the corpus and rotate it if it was real.",
+  },
+  {
+    label: "Generic repo workflow language",
+    severity: "review",
+    pattern: /\b(?:git status|git push|worktree|ci failure|staged file|branch-only|merge-only)\b/i,
+    recommendation: "Review manually; this is usually not a website prompt unless it is inside QA instructions.",
+  },
+];
+
+function leakageHits(text: string) {
+  return LEAKAGE_PATTERNS.flatMap((item) => (item.pattern.test(text) ? [item] : []));
+}
+
+export function buildLeakageGuardReport(examples: PromptExample[]): LeakageGuardReport {
+  const findings = examples.flatMap((example) => {
+    const matches = leakageHits(`${example.title}\n${example.text}`);
+    if (!matches.length) return [];
+    const severity: LeakageGuardFinding["severity"] = matches.some((match) => match.severity === "block") ? "block" : "review";
+    return [{
+      promptId: example.id,
+      title: example.title,
+      source: example.source,
+      severity,
+      matches: matches.map((match) => match.label),
+      recommendation: matches[0].recommendation,
+    }];
+  });
+  const blockers = findings.filter((finding) => finding.severity === "block").length;
+  const warnings = findings.length - blockers;
+  const status: LeakageGuardReport["status"] = blockers ? "blocked" : warnings ? "review" : "clean";
+  const score = Math.max(0, 100 - blockers * 34 - warnings * 10);
+  const recommendations = [
+    blockers ? "Remove blocking corpus leaks before exporting memory, recipes, or generated prompts." : "",
+    warnings ? "Review warning items and mark them learn/quarantine explicitly." : "",
+    !findings.length ? "No unrelated repo-operation prompts or obvious secrets were detected." : "",
+    "Keep attachment import allowlists narrow and run the corpus safety check before publishing.",
+  ].filter(Boolean);
+
+  return {
+    score,
+    status,
+    checked: examples.length,
+    blockers,
+    warnings,
+    findings,
+    recommendations,
+  };
+}
+
+export function buildSourceSafetyReport(
+  examples: PromptExample[],
+  curation: CorpusCurationReport = curatePromptCorpus(examples),
+): SourceSafetyReport {
+  const leakage = buildLeakageGuardReport(examples);
+  const leakageById = new Map(leakage.findings.map((finding) => [finding.promptId, finding]));
+  const curationById = new Map(curation.items.map((item) => [item.promptId, item]));
+  const sourceBreakdown = (["seed", "attachment", "user"] as PromptExample["source"][]).map((source) => {
+    const sourceExamples = examples.filter((example) => example.source === source);
+    const sourceItems = sourceExamples.map((example) => curationById.get(example.id)).filter(Boolean) as CorpusCurationItem[];
+    return {
+      source,
+      total: sourceExamples.length,
+      learn: sourceItems.filter((item) => item.recommendation === "learn").length,
+      review: sourceItems.filter((item) => item.recommendation === "review").length,
+      quarantine: sourceItems.filter((item) => item.recommendation === "quarantine").length,
+      blocked: sourceExamples.filter((example) => leakageById.get(example.id)?.severity === "block").length,
+    };
+  });
+  const unsafeItems = examples.flatMap((example) => {
+    const item = curationById.get(example.id);
+    const leakageFinding = leakageById.get(example.id);
+    if (!item || (item.recommendation === "learn" && !leakageFinding)) return [];
+    return [{
+      promptId: example.id,
+      title: example.title,
+      source: example.source,
+      category: item.category,
+      recommendation: item.recommendation,
+      reasons: item.reasons,
+      unsafeHits: leakageFinding?.matches ?? [],
+    }];
+  });
+  const score = Math.max(
+    0,
+    100 - leakage.blockers * 32 - leakage.warnings * 9 - curation.counts.quarantine * 6 - curation.counts.review * 2,
+  );
+  const recommendations = [
+    leakage.blockers ? "Blocking leaks found; quarantine or delete them before learning." : "",
+    curation.counts.review ? "Resolve review items so the training set is fully intentional." : "",
+    curation.counts.quarantine ? "Keep quarantined examples visible but excluded from recipes and memory exports." : "",
+    leakage.status === "clean" && !curation.counts.review ? "Source safety is clean enough for training and export." : "",
+  ].filter(Boolean);
+
+  return { score, sourceBreakdown, unsafeItems, recommendations };
 }
 
 export function analyzeCorpus(examples: PromptExample[]): PromptProfile {
@@ -2844,6 +3031,75 @@ export function scorePromptDnaV2(
   return { overall, dimensions };
 }
 
+const DNA_NEXT_ACTIONS: Record<DnaKey, string> = {
+  visualSpecificity: "Name the signature visual mechanic and the exact first-viewport composition.",
+  technicalCompleteness: "Declare framework, language, styling, icon, animation, and no-extra-library boundaries.",
+  assetPrecision: "Add exact media URLs, dimensions, focal points, object-fit rules, and fallbacks.",
+  motionState: "Describe animation/state as timings, refs, cleanup, locks, reduced-motion behavior, and interaction triggers.",
+  responsiveDetail: "Specify mobile/tablet/desktop breakpoints, text wrapping, stable dimensions, and menu states.",
+  constraintClarity: "Write explicit no-go rules for overlays, decorative effects, placeholder assets, and unlisted libraries.",
+  buildability: "Add lint/build/browser QA, console checks, screenshot proof, and accessibility expectations.",
+};
+
+function dnaEvidenceForKey(key: DnaKey, text: string, analysis: PromptAnalysis) {
+  const urls = extractUrls(text);
+  const evidence: Record<DnaKey, string[]> = {
+    visualSpecificity: [
+      ...analysis.archetypes.slice(0, 3).map((match) => match.label),
+      ...analysis.tags.slice(0, 4),
+      ...extractCategorySignals(text, "layout").slice(0, 4),
+    ],
+    technicalCompleteness: [...analysis.stack.slice(0, 6), ...extractCategorySignals(text, "stack").slice(0, 4)],
+    assetPrecision: urls.length ? urls.slice(0, 5) : extractCategorySignals(text, "assets").slice(0, 5),
+    motionState: [...extractCategorySignals(text, "motion").slice(0, 4), ...extractCategorySignals(text, "state").slice(0, 4)],
+    responsiveDetail: extractCategorySignals(text, "responsive").slice(0, 6),
+    constraintClarity: extractCategorySignals(text, "constraints").slice(0, 6),
+    buildability: [...extractCategorySignals(text, "qa").slice(0, 5), ...analysis.recommendations.slice(0, 2)],
+  };
+  return unique(evidence[key].filter(Boolean), 6);
+}
+
+export function explainDnaScore(
+  prompt: PromptExample | undefined,
+  result?: ResultScore,
+  screenshotQa?: ScreenshotQaReport,
+): DnaScoreExplanation {
+  const text = prompt?.text ?? "";
+  const analysis = analyzePrompt(text);
+  const dnaEntries = Object.entries(analysis.dna) as [DnaKey, number][];
+  const overall = Math.round(dnaEntries.reduce((sum, [, score]) => sum + score, 0) / Math.max(1, dnaEntries.length));
+  const strongest = [...dnaEntries].sort((a, b) => b[1] - a[1])[0];
+  const weakest = [...dnaEntries].sort((a, b) => a[1] - b[1])[0];
+  const v2 = scorePromptDnaV2(prompt, result, screenshotQa);
+  const dimensions = dnaEntries.map(([key, score]) => {
+    const evidence = dnaEvidenceForKey(key, text, analysis);
+    return {
+      key,
+      label: dnaLabels[key],
+      score,
+      why:
+        score >= 75
+          ? "Strong because the prompt includes concrete implementation signals in this area."
+          : score >= 50
+            ? "Partial because some useful signals exist, but the implementation contract could be tighter."
+            : "Weak because the prompt leaves too much to taste or inference in this area.",
+      evidence: evidence.length ? evidence : ["No explicit evidence detected."],
+      nextAction: DNA_NEXT_ACTIONS[key],
+    };
+  });
+
+  return {
+    overall,
+    summary: [
+      `DNA averages ${overall}/100 across the classic seven prompt-quality dimensions.`,
+      strongest ? `Strongest dimension: ${dnaLabels[strongest[0]]} at ${strongest[1]}.` : "No strong dimension detected yet.",
+      weakest ? `Next lift: ${dnaLabels[weakest[0]]} at ${weakest[1]}.` : "No weak dimension detected yet.",
+      `DNA v2 is ${v2.overall}/100 after adding result and screenshot-readiness signals.`,
+    ],
+    dimensions,
+  };
+}
+
 export function distillGoldenRecipes(
   examples: PromptExample[],
   outcomes: OutcomeRecord[] = [],
@@ -4002,6 +4258,50 @@ export function scoreResultArtifact(
   ].filter(Boolean);
 
   return { score, checks, failureCategories, recommendations };
+}
+
+export function buildBuildFeedbackReport(
+  prompt: PromptExample | undefined,
+  result: ResultScore,
+  screenshotQa: ScreenshotQaReport,
+): BuildFeedbackReport {
+  const promptTitle = prompt?.title ?? "No prompt selected";
+  const checks = [
+    ...result.checks,
+    ...screenshotQa.items.map((item) => ({
+      ...item,
+      label: `Screenshot: ${item.label}`,
+    })),
+  ];
+  const score = Math.round(result.score * 0.55 + screenshotQa.score * 0.45);
+  const status: BuildFeedbackReport["status"] =
+    score >= 76 && result.failureCategories.length === 0
+      ? "ready-to-promote"
+      : score >= 55
+        ? "needs-proof"
+        : "needs-repair";
+  const nextActions = unique(
+    [
+      ...result.recommendations,
+      ...screenshotQa.notes,
+      status === "ready-to-promote" ? "Promote this prompt/result pair to gold if the visual output matches the intended taste." : "",
+      status === "needs-proof" ? "Add missing screenshot/result proof before using this prompt as training signal." : "",
+      status === "needs-repair" ? "Repair the prompt with failure memory, then run a battle variant." : "",
+    ],
+    8,
+  );
+
+  return {
+    score,
+    status,
+    checks,
+    nextActions,
+    summary: [
+      `${promptTitle} has a combined build feedback score of ${score}/100.`,
+      `Result score ${result.score}/100 and screenshot QA ${screenshotQa.score}/100 are blended into the learning signal.`,
+      result.failureCategories.length ? `Failure categories: ${result.failureCategories.join(", ")}.` : "No classified build failures are attached.",
+    ],
+  };
 }
 
 export function createBuildRunHandoff(prompt: PromptExample, run: Partial<BuildRunRecord> = {}) {

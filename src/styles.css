@@ -48,6 +48,10 @@ button {
   cursor: pointer;
 }
 
+code {
+  overflow-wrap: anywhere;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -290,6 +294,14 @@ button:disabled {
   border-color: rgba(31, 122, 104, 0.38);
 }
 
+.batch-candidate-list article[data-decision="learn"] {
+  border-color: rgba(47, 111, 187, 0.25);
+}
+
+.batch-candidate-list article[data-decision="review"] {
+  border-color: rgba(185, 130, 42, 0.32);
+}
+
 .batch-candidate-list article[data-decision="quarantine"] {
   opacity: 0.62;
 }
@@ -302,6 +314,28 @@ button:disabled {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 750;
+}
+
+.batch-candidate-list small {
+  color: #2e3a35;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.batch-recommendations {
+  display: grid;
+  gap: 5px;
+}
+
+.batch-recommendations span {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 750;
+  line-height: 1.35;
+  padding: 6px 8px;
 }
 
 .file-button,
@@ -356,6 +390,19 @@ button:disabled {
 .icon-button {
   background: #fff;
   color: var(--ink);
+}
+
+.link-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  display: block;
+  padding: 0;
+  text-align: left;
+}
+
+.link-button:hover {
+  color: var(--teal-dark);
 }
 
 .prompt-list {
@@ -1372,6 +1419,13 @@ button:disabled {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.source-safety-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  margin-top: 12px;
+}
+
 .stage-panel {
   display: grid;
   gap: 10px;
@@ -1507,12 +1561,15 @@ button:disabled {
   display: flex;
   gap: 8px;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .dna-v2-topline strong,
 .version-card strong {
   font-size: 0.84rem;
   line-height: 1.25;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .dna-v2-topline span {
@@ -1550,6 +1607,7 @@ button:disabled {
   font-size: 0.78rem;
   line-height: 1.42;
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .dna-v2-card small,
@@ -1559,6 +1617,7 @@ button:disabled {
   color: var(--muted);
   font-size: 0.72rem;
   line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .recipe-card em {
@@ -1575,6 +1634,21 @@ button:disabled {
   font-size: 0.72rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.prompt-audit-card {
+  border-style: dashed;
+  cursor: pointer;
+  width: 100%;
+}
+
+.prompt-audit-card .dna-v2-topline span {
+  font-size: 0.68rem;
+  height: 26px;
+  min-width: 36px;
+  padding: 0 9px;
+  text-transform: uppercase;
+  width: auto;
 }
 
 .gate-summary {
@@ -1634,6 +1708,19 @@ button:disabled {
   gap: 8px;
   min-width: 0;
   padding: 12px;
+}
+
+.gate-check-card p,
+.gate-check-card small,
+.review-card p,
+.signal-card p,
+.preset-card p,
+.preset-card small,
+.gallery-card p,
+.index-card p,
+.winner-card p {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 button.preset-card {
@@ -1832,7 +1919,7 @@ button.preset-card {
 .command-box code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.78rem;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .automation-steps {
@@ -2071,6 +2158,17 @@ button.preset-card {
   font-weight: 800;
   margin-top: 5px;
   text-transform: uppercase;
+}
+
+.vertical-actions {
+  align-items: stretch;
+  display: grid;
+  gap: 6px;
+}
+
+.vertical-actions .compact-button {
+  min-height: 30px;
+  padding: 0 10px;
 }
 
 .index-grid {

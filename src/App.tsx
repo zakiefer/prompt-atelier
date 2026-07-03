@@ -47,14 +47,17 @@ import {
   buildGoldReviewReport,
   buildGeneratorPresets,
   buildExperimentLeaderboard,
+  buildBuildFeedbackReport,
   buildCodexBuildPack,
   buildLearnedGeneratorVariants,
+  buildLeakageGuardReport,
   buildPatternDashboard,
   buildProjectExportPack,
   buildPromptCoachReport,
   buildQualityGateReport,
   buildResultGallery,
   buildReusableMemoryPack,
+  buildSourceSafetyReport,
   buildVisualRegressionReport,
   buildRecipePrompt,
   buildRubricNotes,
@@ -80,6 +83,7 @@ import {
   distillGoldenRecipes,
   dnaLabels,
   evaluatePrompt,
+  explainDnaScore,
   explainPromptWin,
   exportCorpus,
   exportBuildQueue,
@@ -102,6 +106,7 @@ import {
   type ArchetypeMixOptions,
   type ArchetypeCluster,
   type BuildRunRecord,
+  type BuildFeedbackReport,
   type BuildRunnerPlan,
   type BuildQueueJob,
   type BuildStatus,
@@ -115,6 +120,7 @@ import {
   type DatasetVersionComparison,
   type DnaCalibrationReport,
   type DnaKey,
+  type DnaScoreExplanation,
   type DriftReport,
   type Evaluation,
   type EvaluationHistoryReport,
@@ -126,6 +132,7 @@ import {
   type LocalEmbeddingIndex,
   type LearnedGeneratorInput,
   type LearnedGeneratorVariant,
+  type LeakageGuardReport,
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
@@ -145,6 +152,7 @@ import {
   type PromptProfile,
   type PromptRank,
   type PromptTournament,
+  type SourceSafetyReport,
   type GoldenRecipe,
   type GeneratorPreset,
   type GoldReviewReport,
@@ -627,6 +635,8 @@ export default function App() {
 
   const examples = useMemo(() => [...seedPrompts, ...attachmentExamples, ...userPrompts], [attachmentExamples, userPrompts]);
   const curationReport = useMemo(() => curatePromptCorpus(examples, curationDecisions), [curationDecisions, examples]);
+  const sourceSafety = useMemo(() => buildSourceSafetyReport(examples, curationReport), [curationReport, examples]);
+  const leakageGuard = useMemo(() => buildLeakageGuardReport(examples), [examples]);
   const learningExamples = useMemo(() => {
     const learnSet = new Set(curationReport.learnIds);
     const filtered = examples.filter((example) => learnSet.has(example.id));
@@ -730,6 +740,14 @@ export default function App() {
   const screenshotQa = useMemo(
     () => scoreScreenshotSet(selectedPrompt, selectedScreenshots, selectedBuildRun),
     [selectedBuildRun, selectedPrompt, selectedScreenshots],
+  );
+  const dnaExplanation = useMemo(
+    () => explainDnaScore(selectedPrompt, resultScore, screenshotQa),
+    [resultScore, screenshotQa, selectedPrompt],
+  );
+  const buildFeedback = useMemo(
+    () => buildBuildFeedbackReport(selectedPrompt, resultScore, screenshotQa),
+    [resultScore, screenshotQa, selectedPrompt],
   );
   const dnaCalibration = useMemo(
     () => calibrateDnaScores(learningExamples, outcomes, buildRuns, screenshots),
@@ -2531,6 +2549,7 @@ export default function App() {
               apiEvents={apiEvents}
               apiTokenDraft={apiTokenDraft}
               backupSnapshots={backupSnapshots}
+              buildFeedback={buildFeedback}
               buildRuns={buildRuns}
               codexBuildPack={codexBuildPack}
               codexSkill={codexSkill}
@@ -2544,6 +2563,7 @@ export default function App() {
               curationReport={curationReport}
               dbStatus={dbStatus}
               dnaCalibration={dnaCalibration}
+              dnaExplanation={dnaExplanation}
               datasetVersions={datasetVersions}
               datasetComparison={datasetComparison}
               dnaV2={dnaV2}
@@ -2562,6 +2582,7 @@ export default function App() {
               generatorPresets={generatorPresets}
               generatorInput={generatorInput}
               learnedGeneratorVariants={learnedGeneratorVariants}
+              leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
               learningExamples={learningExamples}
@@ -2647,6 +2668,7 @@ export default function App() {
               selectedPrompt={selectedPrompt}
               selectedLineage={selectedLineage}
               semanticQuery={semanticQuery}
+              sourceSafety={sourceSafety}
               setApiBaseDraft={setApiBaseDraft}
               setApiTokenDraft={setApiTokenDraft}
               setActiveTrainStage={setActiveTrainStage}
@@ -2770,6 +2792,7 @@ function SmartIngestion({ analysis }: { analysis: PromptAnalysis }) {
 }
 
 function BatchIngestionPreview({ audit, candidates }: { audit: PromptImportAudit; candidates: ReturnType<typeof parsePromptBatch> }) {
+  const buckets: PromptImportAudit["items"][number]["decision"][] = ["gold", "learn", "review", "quarantine"];
   return (
     <div className="analysis-card batch-preview">
       <div>
@@ -2779,17 +2802,31 @@ function BatchIngestionPreview({ audit, candidates }: { audit: PromptImportAudit
         </span>
       </div>
       <div className="mini-stat-row">
+        <span>{audit.importable} learn-ready</span>
+        <span>{audit.reviewCandidates} review</span>
+        <span>{audit.quarantineCandidates} quarantine</span>
         {audit.topClusters.slice(0, 3).map((cluster) => (
           <span key={cluster.label}>{cluster.label}: {cluster.count}</span>
         ))}
       </div>
-      <div className="batch-candidate-list">
-        {audit.items.slice(0, 5).map((item) => (
-          <article data-decision={item.decision} key={item.candidate.id}>
-            <strong>{item.candidate.title}</strong>
-            <span>{item.decision} / {item.candidate.score} score / {item.reasons.slice(0, 4).join(" / ")}</span>
-          </article>
+      <div className="batch-recommendations">
+        {audit.recommendations.slice(0, 3).map((recommendation) => (
+          <span key={recommendation}>{recommendation}</span>
         ))}
+      </div>
+      <div className="batch-candidate-list">
+        {buckets.flatMap((bucket) =>
+          audit.items
+            .filter((item) => item.decision === bucket)
+            .slice(0, 3)
+            .map((item) => (
+              <article data-decision={item.decision} key={item.candidate.id}>
+                <strong>{item.candidate.title}</strong>
+                <span>{item.decision} / {item.candidate.score} score / {item.cluster}</span>
+                <small>{item.reasons.slice(0, 4).join(" / ")}</small>
+              </article>
+            )),
+        )}
       </div>
     </div>
   );
@@ -3532,6 +3569,7 @@ function TrainView({
   apiEvents,
   apiTokenDraft,
   backupSnapshots,
+  buildFeedback,
   buildRuns,
   codexBuildPack,
   codexSkill,
@@ -3545,6 +3583,7 @@ function TrainView({
   curationReport,
   dbStatus,
   dnaCalibration,
+  dnaExplanation,
   datasetVersions,
   datasetComparison,
   dnaV2,
@@ -3564,6 +3603,7 @@ function TrainView({
   generatorPresets,
   generatorInput,
   learnedGeneratorVariants,
+  leakageGuard,
   experimentLeaderboard,
   leaderboard,
   learningExamples,
@@ -3650,6 +3690,7 @@ function TrainView({
   selectedPrompt,
   selectedLineage,
   semanticQuery,
+  sourceSafety,
   setApiBaseDraft,
   setApiTokenDraft,
   setActiveTrainStage,
@@ -3692,6 +3733,7 @@ function TrainView({
   apiEvents: ApiEvent[];
   apiTokenDraft: string;
   backupSnapshots: TrainingBackupSnapshot[];
+  buildFeedback: BuildFeedbackReport;
   buildRuns: BuildRunRecord[];
   codexBuildPack: CodexBuildPack;
   codexSkill: string;
@@ -3705,6 +3747,7 @@ function TrainView({
   curationReport: CorpusCurationReport;
   dbStatus: string;
   dnaCalibration: DnaCalibrationReport;
+  dnaExplanation: DnaScoreExplanation;
   datasetVersions: DatasetVersion[];
   datasetComparison: DatasetVersionComparison;
   dnaV2: PromptDnaV2;
@@ -3724,6 +3767,7 @@ function TrainView({
   generatorPresets: GeneratorPreset[];
   generatorInput: LearnedGeneratorInput;
   learnedGeneratorVariants: LearnedGeneratorVariant[];
+  leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
   learningExamples: PromptExample[];
@@ -3818,6 +3862,7 @@ function TrainView({
   selectedPrompt?: PromptExample;
   selectedLineage: PromptLineageNode[];
   semanticQuery: string;
+  sourceSafety: SourceSafetyReport;
   setApiBaseDraft: (value: string) => void;
   setApiTokenDraft: (value: string) => void;
   setActiveTrainStage: (stage: string) => void;
@@ -3941,6 +3986,56 @@ function TrainView({
         onExportMemoryPack={onExportMemoryPack}
         onLoadDemoMode={onLoadDemoMode}
         onRunModelBatchCalibration={onRunModelBatchCalibration}
+      />
+
+      <section className="train-columns">
+        <SourceSafetyDashboard
+          leakageGuard={leakageGuard}
+          onSelectPrompt={onSelectPrompt}
+          sourceSafety={sourceSafety}
+        />
+        <LeakageGuardPanel leakageGuard={leakageGuard} onSelectPrompt={onSelectPrompt} />
+      </section>
+
+      <section className="train-columns">
+        <GoldAvoidCurationPanel
+          leaderboard={leaderboard}
+          onSelectPrompt={onSelectPrompt}
+          onUpdateOutcome={onUpdateOutcome}
+          outcomes={outcomes}
+        />
+        <DnaScoreExplainerPanel dnaExplanation={dnaExplanation} selectedPrompt={selectedPrompt} />
+      </section>
+
+      <section className="train-columns">
+        <PromptGeneratorBattleModePanel
+          copied={copied}
+          onApplyGeneratorVariant={onApplyGeneratorVariant}
+          onCopy={onCopy}
+          onQueueBattle={onQueueBattle}
+          onSave={onSave}
+          promptBattle={promptBattle}
+          variants={learnedGeneratorVariants}
+        />
+        <BuildFeedbackLoopPanel
+          buildFeedback={buildFeedback}
+          onQueueBattle={onQueueBattle}
+          onUpdateOutcome={onUpdateOutcome}
+          selectedPrompt={selectedPrompt}
+        />
+      </section>
+
+      <PersistenceStatusPanel
+        apiEvents={apiEvents}
+        apiHealth={apiHealth}
+        apiNotice={apiNotice}
+        buildRuns={buildRuns}
+        dbStatus={dbStatus}
+        examples={examples}
+        onCheckApi={onCheckApi}
+        onSyncToApi={onSyncToApi}
+        outcomes={outcomes}
+        screenshots={screenshots}
       />
 
       <section className="train-columns">
@@ -4325,6 +4420,362 @@ function TrainView({
         <textarea className="generated-output style-guide-output" readOnly value={codexSkill} />
       </section>
     </div>
+  );
+}
+
+function SourceSafetyDashboard({
+  leakageGuard,
+  onSelectPrompt,
+  sourceSafety,
+}: {
+  leakageGuard: LeakageGuardReport;
+  onSelectPrompt: (id: string) => void;
+  sourceSafety: SourceSafetyReport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <AlertTriangle size={18} />
+        <h2>Source safety dashboard</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={sourceSafety.score} label={leakageGuard.status === "blocked" ? "Blocked" : "Sources"} />
+        <FeedbackList title="Source recommendations" items={sourceSafety.recommendations} empty="Sources are clean." />
+      </div>
+      <div className="source-safety-grid">
+        {sourceSafety.sourceBreakdown.map((item) => (
+          <article className="index-card" key={item.source}>
+            <strong>{item.total}</strong>
+            <span>{item.source}</span>
+            <p>{item.learn} learn / {item.review} review / {item.quarantine} quarantine</p>
+          </article>
+        ))}
+      </div>
+      <div className="version-list compact-list">
+        {sourceSafety.unsafeItems.slice(0, 6).map((item) => (
+          <button className="version-card prompt-audit-card" key={item.promptId} type="button" onClick={() => onSelectPrompt(item.promptId)}>
+            <div className="dna-v2-topline">
+              <strong>{item.title}</strong>
+              <span data-tone={item.unsafeHits.length ? "weak" : item.recommendation === "learn" ? "strong" : "mixed"}>
+                {item.unsafeHits.length ? "blocked" : item.recommendation}
+              </span>
+            </div>
+            <span>{item.source} / {item.category}</span>
+            <p>{[...item.unsafeHits, ...item.reasons].slice(0, 2).join(" / ")}</p>
+          </button>
+        ))}
+        {!sourceSafety.unsafeItems.length ? <p className="selected-meta">No unsafe or quarantined source items are currently visible.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function LeakageGuardPanel({
+  leakageGuard,
+  onSelectPrompt,
+}: {
+  leakageGuard: LeakageGuardReport;
+  onSelectPrompt: (id: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <AlertTriangle size={18} />
+        <h2>Leakage guard</h2>
+      </div>
+      <div className="gate-summary">
+        <ScoreRing score={leakageGuard.score} label={leakageGuard.status} />
+        <div>
+          <strong>{leakageGuard.blockers} blocker(s), {leakageGuard.warnings} warning(s)</strong>
+          <p>{leakageGuard.checked} prompt(s) checked for unrelated repo-operation text and likely secrets.</p>
+        </div>
+      </div>
+      <FeedbackList title="Guard recommendations" items={leakageGuard.recommendations} empty="No leakage recommendations." />
+      <div className="version-list compact-list">
+        {leakageGuard.findings.slice(0, 6).map((finding) => (
+          <button className="version-card prompt-audit-card" key={finding.promptId} type="button" onClick={() => onSelectPrompt(finding.promptId)}>
+            <div className="dna-v2-topline">
+              <strong>{finding.title}</strong>
+              <span data-tone={finding.severity === "block" ? "weak" : "mixed"}>{finding.severity}</span>
+            </div>
+            <span>{finding.source} / {finding.matches.join(", ")}</span>
+            <p>{finding.recommendation}</p>
+          </button>
+        ))}
+        {!leakageGuard.findings.length ? <p className="selected-meta">Clean: no protected project names, operational task text, or obvious API keys detected.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function GoldAvoidCurationPanel({
+  leaderboard,
+  onSelectPrompt,
+  onUpdateOutcome,
+  outcomes,
+}: {
+  leaderboard: PromptRank[];
+  onSelectPrompt: (id: string) => void;
+  onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
+  outcomes: OutcomeRecord[];
+}) {
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const candidates = leaderboard.slice(0, 8);
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Trophy size={18} />
+        <h2>Gold / avoid curation</h2>
+      </div>
+      <p className="selected-meta">Fast-label the examples that should steer generation or be kept away from future recipes.</p>
+      <div className="leaderboard-list compact-list">
+        {candidates.map((rank) => {
+          const outcome = outcomeMap.get(rank.example.id);
+          return (
+            <article className="leaderboard-card" key={rank.example.id}>
+              <span className="rank-badge">{rank.score}</span>
+              <div>
+                <button className="link-button" type="button" onClick={() => onSelectPrompt(rank.example.id)}>
+                  <strong>{rank.example.title}</strong>
+                </button>
+                <p>{rank.reasons.slice(0, 3).join(" / ")}</p>
+                <small>{outcome ? `${outcome.status} / ${outcome.rating}` : "unrated"}</small>
+              </div>
+              <div className="button-row vertical-actions">
+                <button
+                  className="ghost-button compact-button"
+                  type="button"
+                  onClick={() => onUpdateOutcome(rank.example, { rating: "great", status: "gold", notes: "Promoted from gold/avoid curation." })}
+                >
+                  Gold
+                </button>
+                <button
+                  className="ghost-button compact-button"
+                  type="button"
+                  onClick={() => onUpdateOutcome(rank.example, { rating: "bad", status: "avoid", notes: "Marked avoid from gold/avoid curation." })}
+                >
+                  Avoid
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DnaScoreExplainerPanel({
+  dnaExplanation,
+  selectedPrompt,
+}: {
+  dnaExplanation: DnaScoreExplanation;
+  selectedPrompt?: PromptExample;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Why this DNA score?</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={dnaExplanation.overall} label="DNA" />
+        <div>
+          <strong>{selectedPrompt?.title ?? "No prompt selected"}</strong>
+          <FeedbackList title="Score explanation" items={dnaExplanation.summary} empty="Select a prompt to explain." />
+        </div>
+      </div>
+      <div className="gate-check-grid">
+        {dnaExplanation.dimensions.map((dimension) => (
+          <article className="gate-check-card" key={dimension.key}>
+            <div className="dna-v2-topline">
+              <strong>{dimension.label}</strong>
+              <span data-tone={scoreTone(dimension.score)}>{dimension.score}</span>
+            </div>
+            <p>{dimension.why}</p>
+            <small>{dimension.evidence.slice(0, 3).join(" / ")}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PromptGeneratorBattleModePanel({
+  copied,
+  onApplyGeneratorVariant,
+  onCopy,
+  onQueueBattle,
+  onSave,
+  promptBattle,
+  variants,
+}: {
+  copied: string;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  onQueueBattle: () => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  promptBattle: PromptBattle;
+  variants: LearnedGeneratorVariant[];
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Shuffle size={18} />
+          <h2>Prompt generator battle mode</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onQueueBattle}>
+          <Plus size={15} />
+          Queue battle
+        </button>
+      </div>
+      <div className="winner-card">
+        <span>Current winner</span>
+        <strong>{promptBattle.winner.title}</strong>
+        <p>{promptBattle.explanation.join(" ")}</p>
+      </div>
+      <div className="preset-grid">
+        {variants.slice(0, 4).map((variant) => (
+          <article className="preset-card" key={variant.id}>
+            <div className="dna-v2-topline">
+              <strong>{variant.title}</strong>
+              <span data-tone={scoreTone(variant.score)}>{variant.score}</span>
+            </div>
+            <p>{variant.bestFor}</p>
+            <small>{variant.signals.slice(0, 4).join(", ")}</small>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onApplyGeneratorVariant(variant)}>Use</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(variant.prompt, `battle-${variant.id}`)}>
+                {copied === `battle-${variant.id}` ? <Check size={15} /> : <Copy size={15} />}
+                Copy
+              </button>
+              <button className="primary-button compact-button" type="button" onClick={() => onSave("generated", variant.title, variant.prompt, variant.score)}>Save</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BuildFeedbackLoopPanel({
+  buildFeedback,
+  onQueueBattle,
+  onUpdateOutcome,
+  selectedPrompt,
+}: {
+  buildFeedback: BuildFeedbackReport;
+  onQueueBattle: () => void;
+  onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
+  selectedPrompt?: PromptExample;
+}) {
+  const canPromote = buildFeedback.status === "ready-to-promote" && Boolean(selectedPrompt);
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Build result feedback loop</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onQueueBattle}>Run battle</button>
+          <button
+            className="primary-button compact-button"
+            type="button"
+            disabled={!canPromote}
+            onClick={() => selectedPrompt && onUpdateOutcome(selectedPrompt, { rating: "great", status: "gold", notes: "Promoted from build feedback loop." })}
+          >
+            Promote gold
+          </button>
+        </div>
+      </div>
+      <div className="gate-summary">
+        <ScoreRing score={buildFeedback.score} label={buildFeedback.status.replace(/-/g, " ")} />
+        <FeedbackList title="Feedback summary" items={buildFeedback.summary} empty="No build feedback yet." />
+      </div>
+      <div className="gate-check-grid">
+        {buildFeedback.checks.slice(0, 8).map((check) => (
+          <article className="gate-check-card" key={check.label}>
+            <div className="dna-v2-topline">
+              <strong>{check.label}</strong>
+              <span data-tone={scoreTone(check.score)}>{check.score}</span>
+            </div>
+            <p>{check.notes.slice(0, 2).join(" ")}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Next actions" items={buildFeedback.nextActions} empty="No next actions." />
+    </section>
+  );
+}
+
+function PersistenceStatusPanel({
+  apiEvents,
+  apiHealth,
+  apiNotice,
+  buildRuns,
+  dbStatus,
+  examples,
+  onCheckApi,
+  onSyncToApi,
+  outcomes,
+  screenshots,
+}: {
+  apiEvents: ApiEvent[];
+  apiHealth?: ApiHealth;
+  apiNotice: string;
+  buildRuns: BuildRunRecord[];
+  dbStatus: string;
+  examples: PromptExample[];
+  onCheckApi: () => void;
+  onSyncToApi: () => void;
+  outcomes: OutcomeRecord[];
+  screenshots: ScreenshotRecord[];
+}) {
+  const cards = [
+    { label: "Prompts", value: examples.length },
+    { label: "Labels", value: outcomes.length },
+    { label: "Runs", value: buildRuns.length },
+    { label: "Screenshots", value: screenshots.length },
+    { label: "API events", value: apiEvents.length },
+  ];
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Hosted API and persistence readiness</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onCheckApi}>Check API</button>
+          <button className="primary-button compact-button" type="button" onClick={onSyncToApi}>Sync now</button>
+        </div>
+      </div>
+      <div className="backend-grid">
+        <article className="index-card">
+          <strong>{apiHealth?.ok ? "Online" : "Browser-only"}</strong>
+          <span>API</span>
+        </article>
+        <article className="index-card">
+          <strong>{apiHealth?.authRequired ? "Token" : apiHealth?.ok ? "Open" : "Local"}</strong>
+          <span>Auth</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Persistence</h3>
+          <p>{apiHealth?.sqlitePath || dbStatus}</p>
+        </article>
+      </div>
+      <div className="source-safety-grid">
+        {cards.map((card) => (
+          <article className="index-card" key={card.label}>
+            <strong>{formatNumber(card.value)}</strong>
+            <span>{card.label}</span>
+          </article>
+        ))}
+      </div>
+      <p className="selected-meta">{apiNotice}</p>
+    </section>
   );
 }
 

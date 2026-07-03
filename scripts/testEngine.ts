@@ -9,18 +9,24 @@ import {
   buildEvaluationHistoryReport,
   buildExperimentLeaderboard,
   buildExportPresets,
+  buildBuildFeedbackReport,
   buildLearnedGeneratorVariants,
+  buildLeakageGuardReport,
   buildPatternDashboard,
   buildProjectExportPack,
   buildPromptCoachReport,
   buildQualityGateReport,
   buildReusableMemoryPack,
+  buildSourceSafetyReport,
   buildVisualRegressionReport,
   createDatasetVersionSnapshot,
   curatePromptCorpus,
   evaluatePrompt,
+  explainDnaScore,
   auditPromptImportBatch,
   parsePromptBatch,
+  scoreResultArtifact,
+  scoreScreenshotSet,
   slugify,
   titleFromPrompt,
   type BuildRunRecord,
@@ -71,6 +77,10 @@ assert.ok(promptScore.score >= 70, `Expected a gold corpus prompt score >= 70, r
 const curation = curatePromptCorpus(examples);
 assert.ok(curation.counts.learn > 0, "Curation should keep website prompts in the learning set.");
 assert.ok(curation.items.every((item) => item.promptId && item.reasons.length), "Curation items should include prompt ids and reasons.");
+const leakageGuard = buildLeakageGuardReport(curatedSeedPrompts);
+assert.equal(leakageGuard.status, "clean", "Curated seed prompts should pass leakage guard.");
+const sourceSafety = buildSourceSafetyReport(curatedSeedPrompts, curatePromptCorpus(curatedSeedPrompts));
+assert.ok(sourceSafety.score >= 90, `Expected source safety >= 90, received ${sourceSafety.score}.`);
 const qualityGate = buildQualityGateReport(examples[0], promptScore, undefined);
 assert.ok(qualityGate.checks.length >= 5, "Quality gate should produce multiple readiness checks.");
 assert.equal(typeof qualityGate.ready, "boolean", "Quality gate readiness should be boolean.");
@@ -162,6 +172,14 @@ assert.ok(patternDashboard.items.length > 0, "Pattern dashboard should identify 
 const visualRegression = buildVisualRegressionReport(buildRuns, screenshots);
 assert.ok(visualRegression.score >= 75, "Visual regression should score healthy evidence as ready.");
 assert.ok(visualRegression.checks.every((check) => check.detail), "Visual regression checks should include details.");
+const resultArtifact = scoreResultArtifact(examples[0], screenshots[0], buildRuns[0]);
+const screenshotSet = scoreScreenshotSet(examples[0], screenshots, buildRuns[0]);
+const dnaExplanation = explainDnaScore(examples[0], resultArtifact, screenshotSet);
+assert.ok(dnaExplanation.summary.length >= 3, "DNA explanation should include summary bullets.");
+assert.ok(dnaExplanation.dimensions.every((dimension) => dimension.nextAction), "DNA explanation should include next actions.");
+const buildFeedback = buildBuildFeedbackReport(examples[0], resultArtifact, screenshotSet);
+assert.ok(buildFeedback.nextActions.length > 0, "Build feedback should recommend next actions.");
+assert.ok(buildFeedback.checks.length >= resultArtifact.checks.length, "Build feedback should include result and screenshot checks.");
 
 const coach = buildPromptCoachReport(exactPrompt, profile, outcomes);
 assert.ok(coach.score > 0, "Prompt coach should return a score.");
@@ -274,4 +292,4 @@ const evaluationHistory = buildEvaluationHistoryReport({
 assert.ok(evaluationHistory.items.length >= 4, "Evaluation history should combine labels, builds, screenshots, pairwise reviews, and model rows.");
 assert.ok(evaluationHistory.summary.length >= 2, "Evaluation history should summarize trends.");
 
-console.log(JSON.stringify({ ok: true, assertions: 38, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 46, score: score.score, snapshot: snapshot.label }, null, 2));

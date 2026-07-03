@@ -27,6 +27,9 @@ jobs:
       - name: Engine tests
         run: npm run test:engine
 
+      - name: Corpus safety
+        run: npm run check:corpus-safety
+
       - name: API route tests
         run: npm run test:api
 
