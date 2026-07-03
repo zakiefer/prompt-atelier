@@ -1,0 +1,112 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import {
+  analyzeCorpus,
+  analyzeArchetypeClusters,
+  buildGeneratorPresets,
+  buildQualityGateReport,
+  buildReusableMemoryPack,
+  createDatasetVersionSnapshot,
+  evaluatePrompt,
+  type BuildRunRecord,
+  type OutcomeRecord,
+  type PromptExample,
+  type ScreenshotRecord,
+} from "../src/promptEngine";
+
+const corpusPayload = JSON.parse(readFileSync("public/attachment-prompts.json", "utf8")) as { prompts: PromptExample[] };
+
+const exactPrompt = `Build a fullscreen hero section in React + TypeScript + Vite + Tailwind CSS.
+Use this exact background video URL: https://example.com/hero.mp4.
+Specify fonts, colors, responsive mobile behavior, accessible buttons, hover states, and a Playwright screenshot verification checklist.
+No decorative blobs, no unlisted UI libraries, and keep the first viewport focused on the product.`;
+
+const examples = corpusPayload.prompts.slice(0, 8);
+const score = evaluatePrompt(exactPrompt);
+assert.ok(score.score >= 20, `Expected scoring smoke test >= 20, received ${score.score}`);
+assert.ok(score.upgrades.some((item) => /asset|responsive|visual/i.test(item)), "Expected upgrades to include design/build signals.");
+
+const promptScore = evaluatePrompt(examples[0].text);
+assert.ok(promptScore.score >= 70, `Expected a gold corpus prompt score >= 70, received ${promptScore.score}`);
+const qualityGate = buildQualityGateReport(examples[0], promptScore, undefined);
+assert.ok(qualityGate.checks.length >= 5, "Quality gate should produce multiple readiness checks.");
+assert.equal(typeof qualityGate.ready, "boolean", "Quality gate readiness should be boolean.");
+
+const outcomes: OutcomeRecord[] = [
+  {
+    id: "outcome-1",
+    promptId: examples[0].id,
+    title: examples[0].title,
+    rating: "great",
+    status: "gold",
+    notes: "Strong exact visual and implementation details.",
+    updatedAt: new Date().toISOString(),
+  },
+];
+const screenshots: ScreenshotRecord[] = [
+  {
+    id: "shot-1",
+    promptId: examples[0].id,
+    title: "Desktop proof",
+    url: "/tmp/desktop.png",
+    notes: "Looks cinematic and responsive.",
+    rating: "great",
+    createdAt: new Date().toISOString(),
+  },
+];
+const buildRuns: BuildRunRecord[] = [
+  {
+    id: "run-1",
+    promptId: examples[0].id,
+    promptTitle: examples[0].title,
+    promptText: examples[0].text,
+    status: "passed",
+    resultUrl: "http://127.0.0.1:5173",
+    folderPath: "prompt-runs/run-1",
+    screenshotUrl: "/tmp/desktop.png",
+    filesChanged: "src/App.tsx",
+    errors: "",
+    notes: "Verified on desktop and mobile.",
+    score: 88,
+    failureCategories: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+const snapshot = createDatasetVersionSnapshot({
+  buildRuns,
+  examples,
+  label: "test",
+  outcomes,
+  score: { finalScore: 82, promptQuality: 84, predictedBuild: 80, actualResult: 88, visualTaste: 86, failureRisk: 12, notes: ["test snapshot"] },
+  screenshots,
+});
+assert.equal(snapshot.counts.examples, examples.length, "Dataset snapshot should count examples.");
+assert.equal(snapshot.counts.buildRuns, buildRuns.length, "Dataset snapshot should count build runs.");
+
+const profile = analyzeCorpus(examples);
+const clusters = analyzeArchetypeClusters(examples);
+const presets = buildGeneratorPresets(profile, clusters, outcomes);
+assert.ok(presets.length > 0, "Generator presets should be created from corpus signals.");
+assert.ok(presets[0].prompt.includes("React"), "Generator preset prompt should include implementation stack guidance.");
+
+const pack = buildReusableMemoryPack({
+  failureMemory: {
+    categories: [],
+    avoidRules: [],
+    promptPatch: "Add exact assets and verification steps.",
+  },
+  generatorPresets: presets,
+  goldenRecipes: [],
+  promptMemory: {
+    markdown: "# Memory\n- exact assets win",
+    json: "{}",
+    sections: [],
+  },
+  qualityGate,
+});
+assert.ok(pack.markdown.includes("Website Prompt Memory Pack"), "Reusable memory pack should be markdown-exportable.");
+assert.ok(JSON.parse(pack.json), "Reusable memory pack JSON should parse.");
+
+console.log(JSON.stringify({ ok: true, assertions: 12, score: score.score, snapshot: snapshot.label }, null, 2));

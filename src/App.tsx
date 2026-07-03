@@ -168,6 +168,7 @@ const SCREENSHOT_KEY = "prompt-atelier-screenshots";
 const BUILD_RUN_KEY = "prompt-atelier-build-runs";
 const QUEUE_KEY = "prompt-atelier-queue-jobs";
 const LINEAGE_KEY = "prompt-atelier-lineage";
+const DATASET_VERSION_KEY = "prompt-atelier-dataset-versions";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -331,6 +332,18 @@ function readStoredLineage() {
   }
 }
 
+function readStoredDatasetVersions() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(DATASET_VERSION_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as DatasetVersion[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.label).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
 function downloadText(filename: string, text: string, type = "text/plain") {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement("a");
@@ -406,6 +419,7 @@ type StoredCollections = {
   buildRuns: BuildRunRecord[];
   queueJobs: BuildQueueJob[];
   lineage: PromptLineageNode[];
+  datasetVersions: DatasetVersion[];
 };
 
 export default function App() {
@@ -436,6 +450,7 @@ export default function App() {
   const [modelEvaluation, setModelEvaluation] = useState<Record<string, unknown> | undefined>();
   const [modelNotice, setModelNotice] = useState("Model endpoint not checked");
   const [modelSettings, setModelSettings] = useState({
+    provider: "local",
     endpoint: "",
     apiKey: "",
     model: "local-fallback",
@@ -445,10 +460,11 @@ export default function App() {
   });
   const [modelEnvStatus, setModelEnvStatus] = useState<Record<string, boolean> | undefined>();
   const [visualAnalysisResult, setVisualAnalysisResult] = useState<Record<string, unknown> | undefined>();
-  const [datasetVersions, setDatasetVersions] = useState<DatasetVersion[]>([]);
+  const [datasetVersions, setDatasetVersions] = useState<DatasetVersion[]>(() => readStoredDatasetVersions());
   const [autoBattleResult, setAutoBattleResult] = useState<Record<string, unknown> | undefined>();
   const [wizardIdea, setWizardIdea] = useState("a premium AI product website hero that should become a gold-standard prompt");
   const [resultImportText, setResultImportText] = useState("");
+  const [snapshotImportText, setSnapshotImportText] = useState("");
   const [activeTrainStage, setActiveTrainStage] = useState("Compile");
   const [scoreWeights, setScoreWeights] = useState<ScoreWeights>({
     originality: 18,
@@ -704,6 +720,7 @@ export default function App() {
       buildRuns,
       queueJobs,
       lineage: lineageNodes,
+      datasetVersions,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -715,6 +732,7 @@ export default function App() {
       if (Array.isArray(stored.buildRuns)) setBuildRuns(stored.buildRuns as BuildRunRecord[]);
       if (Array.isArray(stored.queueJobs)) setQueueJobs(stored.queueJobs as BuildQueueJob[]);
       if (Array.isArray(stored.lineage)) setLineageNodes(stored.lineage as PromptLineageNode[]);
+      if (Array.isArray(stored.datasetVersions)) setDatasetVersions((stored.datasetVersions as DatasetVersion[]).slice(0, 20));
     };
 
     async function hydrate() {
@@ -807,6 +825,12 @@ export default function App() {
   }, [dbReady, lineageNodes]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(DATASET_VERSION_KEY, JSON.stringify(datasetVersions));
+    void writeCollection("datasetVersions", datasetVersions);
+  }, [datasetVersions, dbReady]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -817,12 +841,13 @@ export default function App() {
         buildRuns,
         queueJobs,
         lineage: lineageNodes,
+        datasetVersions,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [apiHealth?.ok, buildRuns, dbReady, history, lineageNodes, outcomes, queueJobs, screenshots, userPrompts]);
+  }, [apiHealth?.ok, buildRuns, datasetVersions, dbReady, history, lineageNodes, outcomes, queueJobs, screenshots, userPrompts]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -1179,14 +1204,24 @@ export default function App() {
     setApiNotice(`Loaded ${preset.title} into the one-click wizard.`);
   }
 
-  function applyProviderPreset(kind: "local" | "openai-compatible" | "codex-agent" | "scaffold-build") {
+  function applyProviderPreset(kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") {
     setModelSettings((current) => {
       if (kind === "local") {
-        return { ...current, endpoint: "", apiKey: "", model: "local-fallback", temperature: 0.2 };
+        return { ...current, provider: "local", endpoint: "", apiKey: "", model: "local-fallback", temperature: 0.2 };
+      }
+      if (kind === "anthropic") {
+        return {
+          ...current,
+          provider: "anthropic",
+          endpoint: current.endpoint || "https://api.anthropic.com/v1/messages",
+          model: current.model === "local-fallback" ? "claude-sonnet-5" : current.model,
+          temperature: 0.2,
+        };
       }
       if (kind === "openai-compatible") {
         return {
           ...current,
+          provider: "openai-compatible",
           endpoint: current.endpoint || "http://127.0.0.1:8788/evaluate",
           model: current.model === "local-fallback" ? "gpt-5" : current.model,
           temperature: 0.2,
@@ -1225,6 +1260,8 @@ export default function App() {
         {
           agentCommand: modelSettings.agentCommand,
           buildCommand: modelSettings.buildCommand || "npm run build",
+          capture: Boolean(selectedBuildRun?.resultUrl),
+          install: true,
           scaffold: true,
         },
       );
@@ -1312,6 +1349,7 @@ export default function App() {
         buildRuns,
         queueJobs,
         lineage: lineageNodes,
+        datasetVersions,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -1331,7 +1369,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -1341,6 +1379,72 @@ export default function App() {
       };
       downloadText(`prompt-atelier-training-snapshot-${Date.now()}.json`, JSON.stringify(fallback, null, 2), "application/json");
       setApiNotice(`API snapshot unavailable; downloaded browser fallback. ${error instanceof Error ? error.message : ""}`.trim());
+    }
+  }
+
+  async function importTrainingSnapshotText() {
+    try {
+      const parsed = JSON.parse(snapshotImportText) as { collections?: Partial<StoredCollections>; scoring?: { scoreWeights?: ScoreWeights } } & Partial<StoredCollections>;
+      const collections = parsed.collections ?? parsed;
+      const restored: string[] = [];
+
+      if (Array.isArray(collections.userPrompts)) {
+        setUserPrompts(collections.userPrompts as PromptExample[]);
+        restored.push("prompts");
+      }
+      if (Array.isArray(collections.history)) {
+        setHistory(collections.history as PromptVersion[]);
+        restored.push("history");
+      }
+      if (Array.isArray(collections.outcomes)) {
+        setOutcomes(collections.outcomes as OutcomeRecord[]);
+        restored.push("outcomes");
+      }
+      if (Array.isArray(collections.screenshots)) {
+        setScreenshots(collections.screenshots as ScreenshotRecord[]);
+        restored.push("screenshots");
+      }
+      if (Array.isArray(collections.buildRuns)) {
+        setBuildRuns(collections.buildRuns as BuildRunRecord[]);
+        restored.push("runs");
+      }
+      if (Array.isArray(collections.queueJobs)) {
+        setQueueJobs(collections.queueJobs as BuildQueueJob[]);
+        restored.push("queue");
+      }
+      if (Array.isArray(collections.lineage)) {
+        setLineageNodes(collections.lineage as PromptLineageNode[]);
+        restored.push("lineage");
+      }
+      if (Array.isArray(collections.datasetVersions)) {
+        setDatasetVersions((collections.datasetVersions as DatasetVersion[]).slice(0, 20));
+        restored.push("dataset versions");
+      }
+      if (parsed.scoring?.scoreWeights && typeof parsed.scoring.scoreWeights === "object") {
+        setScoreWeights(parsed.scoring.scoreWeights);
+        restored.push("weights");
+      }
+
+      if (!restored.length) {
+        setApiNotice("Snapshot import found no supported collections.");
+        return;
+      }
+      if (apiHealth?.ok) {
+        await syncCollections({
+          userPrompts: collections.userPrompts ?? userPrompts,
+          history: collections.history ?? history,
+          outcomes: collections.outcomes ?? outcomes,
+          screenshots: collections.screenshots ?? screenshots,
+          buildRuns: collections.buildRuns ?? buildRuns,
+          queueJobs: collections.queueJobs ?? queueJobs,
+          lineage: collections.lineage ?? lineageNodes,
+          datasetVersions: collections.datasetVersions ?? datasetVersions,
+        });
+      }
+      setSnapshotImportText("");
+      setApiNotice(`Restored snapshot collections: ${restored.join(", ")}.`);
+    } catch (error) {
+      setApiNotice(`Snapshot restore failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -1359,6 +1463,7 @@ export default function App() {
       const result = await runQueue(JSON.parse(queueExport), "", {
         agentCommand: modelSettings.agentCommand,
         buildCommand: modelSettings.buildCommand,
+        install: true,
         scaffold: true,
       });
       setApiNotice(result.ok ? "API processed queue and scaffolded build folders. Import queue-result.json outputs to train." : result.stderr || "Queue run failed.");
@@ -1496,6 +1601,7 @@ export default function App() {
           scoreBreakdown,
         },
         settings: {
+          provider: modelSettings.provider,
           endpoint: modelSettings.endpoint,
           apiKey: modelSettings.apiKey,
           model: modelSettings.model,
@@ -1799,6 +1905,7 @@ export default function App() {
               onExportQueue={exportQueue}
               onExportMemoryPack={exportReusableMemoryPack}
               onExportTrainingSnapshot={exportTrainingSnapshot}
+              onImportTrainingSnapshot={importTrainingSnapshotText}
               onImportResultJson={importResultJson}
               onInstallSkill={installSkillFromApi}
               onModelEvaluate={runModelEvaluation}
@@ -1824,6 +1931,7 @@ export default function App() {
               queueExport={queueExport}
               queueJobs={queueJobs}
               resultImportText={resultImportText}
+              snapshotImportText={snapshotImportText}
               resultScore={resultScore}
               runnerPlan={runnerPlan}
               screenshotQa={screenshotQa}
@@ -1845,6 +1953,7 @@ export default function App() {
               setQaText={setQaText}
               setSemanticQuery={setSemanticQuery}
               setResultImportText={setResultImportText}
+              setSnapshotImportText={setSnapshotImportText}
               setScoreWeights={setScoreWeights}
               setVectorQuery={setVectorQuery}
               skillInstallPlan={skillInstallPlan}
@@ -2748,6 +2857,7 @@ function TrainView({
   onExportMemoryPack,
   onExportQueue,
   onExportTrainingSnapshot,
+  onImportTrainingSnapshot,
   onImportResultJson,
   onInstallSkill,
   onModelEvaluate,
@@ -2773,6 +2883,7 @@ function TrainView({
   queueExport,
   queueJobs,
   resultImportText,
+  snapshotImportText,
   resultScore,
   runnerPlan,
   screenshotQa,
@@ -2793,6 +2904,7 @@ function TrainView({
   setMutationSource,
   setQaText,
   setResultImportText,
+  setSnapshotImportText,
   setScoreWeights,
   setSemanticQuery,
   setVectorQuery,
@@ -2844,6 +2956,7 @@ function TrainView({
   modelEnvStatus?: Record<string, boolean>;
   modelNotice: string;
   modelSettings: {
+    provider: string;
     endpoint: string;
     apiKey: string;
     model: string;
@@ -2857,7 +2970,7 @@ function TrainView({
   onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
   onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
   onApplyGoldReview: () => void;
-  onApplyProviderPreset: (kind: "local" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
+  onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
   onAnalyzeSelectedVisuals: () => void;
   onCaptureSelectedResult: () => void;
   onCheckApi: () => void;
@@ -2867,6 +2980,7 @@ function TrainView({
   onExportMemoryPack: () => void;
   onExportQueue: () => void;
   onExportTrainingSnapshot: () => void;
+  onImportTrainingSnapshot: () => void;
   onImportResultJson: () => void;
   onInstallSkill: () => void;
   onModelEvaluate: () => void;
@@ -2892,6 +3006,7 @@ function TrainView({
   queueExport: string;
   queueJobs: BuildQueueJob[];
   resultImportText: string;
+  snapshotImportText: string;
   resultScore: ResultScore;
   runnerPlan?: BuildRunnerPlan;
   screenshotQa: ScreenshotQaReport;
@@ -2910,6 +3025,7 @@ function TrainView({
   setInterviewBrief: Dispatch<SetStateAction<InterviewBrief>>;
   setModelSettings: Dispatch<
     SetStateAction<{
+      provider: string;
       endpoint: string;
       apiKey: string;
       model: string;
@@ -2921,6 +3037,7 @@ function TrainView({
   setMutationSource: (value: string) => void;
   setQaText: (value: string) => void;
   setResultImportText: (value: string) => void;
+  setSnapshotImportText: (value: string) => void;
   setScoreWeights: Dispatch<SetStateAction<ScoreWeights>>;
   setSemanticQuery: (value: string) => void;
   setVectorQuery: (value: string) => void;
@@ -3073,8 +3190,11 @@ function TrainView({
           copied={copied}
           onCopy={onCopy}
           onExportTrainingSnapshot={onExportTrainingSnapshot}
+          onImportTrainingSnapshot={onImportTrainingSnapshot}
           queueExport={queueExport}
           scoreWeights={scoreWeights}
+          setSnapshotImportText={setSnapshotImportText}
+          snapshotImportText={snapshotImportText}
         />
       </section>
 
@@ -3979,6 +4099,7 @@ function ModelProviderSettingsPanel({
 }: {
   modelEnvStatus?: Record<string, boolean>;
   modelSettings: {
+    provider: string;
     endpoint: string;
     apiKey: string;
     model: string;
@@ -3986,9 +4107,10 @@ function ModelProviderSettingsPanel({
     agentCommand: string;
     buildCommand: string;
   };
-  onApplyProviderPreset: (kind: "local" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
+  onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
   setModelSettings: Dispatch<
     SetStateAction<{
+      provider: string;
       endpoint: string;
       apiKey: string;
       model: string;
@@ -3999,8 +4121,9 @@ function ModelProviderSettingsPanel({
   >;
 }) {
   const statuses = [
+    ["provider", modelSettings.provider],
     ["endpoint", Boolean(modelSettings.endpoint || modelEnvStatus?.endpointConfigured)],
-    ["api key", Boolean(modelSettings.apiKey || modelEnvStatus?.apiKeyConfigured)],
+    ["api key", Boolean(modelSettings.apiKey || modelEnvStatus?.apiKeyConfigured || modelEnvStatus?.anthropicApiKeyConfigured)],
     ["agent", Boolean(modelSettings.agentCommand || modelEnvStatus?.agentCommandConfigured)],
     ["build", Boolean(modelSettings.buildCommand || modelEnvStatus?.buildCommandConfigured)],
   ] as const;
@@ -4020,10 +4143,22 @@ function ModelProviderSettingsPanel({
       </div>
       <div className="provider-preset-row">
         <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("local")}>Local fallback</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("anthropic")}>Claude native</button>
         <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("openai-compatible")}>OpenAI-compatible</button>
         <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("codex-agent")}>Codex agent</button>
         <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("scaffold-build")}>Scaffold build</button>
       </div>
+      <Field label="Provider">
+        <select
+          value={modelSettings.provider}
+          onChange={(event) => setModelSettings((current) => ({ ...current, provider: event.target.value }))}
+        >
+          <option value="local">Local fallback</option>
+          <option value="anthropic">Claude native</option>
+          <option value="openai-compatible">OpenAI-compatible</option>
+          <option value="custom">Custom JSON endpoint</option>
+        </select>
+      </Field>
       <Field label="Model endpoint">
         <input
           value={modelSettings.endpoint}
@@ -4138,14 +4273,20 @@ function TrainingSnapshotPanel({
   copied,
   onCopy,
   onExportTrainingSnapshot,
+  onImportTrainingSnapshot,
   queueExport,
   scoreWeights,
+  setSnapshotImportText,
+  snapshotImportText,
 }: {
   copied: string;
   onCopy: (value: string, key: string) => void;
   onExportTrainingSnapshot: () => void;
+  onImportTrainingSnapshot: () => void;
   queueExport: string;
   scoreWeights: Record<string, number>;
+  setSnapshotImportText: (value: string) => void;
+  snapshotImportText: string;
 }) {
   const weightsText = JSON.stringify(scoreWeights, null, 2);
   return (
@@ -4169,6 +4310,17 @@ function TrainingSnapshotPanel({
           Copy weights
         </button>
       </div>
+      <Field label="Restore snapshot JSON">
+        <textarea
+          value={snapshotImportText}
+          onChange={(event) => setSnapshotImportText(event.target.value)}
+          placeholder="Paste a Prompt Atelier training snapshot to restore prompts, outcomes, runs, lineage, dataset versions, and scoring weights."
+        />
+      </Field>
+      <button className="ghost-button wide-button" type="button" onClick={onImportTrainingSnapshot} disabled={!snapshotImportText.trim()}>
+        <Upload size={15} />
+        Restore snapshot
+      </button>
       <textarea className="generated-output mini-output" readOnly value={weightsText} />
     </section>
   );

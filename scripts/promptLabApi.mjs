@@ -9,7 +9,7 @@ const PORT = Number(process.env.PROMPT_LAB_API_PORT || 8787);
 const ROOT = process.cwd();
 const DATA_DIR = join(ROOT, "data");
 const DB_PATH = join(DATA_DIR, "prompt-atelier.sqlite");
-const COLLECTION_KEYS = ["userPrompts", "history", "outcomes", "screenshots", "buildRuns", "queueJobs", "lineage"];
+const COLLECTION_KEYS = ["userPrompts", "history", "outcomes", "screenshots", "buildRuns", "queueJobs", "lineage", "datasetVersions"];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
 mkdirSync(DATA_DIR, { recursive: true });
@@ -195,6 +195,115 @@ function localModelEvaluation(body) {
   };
 }
 
+function clampText(value, limit) {
+  const text = String(value || "");
+  return text.length > limit ? `${text.slice(0, limit)}\n\n[truncated ${text.length - limit} characters]` : text;
+}
+
+function parsePossiblyJsonText(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const match = trimmed.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function buildEvaluatorPrompt(body) {
+  return [
+    "You are a strict website-prompt evaluator for Prompt Atelier.",
+    "Score whether the prompt is specific, buildable, visually strong, responsive, accessible, and ready for a coding agent.",
+    "Return only JSON with this schema:",
+    '{"score": number, "findings": string[], "recommendations": string[], "readiness": "blocked" | "ready" | "excellent"}',
+    "",
+    "PROMPT:",
+    clampText(body.prompt, 9000),
+    "",
+    "LEARNED MEMORY:",
+    clampText(body.memory, 9000),
+    "",
+    "CONTEXT:",
+    clampText(JSON.stringify(body.context || {}, null, 2), 4000),
+  ].join("\n");
+}
+
+function normalizeModelEvaluation({ mode, payload, rawText }) {
+  const parsed = parsePossiblyJsonText(rawText) || {};
+  const score = Number(parsed.score ?? payload?.score ?? rawText?.match(/score[^0-9]*(\d{1,3})/i)?.[1] ?? 0);
+  const findings = Array.isArray(parsed.findings) ? parsed.findings.map(String) : Array.isArray(payload?.findings) ? payload.findings.map(String) : [];
+  const recommendations = Array.isArray(parsed.recommendations)
+    ? parsed.recommendations.map(String)
+    : Array.isArray(payload?.recommendations)
+      ? payload.recommendations.map(String)
+      : [];
+  return {
+    ok: true,
+    mode,
+    score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0,
+    readiness: parsed.readiness || payload?.readiness || "needs-review",
+    findings,
+    recommendations,
+    rawText,
+    payload,
+  };
+}
+
+async function anthropicModelEvaluation(body) {
+  const settings = body.settings || {};
+  const endpoint = settings.endpoint || process.env.ANTHROPIC_API_ENDPOINT || "https://api.anthropic.com/v1/messages";
+  const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || process.env.PROMPT_LAB_MODEL_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing Anthropic API key. Set ANTHROPIC_API_KEY, CLAUDE_API_KEY, PROMPT_LAB_MODEL_API_KEY, or provide settings.apiKey.");
+  }
+  const model = settings.model || process.env.PROMPT_LAB_MODEL_NAME || "claude-sonnet-5";
+  const requestBody = {
+    model,
+    max_tokens: Number(settings.maxTokens || process.env.PROMPT_LAB_MODEL_MAX_TOKENS || 900),
+    messages: [{ role: "user", content: buildEvaluatorPrompt(body) }],
+  };
+  if (!/\bclaude-[a-z-]*5\b/.test(model)) {
+    requestBody.temperature = Number(settings.temperature ?? 0.2);
+  }
+  const modelResponse = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": process.env.ANTHROPIC_VERSION || "2023-06-01",
+    },
+    body: JSON.stringify(requestBody),
+  });
+  const payload = await modelResponse.json();
+  if (!modelResponse.ok) {
+    return { ok: false, status: modelResponse.status, mode: "anthropic", payload };
+  }
+  const rawText = Array.isArray(payload.content)
+    ? payload.content.map((block) => (block?.type === "text" ? block.text : "")).filter(Boolean).join("\n")
+    : "";
+  return normalizeModelEvaluation({ mode: "anthropic", payload, rawText });
+}
+
+async function externalModelEvaluation(body, endpoint) {
+  const settings = body.settings || {};
+  const modelResponse = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(settings.apiKey || process.env.PROMPT_LAB_MODEL_API_KEY ? { Authorization: `Bearer ${settings.apiKey || process.env.PROMPT_LAB_MODEL_API_KEY}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = await modelResponse.json();
+  return { ok: modelResponse.ok, mode: "external", payload };
+}
+
 async function handle(request, response) {
   if (request.method === "OPTIONS") {
     jsonResponse(response, 200, { ok: true });
@@ -326,21 +435,18 @@ async function handle(request, response) {
 
     if (request.method === "POST" && url.pathname === "/api/model/evaluate") {
       const body = await readBody(request);
+      const provider = body.settings?.provider || process.env.PROMPT_LAB_MODEL_PROVIDER || "";
       const endpoint = body.settings?.endpoint || process.env.PROMPT_LAB_MODEL_ENDPOINT;
+      if (provider === "anthropic" || endpoint?.includes("api.anthropic.com")) {
+        const result = await anthropicModelEvaluation(body);
+        logEvent("model-evaluate", { mode: "anthropic", ok: result.ok, score: result.score ?? 0 });
+        jsonResponse(response, result.ok ? 200 : 502, result);
+        return;
+      }
       if (endpoint) {
-        const modelResponse = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(body.settings?.apiKey || process.env.PROMPT_LAB_MODEL_API_KEY
-              ? { Authorization: `Bearer ${body.settings?.apiKey || process.env.PROMPT_LAB_MODEL_API_KEY}` }
-              : {}),
-          },
-          body: JSON.stringify(body),
-        });
-        const payload = await modelResponse.json();
-        logEvent("model-evaluate", { endpoint, ok: modelResponse.ok });
-        jsonResponse(response, modelResponse.ok ? 200 : 502, { ok: modelResponse.ok, mode: "external", payload });
+        const result = await externalModelEvaluation(body, endpoint);
+        logEvent("model-evaluate", { endpoint, ok: result.ok });
+        jsonResponse(response, result.ok ? 200 : 502, result);
         return;
       }
       const local = localModelEvaluation(body);
@@ -353,6 +459,8 @@ async function handle(request, response) {
       jsonResponse(response, 200, {
         endpointConfigured: Boolean(process.env.PROMPT_LAB_MODEL_ENDPOINT),
         apiKeyConfigured: Boolean(process.env.PROMPT_LAB_MODEL_API_KEY),
+        anthropicApiKeyConfigured: Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY),
+        anthropicConfigured: Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || process.env.PROMPT_LAB_MODEL_PROVIDER === "anthropic"),
         agentCommandConfigured: Boolean(process.env.PROMPT_LAB_AGENT_COMMAND),
         buildCommandConfigured: Boolean(process.env.PROMPT_LAB_BUILD_COMMAND),
       });
