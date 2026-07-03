@@ -1,15 +1,27 @@
-const DEFAULT_API_BASE = "http://127.0.0.1:8787";
+const LOCAL_API_BASE = "http://127.0.0.1:8787";
 const API_BASE_KEY = "prompt-atelier-api-base";
 const API_TOKEN_KEY = "prompt-atelier-api-token";
 
+function normalizeApiBase(value: string | undefined) {
+  return (value || "").trim().replace(/\/+$/, "");
+}
+
+function isLoopbackHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
 export function getApiBase() {
-  if (typeof window === "undefined") return import.meta.env.VITE_PROMPT_ATELIER_API_BASE || DEFAULT_API_BASE;
-  return window.localStorage.getItem(API_BASE_KEY) || import.meta.env.VITE_PROMPT_ATELIER_API_BASE || DEFAULT_API_BASE;
+  const envBase = normalizeApiBase(import.meta.env.VITE_PROMPT_ATELIER_API_BASE);
+  if (typeof window === "undefined") return envBase || LOCAL_API_BASE;
+  const storedBase = normalizeApiBase(window.localStorage.getItem(API_BASE_KEY) || "");
+  if (storedBase) return storedBase;
+  if (envBase) return envBase;
+  return isLoopbackHost(window.location.hostname) ? LOCAL_API_BASE : "";
 }
 
 export function setApiBase(value: string) {
   if (typeof window === "undefined") return;
-  const normalized = value.trim().replace(/\/+$/, "");
+  const normalized = normalizeApiBase(value);
   if (normalized) window.localStorage.setItem(API_BASE_KEY, normalized);
   else window.localStorage.removeItem(API_BASE_KEY);
 }
@@ -27,8 +39,12 @@ export function setApiToken(value: string) {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const apiBase = getApiBase();
+  if (!apiBase) {
+    throw new Error("Prompt Atelier API is not configured. Set a hosted API base or run the app locally with npm run api.");
+  }
   const token = getApiToken();
-  const response = await fetch(`${getApiBase()}${path}`, {
+  const response = await fetch(`${apiBase}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

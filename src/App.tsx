@@ -980,7 +980,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/attachment-prompts.json")
+    fetch(`${import.meta.env.BASE_URL}attachment-prompts.json`)
       .then((response) => (response.ok ? response.json() : undefined))
       .then((payload: { prompts?: PromptExample[] } | undefined) => {
         if (cancelled || !Array.isArray(payload?.prompts)) return;
