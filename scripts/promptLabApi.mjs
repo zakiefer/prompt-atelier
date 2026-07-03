@@ -11,6 +11,7 @@ const DATA_DIR = resolve(process.env.PROMPT_LAB_DATA_DIR || join(ROOT, "data"));
 const DB_PATH = join(DATA_DIR, "prompt-atelier.sqlite");
 const API_TOKEN = process.env.PROMPT_LAB_API_TOKEN || "";
 const ALLOWED_ORIGIN = process.env.PROMPT_LAB_ALLOWED_ORIGIN || "*";
+const API_RATE_LIMIT = Number(process.env.PROMPT_LAB_RATE_LIMIT || 240);
 const COLLECTION_KEYS = [
   "userPrompts",
   "history",
@@ -23,6 +24,7 @@ const COLLECTION_KEYS = [
   "curationDecisions",
   "modelBatchEvaluations",
   "pairwiseReviews",
+  "backupSnapshots",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -50,6 +52,8 @@ const upsertCollection = db.prepare(`
 const getCollection = db.prepare("SELECT value FROM collections WHERE key = ?");
 const getAllCollections = db.prepare("SELECT key, value, updated_at FROM collections ORDER BY key");
 const insertEvent = db.prepare("INSERT INTO api_events (kind, detail, created_at) VALUES (?, ?, ?)");
+const getRecentEvents = db.prepare("SELECT id, kind, detail, created_at FROM api_events ORDER BY id DESC LIMIT ?");
+const rateLimitBuckets = new Map();
 
 function now() {
   return new Date().toISOString();
@@ -74,6 +78,23 @@ function requestIsAuthorized(request) {
   const bearer = request.headers.authorization?.replace(/^Bearer\s+/i, "");
   const token = request.headers["x-prompt-lab-token"];
   return bearer === API_TOKEN || token === API_TOKEN;
+}
+
+function clientKey(request) {
+  return String(request.headers["x-forwarded-for"] || request.socket.remoteAddress || "local").split(",")[0].trim();
+}
+
+function rateLimitAllows(request) {
+  if (!API_RATE_LIMIT) return true;
+  const key = clientKey(request);
+  const nowMs = Date.now();
+  const current = rateLimitBuckets.get(key);
+  if (!current || current.resetAt < nowMs) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: nowMs + 60_000 });
+    return true;
+  }
+  current.count += 1;
+  return current.count <= API_RATE_LIMIT;
 }
 
 function readBody(request) {
@@ -334,7 +355,13 @@ async function handle(request, response) {
   const url = new URL(request.url || "/", `http://127.0.0.1:${PORT}`);
 
   try {
+    if (url.pathname !== "/api/health" && !rateLimitAllows(request)) {
+      jsonResponse(response, 429, { ok: false, error: "Rate limit exceeded. Try again in a minute." });
+      return;
+    }
+
     if (!requestIsAuthorized(request) && url.pathname !== "/api/health") {
+      logEvent("unauthorized", { path: url.pathname, client: clientKey(request) });
       jsonResponse(response, 401, { ok: false, error: "Unauthorized. Set Authorization: Bearer <token> or x-prompt-lab-token." });
       return;
     }
@@ -347,6 +374,7 @@ async function handle(request, response) {
         dataDir: DATA_DIR,
         authRequired: Boolean(API_TOKEN),
         allowedOrigin: ALLOWED_ORIGIN,
+        rateLimitPerMinute: API_RATE_LIMIT,
         skill: skillStatus(),
         collections: COLLECTION_KEYS,
       });
@@ -361,6 +389,21 @@ async function handle(request, response) {
         return;
       }
       jsonResponse(response, 200, { collections: readCollections() });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/events") {
+      const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || 30)));
+      const events = getRecentEvents.all(limit).map((event) => {
+        let detail = null;
+        try {
+          detail = JSON.parse(event.detail);
+        } catch {
+          detail = event.detail;
+        }
+        return { id: event.id, kind: event.kind, detail, createdAt: event.created_at };
+      });
+      jsonResponse(response, 200, { ok: true, events });
       return;
     }
 

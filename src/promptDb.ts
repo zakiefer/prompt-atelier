@@ -13,7 +13,8 @@ export type CollectionKey =
   | "datasetVersions"
   | "curationDecisions"
   | "modelBatchEvaluations"
-  | "pairwiseReviews";
+  | "pairwiseReviews"
+  | "backupSnapshots";
 
 type StoredCollection<T> = {
   key: CollectionKey;

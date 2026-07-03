@@ -43,6 +43,9 @@ import {
   buildPromptBattle,
   buildGoldReviewReport,
   buildGeneratorPresets,
+  buildExperimentLeaderboard,
+  buildCodexBuildPack,
+  buildLearnedGeneratorVariants,
   buildPatternDashboard,
   buildProjectExportPack,
   buildPromptCoachReport,
@@ -111,10 +114,13 @@ import {
   type DnaKey,
   type DriftReport,
   type Evaluation,
+  type ExperimentLeaderboardReport,
   type FailureMemoryReport,
   type Feature,
   type InterviewBrief,
   type LocalEmbeddingIndex,
+  type LearnedGeneratorInput,
+  type LearnedGeneratorVariant,
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
@@ -154,6 +160,7 @@ import {
   type VisualQaReport,
   type PromptCoachReport,
   type ProjectExportPack,
+  type CodexBuildPack,
 } from "./promptEngine";
 import {
   analyzeScreenshots,
@@ -162,6 +169,7 @@ import {
   getApiBase,
   getApiToken,
   getApiCollections,
+  getApiEvents,
   getApiHealth,
   getModelSettings,
   getTrainingSnapshot,
@@ -171,6 +179,7 @@ import {
   setApiBase,
   setApiToken,
   syncCollections,
+  type ApiEvent,
   type ApiHealth,
 } from "./promptApi";
 import { readAllCollections, writeCollection } from "./promptDb";
@@ -187,6 +196,8 @@ const DATASET_VERSION_KEY = "prompt-atelier-dataset-versions";
 const CURATION_KEY = "prompt-atelier-curation-decisions";
 const MODEL_BATCH_KEY = "prompt-atelier-model-batch-evaluations";
 const PAIRWISE_REVIEW_KEY = "prompt-atelier-pairwise-reviews";
+const BACKUP_KEY = "prompt-atelier-backup-snapshots";
+const ONBOARDING_KEY = "prompt-atelier-onboarding-mode";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -260,6 +271,17 @@ const defaultCompilerInput: PromptCompilerInput = {
   stack: "React + TypeScript + Vite + Tailwind CSS + lucide-react",
   assets: "use exact URLs when available; otherwise create named video, logo, and product screenshot slots",
   constraints: "no vague marketing filler, no unlisted UI libraries, no decorative blobs, verify mobile and desktop",
+};
+
+const defaultGeneratorInput: LearnedGeneratorInput = {
+  brandName: "Northstar",
+  industry: "AI design platform",
+  stack: "React + TypeScript + Vite + Tailwind CSS + lucide-react",
+  siteType: "single-page landing hero",
+  visualStyle: "cinematic video background, exact typography, product proof surface, restrained glass controls",
+  assets: "exact CloudFront video URL, logo SVG, and desktop/mobile screenshot verification",
+  constraints: "no decorative blobs, no placeholder assets, no unlisted UI libraries, no text overlap",
+  strictness: 9,
 };
 
 const ratingOptions = ["unrated", "great", "okay", "bad"] as const;
@@ -398,6 +420,24 @@ function readStoredPairwiseReviews() {
   }
 }
 
+function readStoredBackupSnapshots() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(BACKUP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as TrainingBackupSnapshot[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.payload).slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredOnboardingMode(): OnboardingMode {
+  if (typeof window === "undefined") return "blank";
+  const value = window.localStorage.getItem(ONBOARDING_KEY);
+  return value === "demo" || value === "blank" || value === "upload" || value === "trained" ? value : "blank";
+}
+
 function downloadText(filename: string, text: string, type = "text/plain") {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement("a");
@@ -465,6 +505,7 @@ type PromptVersion = {
 
 type ScoreWeights = Record<string, number>;
 type CurationDecision = "learn" | "quarantine" | "review";
+type OnboardingMode = "demo" | "blank" | "upload" | "trained";
 
 type ModelBatchEvaluation = {
   id: string;
@@ -475,6 +516,14 @@ type ModelBatchEvaluation = {
   mode: string;
   findings: string[];
   createdAt: string;
+};
+
+type TrainingBackupSnapshot = {
+  id: string;
+  label: string;
+  createdAt: string;
+  summary: string;
+  payload: Partial<StoredCollections>;
 };
 
 type StoredCollections = {
@@ -489,6 +538,7 @@ type StoredCollections = {
   curationDecisions: Record<string, CurationDecision>;
   modelBatchEvaluations: ModelBatchEvaluation[];
   pairwiseReviews: PairwiseReviewRecord[];
+  backupSnapshots: TrainingBackupSnapshot[];
 };
 
 export default function App() {
@@ -515,6 +565,8 @@ export default function App() {
   const [curationDecisions, setCurationDecisions] = useState<Record<string, CurationDecision>>(() => readStoredCurationDecisions());
   const [modelBatchEvaluations, setModelBatchEvaluations] = useState<ModelBatchEvaluation[]>(() => readStoredModelBatchEvaluations());
   const [pairwiseReviews, setPairwiseReviews] = useState<PairwiseReviewRecord[]>(() => readStoredPairwiseReviews());
+  const [backupSnapshots, setBackupSnapshots] = useState<TrainingBackupSnapshot[]>(() => readStoredBackupSnapshots());
+  const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>(() => readStoredOnboardingMode());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
@@ -559,6 +611,8 @@ export default function App() {
   const [compilerInput, setCompilerInput] = useState<PromptCompilerInput>(defaultCompilerInput);
   const [coachInput, setCoachInput] = useState("");
   const [coachResult, setCoachResult] = useState<Record<string, unknown> | undefined>();
+  const [generatorInput, setGeneratorInput] = useState<LearnedGeneratorInput>(defaultGeneratorInput);
+  const [apiEvents, setApiEvents] = useState<ApiEvent[]>([]);
 
   const examples = useMemo(() => [...seedPrompts, ...attachmentExamples, ...userPrompts], [attachmentExamples, userPrompts]);
   const curationReport = useMemo(() => curatePromptCorpus(examples, curationDecisions), [curationDecisions, examples]);
@@ -784,9 +838,17 @@ export default function App() {
     () => buildPatternDashboard(learningExamples, outcomes, buildRuns),
     [buildRuns, learningExamples, outcomes],
   );
+  const experimentLeaderboard = useMemo(
+    () => buildExperimentLeaderboard(learningExamples, outcomes, buildRuns, pairwiseReviews),
+    [buildRuns, learningExamples, outcomes, pairwiseReviews],
+  );
   const visualRegression = useMemo(
     () => buildVisualRegressionReport(buildRuns, screenshots),
     [buildRuns, screenshots],
+  );
+  const learnedGeneratorVariants = useMemo(
+    () => buildLearnedGeneratorVariants(generatorInput, profile, generatorPresets, outcomes),
+    [generatorInput, generatorPresets, outcomes, profile],
   );
   const promptCoach = useMemo(
     () => buildPromptCoachReport(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes),
@@ -814,6 +876,17 @@ export default function App() {
     return Array.from(byId.values()).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   }, [derivedLineage, lineageNodes, selectedPrompt]);
   const queueExport = useMemo(() => exportBuildQueue(queueJobs), [queueJobs]);
+  const codexBuildPack = useMemo(
+    () =>
+      buildCodexBuildPack({
+        prompt: selectedPrompt,
+        promptMemory,
+        qualityGate,
+        queueExport,
+        visualRegression,
+      }),
+    [promptMemory, qualityGate, queueExport, selectedPrompt, visualRegression],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -830,6 +903,7 @@ export default function App() {
       curationDecisions,
       modelBatchEvaluations,
       pairwiseReviews,
+      backupSnapshots,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -847,6 +921,7 @@ export default function App() {
       }
       if (Array.isArray(stored.modelBatchEvaluations)) setModelBatchEvaluations((stored.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
       if (Array.isArray(stored.pairwiseReviews)) setPairwiseReviews((stored.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
+      if (Array.isArray(stored.backupSnapshots)) setBackupSnapshots((stored.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
     };
 
     async function hydrate() {
@@ -963,6 +1038,16 @@ export default function App() {
   }, [dbReady, pairwiseReviews]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(BACKUP_KEY, JSON.stringify(backupSnapshots));
+    void writeCollection("backupSnapshots", backupSnapshots);
+  }, [backupSnapshots, dbReady]);
+
+  useEffect(() => {
+    window.localStorage.setItem(ONBOARDING_KEY, onboardingMode);
+  }, [onboardingMode]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -977,12 +1062,13 @@ export default function App() {
         curationDecisions,
         modelBatchEvaluations,
         pairwiseReviews,
+        backupSnapshots,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [apiHealth?.ok, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
+  }, [apiHealth?.ok, backupSnapshots, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -1440,6 +1526,126 @@ export default function App() {
     setApiNotice("Exported project pack as markdown and JSON.");
   }
 
+  function exportCodexBuildPack() {
+    downloadText(`codex-build-pack-${Date.now()}.md`, codexBuildPack.markdown, "text/markdown");
+    downloadText(`codex-build-pack-${Date.now()}.json`, codexBuildPack.json, "application/json");
+    setApiNotice("Exported Codex build pack with task, queue, prompt, memory, and QA gates.");
+  }
+
+  function applyGeneratorVariant(variant: LearnedGeneratorVariant) {
+    setWizardIdea(variant.bestFor);
+    setCompilerInput((current) => ({
+      ...current,
+      brandName: generatorInput.brandName,
+      siteType: generatorInput.siteType,
+      visualDirection: generatorInput.visualStyle,
+      stack: generatorInput.stack,
+      assets: generatorInput.assets,
+      constraints: generatorInput.constraints,
+      roughIdea: variant.bestFor,
+    }));
+    setImproveText(variant.prompt);
+    setApiNotice(`Loaded ${variant.title} into the wizard and improvement editor.`);
+  }
+
+  function createBackupSnapshot(label = `backup-${backupSnapshots.length + 1}`) {
+    const payload: Partial<StoredCollections> = {
+      userPrompts,
+      history,
+      outcomes,
+      screenshots,
+      buildRuns,
+      queueJobs,
+      lineage: lineageNodes,
+      datasetVersions,
+      curationDecisions,
+      modelBatchEvaluations,
+      pairwiseReviews,
+    };
+    const backup: TrainingBackupSnapshot = {
+      id: `backup-${Date.now()}`,
+      label,
+      createdAt: new Date().toISOString(),
+      summary: `${learningExamples.length} prompts, ${outcomes.length} labels, ${buildRuns.length} runs, ${screenshots.length} screenshots`,
+      payload,
+    };
+    setBackupSnapshots((current) => [backup, ...current].slice(0, 8));
+    setApiNotice(`Created restore point ${label}.`);
+  }
+
+  function restoreBackupSnapshot(id: string) {
+    const backup = backupSnapshots.find((item) => item.id === id);
+    if (!backup) return;
+    const collections = backup.payload;
+    if (Array.isArray(collections.userPrompts)) setUserPrompts(collections.userPrompts);
+    if (Array.isArray(collections.history)) setHistory(collections.history);
+    if (Array.isArray(collections.outcomes)) setOutcomes(collections.outcomes);
+    if (Array.isArray(collections.screenshots)) setScreenshots(collections.screenshots);
+    if (Array.isArray(collections.buildRuns)) setBuildRuns(collections.buildRuns);
+    if (Array.isArray(collections.queueJobs)) setQueueJobs(collections.queueJobs);
+    if (Array.isArray(collections.lineage)) setLineageNodes(collections.lineage);
+    if (Array.isArray(collections.datasetVersions)) setDatasetVersions(collections.datasetVersions);
+    if (collections.curationDecisions) setCurationDecisions(collections.curationDecisions);
+    if (Array.isArray(collections.modelBatchEvaluations)) setModelBatchEvaluations(collections.modelBatchEvaluations);
+    if (Array.isArray(collections.pairwiseReviews)) setPairwiseReviews(collections.pairwiseReviews);
+    setApiNotice(`Restored ${backup.label}.`);
+  }
+
+  function exportBackupSnapshot(id?: string) {
+    const backup = backupSnapshots.find((item) => item.id === id) ?? backupSnapshots[0];
+    if (!backup) return;
+    downloadText(`${slugify(backup.label) || "prompt-atelier-backup"}.json`, JSON.stringify(backup, null, 2), "application/json");
+  }
+
+  function bulkPromoteLeaderboard() {
+    const topIds = new Set(experimentLeaderboard.items.slice(0, 5).map((item) => item.promptId));
+    const now = new Date().toISOString();
+    const promoted = learningExamples.filter((example) => topIds.has(example.id));
+    setOutcomes((current) => {
+      const rest = current.filter((item) => !topIds.has(item.promptId));
+      return [
+        ...promoted.map((example) => ({
+          promptId: example.id,
+          title: example.title,
+          rating: "great" as OutcomeRating,
+          status: "gold" as const,
+          notes: "Bulk promoted from experiment leaderboard.",
+          createdAt: now,
+          updatedAt: now,
+        })),
+        ...rest,
+      ].slice(0, 160);
+    });
+    setApiNotice(`Promoted ${promoted.length} leaderboard prompt(s) to gold.`);
+  }
+
+  function quarantineWeakCorpus() {
+    const weak = curationReport.items.filter((item) => item.recommendation === "quarantine" || item.confidence < 45).slice(0, 20);
+    setCurationDecisions((current) => ({
+      ...current,
+      ...Object.fromEntries(weak.map((item) => [item.promptId, "quarantine" as CurationDecision])),
+    }));
+    setApiNotice(`Quarantined ${weak.length} weak corpus item(s).`);
+  }
+
+  function chooseOnboardingMode(mode: OnboardingMode) {
+    setOnboardingMode(mode);
+    if (mode === "demo") loadDemoMode();
+    if (mode === "upload") setTab("learn");
+    if (mode === "blank") setTab("compose");
+  }
+
+  async function refreshApiEvents() {
+    try {
+      const result = await getApiEvents(40);
+      setApiEvents(result.events);
+      setApiNotice(`Loaded ${result.events.length} API event(s).`);
+    } catch (error) {
+      setApiEvents([]);
+      setApiNotice(`API events unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   function loadDemoMode() {
     const demoPrompts = learningExamples.slice(0, 5);
     const now = new Date().toISOString();
@@ -1691,6 +1897,7 @@ export default function App() {
         curationDecisions,
         modelBatchEvaluations,
         pairwiseReviews,
+        backupSnapshots,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -1710,7 +1917,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -1773,6 +1980,10 @@ export default function App() {
         setPairwiseReviews((collections.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
         restored.push("pairwise labels");
       }
+      if (Array.isArray(collections.backupSnapshots)) {
+        setBackupSnapshots((collections.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
+        restored.push("backups");
+      }
       if (parsed.scoring?.scoreWeights && typeof parsed.scoring.scoreWeights === "object") {
         setScoreWeights(parsed.scoring.scoreWeights);
         restored.push("weights");
@@ -1795,6 +2006,7 @@ export default function App() {
           curationDecisions: collections.curationDecisions ?? curationDecisions,
           modelBatchEvaluations: collections.modelBatchEvaluations ?? modelBatchEvaluations,
           pairwiseReviews: collections.pairwiseReviews ?? pairwiseReviews,
+          backupSnapshots: collections.backupSnapshots ?? backupSnapshots,
         });
       }
       setSnapshotImportText("");
@@ -2219,8 +2431,11 @@ export default function App() {
               apiHealth={apiHealth}
               apiNotice={apiNotice}
               apiBaseDraft={apiBaseDraft}
+              apiEvents={apiEvents}
               apiTokenDraft={apiTokenDraft}
+              backupSnapshots={backupSnapshots}
               buildRuns={buildRuns}
+              codexBuildPack={codexBuildPack}
               codexSkill={codexSkill}
               coachInput={coachInput}
               coachResult={coachResult}
@@ -2246,6 +2461,9 @@ export default function App() {
               goldenRecipes={goldenRecipes}
               goldReview={goldReview}
               generatorPresets={generatorPresets}
+              generatorInput={generatorInput}
+              learnedGeneratorVariants={learnedGeneratorVariants}
+              experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
               learningExamples={learningExamples}
               localIndex={localIndex}
@@ -2265,9 +2483,15 @@ export default function App() {
               onCreateDatasetVersion={createDatasetVersion}
               onApplyGoldReview={applyGoldReview}
               onApplyGeneratorPreset={applyGeneratorPreset}
+              onApplyGeneratorVariant={applyGeneratorVariant}
               onApplyProviderPreset={applyProviderPreset}
+              onBulkPromoteLeaderboard={bulkPromoteLeaderboard}
+              onChooseOnboardingMode={chooseOnboardingMode}
               onCopy={(value, key) => void copyText(value, key)}
+              onCreateBackupSnapshot={createBackupSnapshot}
               onDownload={downloadText}
+              onExportBackupSnapshot={exportBackupSnapshot}
+              onExportCodexBuildPack={exportCodexBuildPack}
               onExportQueue={exportQueue}
               onExportMemoryPack={exportReusableMemoryPack}
               onExportProjectPack={exportProjectPack}
@@ -2283,6 +2507,8 @@ export default function App() {
               onRunPromptCoach={runPromptCoach}
               onQueueTournament={queueTournamentFinalists}
               onQueueWizard={() => queueBattleVariants(wizardBattle, "one-click wizard")}
+              onQuarantineWeakCorpus={quarantineWeakCorpus}
+              onRefreshApiEvents={refreshApiEvents}
               onRemoveBuildRun={removeBuildRun}
               onRemoveQueueJob={removeQueueJob}
               onRemoveScreenshot={removeScreenshot}
@@ -2291,10 +2517,12 @@ export default function App() {
               onSaveApiBase={saveApiBase}
               onSelectPrompt={setSelectedId}
               onSetPromptCurationDecision={setPromptCurationDecision}
+              onRestoreBackupSnapshot={restoreBackupSnapshot}
               onSyncToApi={syncToApi}
               onUpdateOutcome={updateOutcome}
               outcomeSummary={outcomeSummary}
               outcomes={outcomes}
+              onboardingMode={onboardingMode}
               pairwiseReviews={pairwiseReviews}
               patternDashboard={patternDashboard}
               promptBattle={promptBattle}
@@ -2325,6 +2553,7 @@ export default function App() {
               setCompilerInput={setCompilerInput}
               setDiffLeftId={setDiffLeftId}
               setDiffRightId={setDiffRightId}
+              setGeneratorInput={setGeneratorInput}
               setImproveText={setImproveText}
               setInterviewBrief={setInterviewBrief}
               setModelSettings={setModelSettings}
@@ -3193,8 +3422,11 @@ function TrainView({
   apiHealth,
   apiNotice,
   apiBaseDraft,
+  apiEvents,
   apiTokenDraft,
+  backupSnapshots,
   buildRuns,
+  codexBuildPack,
   codexSkill,
   coachInput,
   coachResult,
@@ -3221,6 +3453,9 @@ function TrainView({
   goldenRecipes,
   goldReview,
   generatorPresets,
+  generatorInput,
+  learnedGeneratorVariants,
+  experimentLeaderboard,
   leaderboard,
   learningExamples,
   localIndex,
@@ -3236,14 +3471,20 @@ function TrainView({
   onAddScreenshot,
   onApplyCurationRecommendations,
   onApplyGeneratorPreset,
+  onApplyGeneratorVariant,
   onApplyGoldReview,
   onApplyProviderPreset,
   onAnalyzeSelectedVisuals,
+  onBulkPromoteLeaderboard,
   onCaptureSelectedResult,
   onCheckApi,
+  onChooseOnboardingMode,
+  onCreateBackupSnapshot,
   onCreateDatasetVersion,
   onCopy,
   onDownload,
+  onExportBackupSnapshot,
+  onExportCodexBuildPack,
   onExportMemoryPack,
   onExportProjectPack,
   onExportQueue,
@@ -3254,6 +3495,8 @@ function TrainView({
   onLoadDemoMode,
   onModelEvaluate,
   onQueueBattle,
+  onQuarantineWeakCorpus,
+  onRefreshApiEvents,
   onRunAutonomousBattle,
   onRunModelBatchCalibration,
   onRunPromptCoach,
@@ -3267,10 +3510,12 @@ function TrainView({
   onSaveApiBase,
   onSelectPrompt,
   onSetPromptCurationDecision,
+  onRestoreBackupSnapshot,
   onSyncToApi,
   onUpdateOutcome,
   outcomeSummary,
   outcomes,
+  onboardingMode,
   pairwiseReviews,
   patternDashboard,
   promptBattle,
@@ -3301,6 +3546,7 @@ function TrainView({
   setCompilerInput,
   setDiffLeftId,
   setDiffRightId,
+  setGeneratorInput,
   setImproveText,
   setInterviewBrief,
   setModelSettings,
@@ -3332,8 +3578,11 @@ function TrainView({
   apiHealth?: ApiHealth;
   apiNotice: string;
   apiBaseDraft: string;
+  apiEvents: ApiEvent[];
   apiTokenDraft: string;
+  backupSnapshots: TrainingBackupSnapshot[];
   buildRuns: BuildRunRecord[];
+  codexBuildPack: CodexBuildPack;
   codexSkill: string;
   coachInput: string;
   coachResult?: Record<string, unknown>;
@@ -3360,6 +3609,9 @@ function TrainView({
   goldenRecipes: GoldenRecipe[];
   goldReview: GoldReviewReport;
   generatorPresets: GeneratorPreset[];
+  generatorInput: LearnedGeneratorInput;
+  learnedGeneratorVariants: LearnedGeneratorVariant[];
+  experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
   learningExamples: PromptExample[];
   localIndex: LocalEmbeddingIndex;
@@ -3383,14 +3635,20 @@ function TrainView({
   onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
   onApplyCurationRecommendations: () => void;
   onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
   onApplyGoldReview: () => void;
   onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
   onAnalyzeSelectedVisuals: () => void;
+  onBulkPromoteLeaderboard: () => void;
   onCaptureSelectedResult: () => void;
   onCheckApi: () => void;
+  onChooseOnboardingMode: (mode: OnboardingMode) => void;
+  onCreateBackupSnapshot: (label?: string) => void;
   onCreateDatasetVersion: () => void;
   onCopy: (value: string, key: string) => void;
   onDownload: (filename: string, text: string, type?: string) => void;
+  onExportBackupSnapshot: (id?: string) => void;
+  onExportCodexBuildPack: () => void;
   onExportMemoryPack: () => void;
   onExportProjectPack: () => void;
   onExportQueue: () => void;
@@ -3401,6 +3659,8 @@ function TrainView({
   onLoadDemoMode: () => void;
   onModelEvaluate: () => void;
   onQueueBattle: () => void;
+  onQuarantineWeakCorpus: () => void;
+  onRefreshApiEvents: () => void;
   onRunAutonomousBattle: () => void;
   onRunModelBatchCalibration: () => void;
   onRunPromptCoach: () => void;
@@ -3414,10 +3674,12 @@ function TrainView({
   onSaveApiBase: () => void;
   onSelectPrompt: (id: string) => void;
   onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
+  onRestoreBackupSnapshot: (id: string) => void;
   onSyncToApi: () => void;
   onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
   outcomeSummary: OutcomeSummary;
   outcomes: OutcomeRecord[];
+  onboardingMode: OnboardingMode;
   pairwiseReviews: PairwiseReviewRecord[];
   patternDashboard: PatternDashboardReport;
   promptBattle: PromptBattle;
@@ -3448,6 +3710,7 @@ function TrainView({
   setCompilerInput: Dispatch<SetStateAction<PromptCompilerInput>>;
   setDiffLeftId: (id: string) => void;
   setDiffRightId: (id: string) => void;
+  setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
   setImproveText: (value: string) => void;
   setInterviewBrief: Dispatch<SetStateAction<InterviewBrief>>;
   setModelSettings: Dispatch<
@@ -3535,7 +3798,22 @@ function TrainView({
         setApiTokenDraft={setApiTokenDraft}
       />
 
+      <SecurityOpsPanel
+        apiEvents={apiEvents}
+        apiHealth={apiHealth}
+        apiNotice={apiNotice}
+        onRefreshApiEvents={onRefreshApiEvents}
+      />
+
       <StageNavPanel activeStage={activeTrainStage} setActiveStage={setActiveTrainStage} />
+
+      <ProductOnboardingPanel
+        mode={onboardingMode}
+        onChooseMode={onChooseOnboardingMode}
+        onCreateBackupSnapshot={onCreateBackupSnapshot}
+        onExportCodexBuildPack={onExportCodexBuildPack}
+        onSyncToApi={onSyncToApi}
+      />
 
       <FirstRunWizardPanel
         apiHealth={apiHealth}
@@ -3586,6 +3864,13 @@ function TrainView({
         />
       </section>
 
+      <CodexBuildPackPanel
+        codexBuildPack={codexBuildPack}
+        copied={copied}
+        onCopy={onCopy}
+        onExportCodexBuildPack={onExportCodexBuildPack}
+      />
+
       <PromptCoachPanel
         coachInput={coachInput}
         coachResult={coachResult}
@@ -3609,6 +3894,21 @@ function TrainView({
         <PromptWinInsightPanel winExplanation={winExplanation} />
       </section>
 
+      <ExperimentLeaderboardPanel
+        experimentLeaderboard={experimentLeaderboard}
+        onBulkPromoteLeaderboard={onBulkPromoteLeaderboard}
+        onSelectPrompt={onSelectPrompt}
+      />
+
+      <LearnedGeneratorWorkspacePanel
+        generatorInput={generatorInput}
+        variants={learnedGeneratorVariants}
+        onApplyGeneratorVariant={onApplyGeneratorVariant}
+        onCopy={onCopy}
+        onSave={onSave}
+        setGeneratorInput={setGeneratorInput}
+      />
+
       <section className="train-columns">
         <GeneratorPresetPanel
           copied={copied}
@@ -3617,7 +3917,13 @@ function TrainView({
           onCopy={onCopy}
           onSave={onSave}
         />
-        <DatasetComparePanel datasetComparison={datasetComparison} />
+        <DatasetToolPanel
+          curationReport={curationReport}
+          datasetComparison={datasetComparison}
+          onBulkPromoteLeaderboard={onBulkPromoteLeaderboard}
+          onCreateDatasetVersion={onCreateDatasetVersion}
+          onQuarantineWeakCorpus={onQuarantineWeakCorpus}
+        />
       </section>
 
       <section className="train-columns">
@@ -3688,6 +3994,13 @@ function TrainView({
           snapshotImportText={snapshotImportText}
         />
       </section>
+
+      <BackupRestorePanel
+        backupSnapshots={backupSnapshots}
+        onCreateBackupSnapshot={onCreateBackupSnapshot}
+        onExportBackupSnapshot={onExportBackupSnapshot}
+        onRestoreBackupSnapshot={onRestoreBackupSnapshot}
+      />
 
       <section className="train-columns">
         <PromptMemoryPanel copied={copied} onCopy={onCopy} onDownload={onDownload} promptMemory={promptMemory} />
@@ -4056,6 +4369,356 @@ function StageNavPanel({
   );
 }
 
+function SecurityOpsPanel({
+  apiEvents,
+  apiHealth,
+  apiNotice,
+  onRefreshApiEvents,
+}: {
+  apiEvents: ApiEvent[];
+  apiHealth?: ApiHealth;
+  apiNotice: string;
+  onRefreshApiEvents: () => void;
+}) {
+  const ops = [
+    { label: "Auth", value: apiHealth?.authRequired ? "Token required" : "Open/local" },
+    { label: "CORS", value: apiHealth?.allowedOrigin || "not checked" },
+    { label: "Rate limit", value: apiHealth?.rateLimitPerMinute ? `${apiHealth.rateLimitPerMinute}/min` : "default" },
+    { label: "Data dir", value: apiHealth?.dataDir || "browser fallback" },
+  ];
+
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <AlertTriangle size={18} />
+          <h2>Security and ops</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={onRefreshApiEvents}>Refresh events</button>
+      </div>
+      <div className="backend-grid">
+        {ops.map((item) => (
+          <article className="index-card" key={item.label}>
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
+          </article>
+        ))}
+      </div>
+      <p className="selected-meta">{apiNotice}</p>
+      <div className="version-list compact-list">
+        {apiEvents.length ? apiEvents.slice(0, 8).map((event) => (
+          <article className="version-card" key={event.id}>
+            <strong>{event.kind}</strong>
+            <span>{new Date(event.createdAt).toLocaleString()}</span>
+            <p>{typeof event.detail === "string" ? event.detail : JSON.stringify(event.detail)}</p>
+          </article>
+        )) : <p className="selected-meta">Connect a token-protected API and refresh events to see sync, queue, capture, and unauthorized access history.</p>}
+      </div>
+    </section>
+  );
+}
+
+function ProductOnboardingPanel({
+  mode,
+  onChooseMode,
+  onCreateBackupSnapshot,
+  onExportCodexBuildPack,
+  onSyncToApi,
+}: {
+  mode: OnboardingMode;
+  onChooseMode: (mode: OnboardingMode) => void;
+  onCreateBackupSnapshot: (label?: string) => void;
+  onExportCodexBuildPack: () => void;
+  onSyncToApi: () => void;
+}) {
+  const modes: { key: OnboardingMode; title: string; body: string }[] = [
+    { key: "demo", title: "Use demo set", body: "Load labels, model rows, runs, screenshots, and a dataset version." },
+    { key: "upload", title: "Upload prompts", body: "Jump to ingestion and import your own high-signal prompt corpus." },
+    { key: "blank", title: "Start blank", body: "Begin with the composer and generate a first prompt from scratch." },
+  ];
+  const steps = ["Choose a corpus path", "Curate and label winners", "Run visual evidence", "Export a Codex build pack"];
+
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Guided onboarding</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCreateBackupSnapshot("pre-onboarding-backup")}>Backup</button>
+          <button className="ghost-button compact-button" type="button" onClick={onSyncToApi}>Sync</button>
+          <button className="primary-button compact-button" type="button" onClick={onExportCodexBuildPack}>Build pack</button>
+        </div>
+      </div>
+      <div className="preset-grid">
+        {modes.map((item) => (
+          <button className="preset-card" data-active={mode === item.key} key={item.key} type="button" onClick={() => onChooseMode(item.key)}>
+            <strong>{item.title}</strong>
+            <p>{item.body}</p>
+          </button>
+        ))}
+      </div>
+      <div className="guided-steps">
+        {steps.map((step, index) => (
+          <article className="guided-step" key={step}>
+            <span>{index + 1}</span>
+            <p>{step}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CodexBuildPackPanel({
+  codexBuildPack,
+  copied,
+  onCopy,
+  onExportCodexBuildPack,
+}: {
+  codexBuildPack: CodexBuildPack;
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onExportCodexBuildPack: () => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Export-to-Codex build pack</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(codexBuildPack.markdown, "codex-build-pack")}>
+            {copied === "codex-build-pack" ? <Check size={15} /> : <Copy size={15} />}
+            Copy task
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={onExportCodexBuildPack}>
+            <Download size={15} />
+            Export
+          </button>
+        </div>
+      </div>
+      <div className="memory-pack-grid">
+        {codexBuildPack.files.map((file) => (
+          <article className="index-card" key={file.path}>
+            <strong>{file.path}</strong>
+            <span>{formatNumber(file.content.length)} chars</span>
+          </article>
+        ))}
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={codexBuildPack.commands.join("\n")} />
+    </section>
+  );
+}
+
+function ExperimentLeaderboardPanel({
+  experimentLeaderboard,
+  onBulkPromoteLeaderboard,
+  onSelectPrompt,
+}: {
+  experimentLeaderboard: ExperimentLeaderboardReport;
+  onBulkPromoteLeaderboard: () => void;
+  onSelectPrompt: (id: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Experiment leaderboard</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onBulkPromoteLeaderboard}>Promote top 5</button>
+      </div>
+      <FeedbackList title="Experiment summary" items={experimentLeaderboard.summary} empty="No experiment data yet." />
+      <div className="leaderboard-list compact-list">
+        {experimentLeaderboard.items.slice(0, 10).map((item, index) => (
+          <button className="leaderboard-card" key={item.promptId} type="button" onClick={() => onSelectPrompt(item.promptId)}>
+            <span className="rank-badge">{index + 1}</span>
+            <div>
+              <strong>{item.title}</strong>
+              <p>{item.reasons.join(" / ")}</p>
+              <small>Wins {item.wins} / Losses {item.losses} / Prompt {item.promptScore} / Result {item.resultScore || "pending"}</small>
+            </div>
+            <em>{item.score}</em>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LearnedGeneratorWorkspacePanel({
+  generatorInput,
+  onApplyGeneratorVariant,
+  onCopy,
+  onSave,
+  setGeneratorInput,
+  variants,
+}: {
+  generatorInput: LearnedGeneratorInput;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
+  variants: LearnedGeneratorVariant[];
+}) {
+  function update<K extends keyof LearnedGeneratorInput>(key: K, value: LearnedGeneratorInput[K]) {
+    setGeneratorInput((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Wand2 size={18} />
+        <h2>Learned prompt generator</h2>
+      </div>
+      <div className="two-field-grid">
+        <Field label="Brand">
+          <input value={generatorInput.brandName} onChange={(event) => update("brandName", event.target.value)} />
+        </Field>
+        <Field label="Industry">
+          <input value={generatorInput.industry} onChange={(event) => update("industry", event.target.value)} />
+        </Field>
+      </div>
+      <div className="two-field-grid">
+        <Field label="Stack">
+          <input value={generatorInput.stack} onChange={(event) => update("stack", event.target.value)} />
+        </Field>
+        <Field label="Site type">
+          <input value={generatorInput.siteType} onChange={(event) => update("siteType", event.target.value)} />
+        </Field>
+      </div>
+      <Field label="Visual style">
+        <textarea value={generatorInput.visualStyle} onChange={(event) => update("visualStyle", event.target.value)} />
+      </Field>
+      <Field label="Assets">
+        <textarea value={generatorInput.assets} onChange={(event) => update("assets", event.target.value)} />
+      </Field>
+      <Field label="Constraints">
+        <textarea value={generatorInput.constraints} onChange={(event) => update("constraints", event.target.value)} />
+      </Field>
+      <Field label={`Strictness ${generatorInput.strictness}/10`}>
+        <input type="range" min="1" max="10" value={generatorInput.strictness} onChange={(event) => update("strictness", Number(event.target.value))} />
+      </Field>
+      <div className="preset-grid">
+        {variants.map((variant) => (
+          <article className="preset-card" key={variant.id}>
+            <div className="dna-v2-topline">
+              <strong>{variant.title}</strong>
+              <span data-tone={scoreTone(variant.score)}>{variant.score}</span>
+            </div>
+            <p>{variant.bestFor}</p>
+            <small>{variant.signals.slice(0, 5).join(", ")}</small>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onApplyGeneratorVariant(variant)}>Use</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(variant.prompt, variant.id)}>Copy</button>
+              <button className="primary-button compact-button" type="button" onClick={() => onSave("generated", variant.title, variant.prompt, variant.score)}>Save</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DatasetToolPanel({
+  curationReport,
+  datasetComparison,
+  onBulkPromoteLeaderboard,
+  onCreateDatasetVersion,
+  onQuarantineWeakCorpus,
+}: {
+  curationReport: CorpusCurationReport;
+  datasetComparison: DatasetVersionComparison;
+  onBulkPromoteLeaderboard: () => void;
+  onCreateDatasetVersion: () => void;
+  onQuarantineWeakCorpus: () => void;
+}) {
+  const entries = Object.entries(datasetComparison.deltas).filter(([, value]) => value !== 0).slice(0, 8);
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Dataset tools</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onQuarantineWeakCorpus}>Quarantine weak</button>
+          <button className="ghost-button compact-button" type="button" onClick={onBulkPromoteLeaderboard}>Promote winners</button>
+          <button className="primary-button compact-button" type="button" onClick={onCreateDatasetVersion}>Snapshot</button>
+        </div>
+      </div>
+      <div className="env-status-grid">
+        <span data-ready>{curationReport.counts.learn} learn</span>
+        <span data-ready={curationReport.counts.quarantine === 0}>{curationReport.counts.quarantine} quarantine</span>
+        <span data-ready={curationReport.counts.review === 0}>{curationReport.counts.review} review</span>
+      </div>
+      <div className="compare-version-grid">
+        <article className="index-card">
+          <strong>{datasetComparison.current?.label ?? "none"}</strong>
+          <span>current</span>
+        </article>
+        <article className="index-card">
+          <strong>{datasetComparison.baseline?.label ?? "none"}</strong>
+          <span>baseline</span>
+        </article>
+      </div>
+      <div className="delta-list">
+        {entries.length ? entries.map(([key, value]) => (
+          <span data-positive={value > 0} key={key}>{key}: {value > 0 ? "+" : ""}{value}</span>
+        )) : <p className="selected-meta">Create at least two dataset versions to compare deltas.</p>}
+      </div>
+      <FeedbackList title="Version notes" items={datasetComparison.notes} empty="No version notes yet." />
+    </section>
+  );
+}
+
+function BackupRestorePanel({
+  backupSnapshots,
+  onCreateBackupSnapshot,
+  onExportBackupSnapshot,
+  onRestoreBackupSnapshot,
+}: {
+  backupSnapshots: TrainingBackupSnapshot[];
+  onCreateBackupSnapshot: (label?: string) => void;
+  onExportBackupSnapshot: (id?: string) => void;
+  onRestoreBackupSnapshot: (id: string) => void;
+}) {
+  const [label, setLabel] = useState(`restore-point-${backupSnapshots.length + 1}`);
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Backups and restore points</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onExportBackupSnapshot()} disabled={!backupSnapshots.length}>Export latest</button>
+          <button className="primary-button compact-button" type="button" onClick={() => onCreateBackupSnapshot(label)}>Create backup</button>
+        </div>
+      </div>
+      <Field label="Backup label">
+        <input value={label} onChange={(event) => setLabel(event.target.value)} />
+      </Field>
+      <div className="version-list compact-list">
+        {backupSnapshots.length ? backupSnapshots.map((backup) => (
+          <article className="version-card" key={backup.id}>
+            <strong>{backup.label}</strong>
+            <span>{new Date(backup.createdAt).toLocaleString()}</span>
+            <p>{backup.summary}</p>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onRestoreBackupSnapshot(backup.id)}>Restore</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onExportBackupSnapshot(backup.id)}>Export</button>
+            </div>
+          </article>
+        )) : <p className="selected-meta">Create a restore point before bulk labels, imports, or model calibration.</p>}
+      </div>
+    </section>
+  );
+}
+
 function QualityGatePanel({
   copied,
   onCopy,
@@ -4234,34 +4897,6 @@ function GeneratorPresetPanel({
           </article>
         ))}
       </div>
-    </section>
-  );
-}
-
-function DatasetComparePanel({ datasetComparison }: { datasetComparison: DatasetVersionComparison }) {
-  const entries = Object.entries(datasetComparison.deltas).filter(([, value]) => value !== 0).slice(0, 8);
-  return (
-    <section className="panel lab-panel">
-      <div className="panel-header">
-        <BarChart3 size={18} />
-        <h2>Dataset version compare</h2>
-      </div>
-      <div className="compare-version-grid">
-        <article className="index-card">
-          <strong>{datasetComparison.current?.label ?? "none"}</strong>
-          <span>current</span>
-        </article>
-        <article className="index-card">
-          <strong>{datasetComparison.baseline?.label ?? "none"}</strong>
-          <span>baseline</span>
-        </article>
-      </div>
-      <div className="delta-list">
-        {entries.length ? entries.map(([key, value]) => (
-          <span data-positive={value > 0} key={key}>{key}: {value > 0 ? "+" : ""}{value}</span>
-        )) : <p className="selected-meta">Create at least two dataset versions to compare deltas.</p>}
-      </div>
-      <FeedbackList title="Version notes" items={datasetComparison.notes} empty="No version notes yet." />
     </section>
   );
 }

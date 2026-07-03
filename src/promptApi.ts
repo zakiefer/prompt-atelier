@@ -51,6 +51,7 @@ export type ApiHealth = {
   dataDir?: string;
   authRequired?: boolean;
   allowedOrigin?: string;
+  rateLimitPerMinute?: number;
   skill: {
     installed: boolean;
     path: string;
@@ -58,6 +59,13 @@ export type ApiHealth = {
     updatedAt: string;
   };
   collections: string[];
+};
+
+export type ApiEvent = {
+  id: number;
+  kind: string;
+  detail: unknown;
+  createdAt: string;
 };
 
 export type ApiResultImport<TBuildRun, TScreenshot, TLineage> = {
@@ -78,6 +86,10 @@ export function getApiHealth() {
 
 export function getApiCollections() {
   return requestJson<{ collections: Record<string, unknown> }>("/api/collections");
+}
+
+export function getApiEvents(limit = 30) {
+  return requestJson<{ ok: boolean; events: ApiEvent[] }>(`/api/events?limit=${limit}`);
 }
 
 export function syncCollections(collections: Record<string, unknown>) {

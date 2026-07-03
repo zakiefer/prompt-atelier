@@ -677,6 +677,53 @@ export type ProjectExportPack = {
   }[];
 };
 
+export type ExperimentLeaderboardItem = {
+  promptId: string;
+  title: string;
+  score: number;
+  wins: number;
+  losses: number;
+  outcome: PromptStatus | "missing";
+  resultScore: number;
+  promptScore: number;
+  reasons: string[];
+};
+
+export type ExperimentLeaderboardReport = {
+  items: ExperimentLeaderboardItem[];
+  summary: string[];
+};
+
+export type LearnedGeneratorInput = {
+  brandName: string;
+  industry: string;
+  stack: string;
+  siteType: string;
+  visualStyle: string;
+  assets: string;
+  constraints: string;
+  strictness: number;
+};
+
+export type LearnedGeneratorVariant = {
+  id: string;
+  title: string;
+  score: number;
+  bestFor: string;
+  signals: string[];
+  prompt: string;
+};
+
+export type CodexBuildPack = {
+  markdown: string;
+  json: string;
+  files: {
+    path: string;
+    content: string;
+  }[];
+  commands: string[];
+};
+
 const CATEGORY_LABELS: Record<CategoryKey, string> = {
   stack: "Stack",
   assets: "Assets",
@@ -3339,6 +3386,14 @@ export function buildVisualRegressionReport(buildRuns: BuildRunRecord[] = [], sc
   const missingScreenshots = buildRuns.filter((run) => !run.screenshotUrl && !(screenshotByPrompt.get(run.promptId) || []).length);
   const badScreenshots = screenshots.filter((screenshot) => screenshot.rating === "bad");
   const greatScreenshots = screenshots.filter((screenshot) => screenshot.rating === "great");
+  const evidenceText = [...buildRuns.map((run) => `${run.resultUrl} ${run.screenshotUrl} ${run.errors} ${run.notes}`), ...screenshots.map((screenshot) => `${screenshot.title} ${screenshot.url} ${screenshot.notes}`)].join("\n").toLowerCase();
+  const desktopEvidence = /desktop|1440|1366|macbook|wide/.test(evidenceText);
+  const mobileEvidence = /mobile|390|393|iphone|android|small viewport/.test(evidenceText);
+  const blankSignals = /blank|white screen|black screen|empty render|no content|nonblank failed/.test(evidenceText);
+  const mediaSignals = /404|not found|missing image|missing video|broken image|broken video|failed to load|media error/.test(evidenceText);
+  const consoleSignals = /console error|uncaught|exception|runtime|typeerror|referenceerror|vite error/.test(evidenceText);
+  const overlapSignals = /overlap|occlude|covered text|text collision|clipped text|overflow/.test(evidenceText);
+  const mobileFitSignals = /mobile fail|bad mobile|small screen fail|viewport overflow|horizontal scroll/.test(evidenceText);
   const checks = [
     {
       label: "Run coverage",
@@ -3356,6 +3411,41 @@ export function buildVisualRegressionReport(buildRuns: BuildRunRecord[] = [], sc
       detail: `${failed.length} failed run(s), ${completed.length} completed/reviewable run(s).`,
     },
     {
+      label: "Desktop evidence",
+      passed: screenshots.length > 0 && (desktopEvidence || screenshots.length > 1),
+      detail: desktopEvidence ? "Desktop capture signal found." : "Add an explicit desktop screenshot or viewport note.",
+    },
+    {
+      label: "Mobile evidence",
+      passed: screenshots.length > 0 && (mobileEvidence || screenshots.length > 1),
+      detail: mobileEvidence ? "Mobile capture signal found." : "Add an explicit mobile screenshot or viewport note.",
+    },
+    {
+      label: "Nonblank render",
+      passed: !blankSignals && screenshots.length > 0,
+      detail: blankSignals ? "Blank or empty-render signal detected." : "No blank-render signal detected.",
+    },
+    {
+      label: "Media integrity",
+      passed: !mediaSignals,
+      detail: mediaSignals ? "Broken/missing media signal detected." : "No broken media signal detected.",
+    },
+    {
+      label: "Console health",
+      passed: !consoleSignals,
+      detail: consoleSignals ? "Runtime/console error signal detected." : "No runtime error signal detected.",
+    },
+    {
+      label: "Text fit",
+      passed: !overlapSignals,
+      detail: overlapSignals ? "Text overlap or clipping signal detected." : "No text overlap signal detected.",
+    },
+    {
+      label: "Mobile fit",
+      passed: !mobileFitSignals,
+      detail: mobileFitSignals ? "Mobile viewport fit issue detected." : "No mobile fit issue detected.",
+    },
+    {
       label: "Visual rating",
       passed: badScreenshots.length === 0 && greatScreenshots.length > 0,
       detail: `${greatScreenshots.length} great screenshot(s), ${badScreenshots.length} bad screenshot(s).`,
@@ -3369,7 +3459,164 @@ export function buildVisualRegressionReport(buildRuns: BuildRunRecord[] = [], sc
       score >= 75 ? "Visual regression posture is healthy." : "Add captures and mark screenshot ratings before trusting prompt winners.",
       missingScreenshots.length ? "Capture missing runs before exporting a project pack." : "Screenshot evidence is linked for current runs.",
       failed.length ? "Repair failed runs and feed their errors into failure memory." : "No failed runs recorded.",
+      !mobileEvidence ? "Add mobile screenshot evidence for stronger visual judging." : "Mobile evidence is present.",
     ],
+  };
+}
+
+export function buildExperimentLeaderboard(
+  examples: PromptExample[],
+  outcomes: OutcomeRecord[] = [],
+  buildRuns: BuildRunRecord[] = [],
+  pairwiseReviews: PairwiseReviewRecord[] = [],
+): ExperimentLeaderboardReport {
+  const outcomeByPrompt = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const runsByPrompt = new Map<string, BuildRunRecord[]>();
+  for (const run of buildRuns) runsByPrompt.set(run.promptId, [...(runsByPrompt.get(run.promptId) || []), run]);
+  const wins = new Map<string, number>();
+  const losses = new Map<string, number>();
+  for (const review of pairwiseReviews) {
+    wins.set(review.winnerId, (wins.get(review.winnerId) || 0) + 1);
+    losses.set(review.loserId, (losses.get(review.loserId) || 0) + 1);
+  }
+  const items = examples
+    .map((example) => {
+      const promptScore = evaluatePrompt(example.text).score;
+      const runs = runsByPrompt.get(example.id) || [];
+      const resultScore = runs.length ? Math.round(runs.reduce((sum, run) => sum + (run.score || 0), 0) / runs.length) : 0;
+      const outcome = outcomeByPrompt.get(example.id);
+      const winCount = wins.get(example.id) || 0;
+      const lossCount = losses.get(example.id) || 0;
+      const outcomeBoost = outcome?.status === "gold" ? 120 : outcome?.rating === "great" ? 90 : outcome?.status === "avoid" ? -110 : outcome?.rating === "bad" ? -90 : 0;
+      const score = Math.round(1000 + winCount * 48 - lossCount * 32 + outcomeBoost + promptScore * 0.38 + resultScore * 0.55);
+      const reasons = [
+        winCount ? `${winCount} pairwise win(s)` : "",
+        lossCount ? `${lossCount} loss(es)` : "",
+        outcome ? `${outcome.status}/${outcome.rating}` : "unlabeled",
+        resultScore ? `result ${resultScore}` : "needs build proof",
+      ].filter(Boolean);
+      return {
+        promptId: example.id,
+        title: example.title,
+        score,
+        wins: winCount,
+        losses: lossCount,
+        outcome: outcome?.status ?? "missing",
+        resultScore,
+        promptScore,
+        reasons,
+      } satisfies ExperimentLeaderboardItem;
+    })
+    .sort((a, b) => b.score - a.score || b.wins - a.wins || a.title.localeCompare(b.title))
+    .slice(0, 20);
+  return {
+    items,
+    summary: [
+      items[0] ? `${items[0].title} leads with ${items[0].score} experiment points.` : "No prompts available for the leaderboard.",
+      `${pairwiseReviews.length} pairwise review(s), ${outcomes.length} label(s), ${buildRuns.length} build run(s) feed this score.`,
+      "Use this board to pick the next prompt to run, label, or promote into memory.",
+    ],
+  };
+}
+
+export function buildLearnedGeneratorVariants(
+  input: LearnedGeneratorInput,
+  profile: PromptProfile,
+  presets: GeneratorPreset[] = [],
+  outcomes: OutcomeRecord[] = [],
+): LearnedGeneratorVariant[] {
+  const sources = (presets.length ? presets : buildGeneratorPresets(profile, [], outcomes)).slice(0, 3);
+  const strictness = Math.max(1, Math.min(10, input.strictness || 8));
+  return sources.map((preset, index) => {
+    const mode = ["cinematic proof", "conversion-first", "systems-grade"][index] ?? "learned";
+    const prompt = composeOutcomeAwarePrompt(
+      profile,
+      {
+        brief: `${input.industry || "digital product"} ${input.siteType || "landing page"} for ${input.brandName || "Northstar"} using a ${mode} angle`,
+        brandName: input.brandName || "Northstar",
+        siteType: input.siteType || "single-page landing hero",
+        visualSignature: `${input.visualStyle || preset.signals.join(", ") || "specific first viewport"}; assets: ${input.assets || "require exact URLs or generated bitmap assets"}`,
+        archetype: preset.archetype || preset.title,
+        mood: `premium, exact, learned from ${preset.title}, strictness ${strictness}/10`,
+        outputFlavor: "Codex-build-ready generated variant",
+        detailLevel: strictness,
+        creativity: Math.max(4, 11 - strictness),
+        rigor: strictness,
+        includeAssets: true,
+        includeMotion: true,
+        includeQA: true,
+      },
+      outcomes,
+      [],
+    );
+    const requirements = `\n\nPROJECT-SPECIFIC REQUIREMENTS\n- Stack: ${input.stack || "React + TypeScript + Vite + Tailwind CSS"}.\n- Industry/audience: ${input.industry || "product builders who care about polish"}.\n- Required assets: ${input.assets || "name exact image/video/logo sources or create explicit fallbacks"}.\n- Constraints: ${input.constraints || "avoid vague placeholders, decorative filler, and unverified responsive behavior"}.\n- Output must include desktop/mobile QA, media checks, console checks, and text-fit checks.`;
+    const fullPrompt = `${prompt}${requirements}`;
+    return {
+      id: `learned-generator-${index + 1}-${slugify(preset.title)}`,
+      title: `${input.brandName || "Northstar"} ${mode}`,
+      score: evaluatePrompt(fullPrompt).score,
+      bestFor: preset.bestFor,
+      signals: preset.signals,
+      prompt: fullPrompt,
+    };
+  });
+}
+
+export function buildCodexBuildPack({
+  prompt,
+  promptMemory,
+  qualityGate,
+  queueExport,
+  visualRegression,
+}: {
+  prompt?: PromptExample;
+  promptMemory: PromptMemoryExport;
+  qualityGate: QualityGateReport;
+  queueExport: string;
+  visualRegression: VisualRegressionReport;
+}): CodexBuildPack {
+  const promptTitle = prompt?.title || "Selected prompt";
+  const promptText = prompt?.text || "No prompt selected. Select or generate a prompt before running this build pack.";
+  const commands = [
+    "npm install",
+    "npm run build",
+    "npm run run:queue -- --queue prompt-lab-queue.json --scaffold --install --capture --preview-port 4320",
+    "npm run capture:result -- --url http://127.0.0.1:5173 --out output/playwright/prompt-atelier",
+  ];
+  const task = `# Codex Build Pack
+
+Prompt: ${promptTitle}
+
+## Build Prompt
+
+${promptText}
+
+## Acceptance Gates
+
+- Quality gate score: ${qualityGate.score}
+- Visual regression score: ${visualRegression.score}
+- Must pass lint/build and desktop/mobile screenshot checks.
+- Must verify nonblank render, media integrity, console health, text fit, and mobile fit.
+
+## Commands
+
+${commands.map((command) => `- \`${command}\``).join("\n")}
+
+## Prompt Memory
+
+${promptMemory.markdown}
+`;
+  const files = [
+    { path: "codex-task.md", content: task },
+    { path: "prompt.md", content: promptText },
+    { path: "prompt-lab-queue.json", content: queueExport },
+    { path: "prompt-memory.md", content: promptMemory.markdown },
+  ];
+  return {
+    markdown: task,
+    json: JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), prompt, qualityGate, visualRegression, files, commands }, null, 2),
+    files,
+    commands,
   };
 }
 

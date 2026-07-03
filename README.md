@@ -21,6 +21,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Token-protected hosted API mode with external SQLite data directory support
 - Pairwise ground-truth labeling, pattern dashboards, prompt coaching, visual regression scoring, and project export packs
 - Queue runner scaffolding that can install, build, preview, and capture screenshots for generated Vite apps
+- Guided onboarding, learned prompt generator variants, experiment leaderboards, restore-point backups, Codex build packs, and API ops event history
 - Codex skill and reusable memory pack exports
 
 ## Development
@@ -48,6 +49,7 @@ Hosted-style API with persistent storage and bearer auth:
 PROMPT_LAB_DATA_DIR=/data \
 PROMPT_LAB_API_TOKEN=replace-me \
 PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io \
+PROMPT_LAB_RATE_LIMIT=240 \
 npm run api
 ```
 
@@ -90,6 +92,7 @@ The Train tab now starts with:
 4. Pairwise labeling that converts human preference into gold and avoid outcome records.
 5. Pattern and visual regression dashboards for spotting which prompt structures are actually winning.
 6. A Claude/local prompt coach and project export pack for turning the current state into a reusable handoff.
+7. Guided generator, leaderboard, backup, Codex build-pack, and security/ops panels for running the loop as a product.
 
 The raw corpus remains visible, but recipe, memory, search, and generator learning use curated website prompts by default.
 
