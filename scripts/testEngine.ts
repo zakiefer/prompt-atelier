@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   analyzeCorpus,
   analyzeArchetypeClusters,
@@ -20,6 +21,8 @@ import {
   evaluatePrompt,
   auditPromptImportBatch,
   parsePromptBatch,
+  slugify,
+  titleFromPrompt,
   type BuildRunRecord,
   type PairwiseReviewRecord,
   type OutcomeRecord,
@@ -27,7 +30,23 @@ import {
   type ScreenshotRecord,
 } from "../src/promptEngine";
 
-const corpusPayload = JSON.parse(readFileSync("public/attachment-prompts.json", "utf8")) as { prompts: PromptExample[] };
+function readCuratedSeedPrompts() {
+  return readdirSync("src/prompts")
+    .filter((file) => file.endsWith(".md"))
+    .sort()
+    .flatMap((file) => {
+      const text = readFileSync(join("src/prompts", file), "utf8");
+      if (!text.trim()) return [];
+      const slug = file.replace(/\.md$/, "");
+      return [{
+        id: `seed-${slugify(slug)}`,
+        title: titleFromPrompt(text, slug),
+        text,
+        source: "seed" as const,
+        createdAt: "2026-07-02T00:00:00.000Z",
+      }];
+    });
+}
 
 const exactPrompt = `Build a fullscreen hero section in React + TypeScript + Vite + Tailwind CSS.
 Use this exact background video URL: https://example.com/hero.mp4.
@@ -35,7 +54,14 @@ The video must be cinematic, autoplay, loop, muted, and playsInline.
 Specify fonts, colors, responsive mobile behavior, accessible buttons, hover states, and a Playwright screenshot verification checklist.
 No decorative blobs, no unlisted UI libraries, and keep the first viewport focused on the product.`;
 
-const examples = corpusPayload.prompts.slice(0, 8);
+const curatedSeedPrompts = readCuratedSeedPrompts();
+const corpusText = curatedSeedPrompts.map((prompt) => `${prompt.title}\n${prompt.text}`).join("\n\n");
+assert.ok(!/kapital-next|jkiefer89\/helios|you are firing/i.test(corpusText), "Curated prompt corpus must not include unrelated repo-operation prompts.");
+const examples = curatedSeedPrompts
+  .map((example) => ({ example, score: evaluatePrompt(example.text).score }))
+  .sort((a, b) => b.score - a.score)
+  .map((item) => item.example)
+  .slice(0, 8);
 const score = evaluatePrompt(exactPrompt);
 assert.ok(score.score >= 20, `Expected scoring smoke test >= 20, received ${score.score}`);
 assert.ok(score.upgrades.some((item) => /asset|responsive|visual/i.test(item)), "Expected upgrades to include design/build signals.");

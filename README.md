@@ -98,7 +98,7 @@ The app runs at `http://127.0.0.1:5173` and the API runs at `http://127.0.0.1:87
 The Train tab now starts with:
 
 1. A first-run checklist for curation, versioning, API connection, calibration, and memory export.
-2. Corpus curation that classifies website prompts, raw HTML prompts, repo tasks, and review tasks.
+2. Corpus curation that classifies website prompts and keeps unrelated repo-operation tasks out of the learning set.
 3. Claude/local batch calibration for comparing external model judgment against internal DNA scores.
 4. Pairwise labeling that converts human preference into gold and avoid outcome records.
 5. Pattern and visual regression dashboards for spotting which prompt structures are actually winning.
@@ -106,17 +106,25 @@ The Train tab now starts with:
 7. Guided generator, leaderboard, backup, Codex build-pack, and security/ops panels for running the loop as a product.
 8. Import audits, evaluation history, export presets, and automated visual QA so prompt quality is judged against real build evidence.
 
-The raw corpus remains visible, but recipe, memory, search, and generator learning use curated website prompts by default.
+The corpus should only contain prompts intentionally imported for this project. Recipe, memory, search, and generator learning use curated website prompts by default.
 
 ## Prompt Corpus
 
-The runtime corpus is `public/attachment-prompts.json`. Regenerate tracked markdown source files with:
+The curated source corpus is `src/prompts/`. `public/attachment-prompts.json` is optional extra input generated only from explicitly allowlisted attachment directories.
+
+To sync allowlisted attachments, add their directory IDs to `config/curated-attachment-sources.json`, then run:
+
+```bash
+npm run sync:attachments
+```
+
+To regenerate the human-readable `prompts/` export from the optional public attachment file:
 
 ```bash
 npm run export:prompts
 ```
 
-Generated markdown lands in `prompts/`. The raw attachment markdown under `src/prompts/` is ignored because several pasted source files were sparse/corrupt on disk.
+Generated markdown lands in `prompts/`. The attachment sync is intentionally opt-in so unrelated Codex project attachments cannot enter the prompt-learning corpus.
 
 ## Deployment
 

@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "description": "Only attachment directory IDs listed here may be imported into public/attachment-prompts.json. Keep this explicit so unrelated Codex project attachments never enter the prompt-learning corpus.",
+  "attachmentIds": []
+}

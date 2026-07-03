@@ -28,7 +28,9 @@ These files are generated from \`public/attachment-prompts.json\` with:
 npm run export:prompts
 \`\`\`
 
-The original pasted attachment markdown files under \`src/prompts/\` were not committed because several were sparse/corrupt on disk. This folder is the tracked, human-readable corpus source.
+The curated source corpus lives under \`src/prompts/\`. This folder is only a human-readable export of explicitly allowlisted attachment imports.
+
+\`public/attachment-prompts.json\` is an optional generated import file. It must only contain explicitly allowlisted website prompts, never broad historical Codex attachments from unrelated projects.
 `,
 );
 
