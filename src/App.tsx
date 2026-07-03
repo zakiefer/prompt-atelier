@@ -1,0 +1,5949 @@
+import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import {
+  Archive,
+  AlertTriangle,
+  BarChart3,
+  BookOpen,
+  Check,
+  Clipboard,
+  Copy,
+  Download,
+  FileText,
+  Gauge,
+  Hammer,
+  Lightbulb,
+  ListChecks,
+  PackageOpen,
+  Plus,
+  Search,
+  Save,
+  Sparkles,
+  Shuffle,
+  SlidersHorizontal,
+  Tags,
+  Trophy,
+  Trash2,
+  Upload,
+  Wand2,
+} from "lucide-react";
+import {
+  analyzeArchetypeClusters,
+  analyzeCorpus,
+  analyzeCorpusHealth,
+  analyzePrompt,
+  auditVisualPrompt,
+  buildCodexSkill,
+  buildCorpusCleaningReport,
+  buildFailureMemory,
+  buildLocalEmbeddingIndex,
+  buildOutcomeSummary,
+  buildPromptPacks,
+  buildPromptLineage,
+  buildPromptMemoryExport,
+  buildPromptBattle,
+  buildGoldReviewReport,
+  buildGeneratorPresets,
+  buildQualityGateReport,
+  buildResultGallery,
+  buildReusableMemoryPack,
+  buildRecipePrompt,
+  buildRubricNotes,
+  buildPromptTournament,
+  buildRunnerPlan,
+  buildSkillInstallPlan,
+  buildStyleGuide,
+  buildPromptTemplates,
+  calibrateDnaScores,
+  categoryLabels,
+  compareDatasetVersions,
+  compilePromptFromBrief,
+  composeInterviewPrompt,
+  composeOutcomeAwarePrompt,
+  createDatasetVersionSnapshot,
+  createBuildQueueJob,
+  createBuildRunHandoff,
+  countWords,
+  detectDuplicatePrompt,
+  detectStyleDrift,
+  diffPrompts,
+  distillGoldenRecipes,
+  dnaLabels,
+  evaluatePrompt,
+  explainPromptWin,
+  exportCorpus,
+  exportBuildQueue,
+  importCorpus,
+  improvePromptWithLearning,
+  mixArchetypes,
+  mutatePromptVariants,
+  parsePromptBatch,
+  rankPromptExamples,
+  repairPromptFromFailure,
+  rewritePrompt,
+  searchSimilarPrompts,
+  searchVectorPrompts,
+  scorePromptDnaV2,
+  scoreResultArtifact,
+  scorePromptModel,
+  scoreScreenshotSet,
+  slugify,
+  titleFromPrompt,
+  type ArchetypeMixOptions,
+  type ArchetypeCluster,
+  type BuildRunRecord,
+  type BuildRunnerPlan,
+  type BuildQueueJob,
+  type BuildStatus,
+  type CategoryKey,
+  type CompiledPrompt,
+  type ComposeOptions,
+  type CorpusHealth,
+  type CorpusCleaningReport,
+  type DatasetVersion,
+  type DatasetVersionComparison,
+  type DnaCalibrationReport,
+  type DnaKey,
+  type DriftReport,
+  type Evaluation,
+  type FailureMemoryReport,
+  type Feature,
+  type InterviewBrief,
+  type LocalEmbeddingIndex,
+  type OutcomeRecord,
+  type OutcomeRating,
+  type OutcomeSummary,
+  type PromptPack,
+  type PromptAnalysis,
+  type PromptBattle,
+  type PromptDiff,
+  type PromptDnaV2,
+  type PromptExample,
+  type PromptCompilerInput,
+  type PromptMutation,
+  type PromptMemoryExport,
+  type PromptLineageNode,
+  type PromptProfile,
+  type PromptRank,
+  type PromptTournament,
+  type GoldenRecipe,
+  type GeneratorPreset,
+  type GoldReviewReport,
+  type PromptTemplate,
+  type PromptWinExplanationReport,
+  type QualityGateReport,
+  type QualityRubric,
+  type RecipeOptions,
+  type ResultScore,
+  type ResultGalleryItem,
+  type ReusableMemoryPack,
+  type ScreenshotQaReport,
+  type ScreenshotRecord,
+  type SearchResult,
+  type ScoreBreakdown,
+  type SkillInstallPlan,
+  type VectorSearchResult,
+  type VisualQaReport,
+} from "./promptEngine";
+import {
+  analyzeScreenshots,
+  captureResult,
+  evaluateWithModel,
+  getApiCollections,
+  getApiHealth,
+  getModelSettings,
+  getTrainingSnapshot,
+  importResult,
+  installSkill,
+  runQueue,
+  syncCollections,
+  type ApiHealth,
+} from "./promptApi";
+import { readAllCollections, writeCollection } from "./promptDb";
+import { seedPrompts } from "./seedPrompts";
+
+const STORAGE_KEY = "prompt-atelier-user-prompts";
+const HISTORY_KEY = "prompt-atelier-version-history";
+const OUTCOME_KEY = "prompt-atelier-outcomes";
+const SCREENSHOT_KEY = "prompt-atelier-screenshots";
+const BUILD_RUN_KEY = "prompt-atelier-build-runs";
+const QUEUE_KEY = "prompt-atelier-queue-jobs";
+const LINEAGE_KEY = "prompt-atelier-lineage";
+
+const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
+const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
+
+const defaultComposeOptions: ComposeOptions = {
+  brief:
+    "a polished landing page for a digital product that feels specific, premium, and ready for implementation",
+  brandName: "Northstar",
+  siteType: "single-page landing hero",
+  visualSignature: "fullscreen cinematic video background with glass navigation and one precise interactive detail",
+  archetype: "Cinematic Video Hero",
+  mood: "premium, cinematic, implementation-first",
+  outputFlavor: "Codex-build-ready",
+  detailLevel: 8,
+  creativity: 7,
+  rigor: 8,
+  includeAssets: true,
+  includeMotion: true,
+  includeQA: true,
+};
+
+const defaultMixOptions: ArchetypeMixOptions = {
+  brandName: "Atelier Atlas",
+  siteType: "single-page landing hero",
+  archetypes: ["cinematic-video-hero", "liquid-glass-saas"],
+  mood: "cinematic, exact, elegant, and implementation-ready",
+  constraints: "no decorative blobs, no unlisted UI libraries, preserve exact copy, verify mobile and desktop",
+  includeAssets: true,
+};
+
+const defaultRecipeOptions: RecipeOptions = {
+  industry: "AI design tool",
+  stack: "React + TypeScript + Vite + Tailwind CSS",
+  layout: "full-viewport hero with a focused product proof surface",
+  nav: "responsive navbar with logo, four links, primary CTA, and accessible mobile menu",
+  motion: "staggered fade-up, subtle hover scale, and reduced-motion fallback",
+  assets: "exact background video or product image URL with object-fit, focal point, z-index, and overlay policy",
+  strictness: 8,
+  brandName: "PromptForge",
+  audience: "designers and builders who want high-fidelity website output",
+};
+
+const defaultRubric: QualityRubric = {
+  cinematic: 8,
+  buildability: 9,
+  specificity: 9,
+  motion: 8,
+  restraint: 8,
+  accessibility: 7,
+};
+
+const defaultInterviewBrief: InterviewBrief = {
+  brandName: "Lumora",
+  siteType: "full-screen landing hero",
+  audience: "creative operators choosing a premium AI product",
+  goal: "make the product feel specific, visually memorable, and build-ready",
+  visualDirection: "cinematic first viewport, exact typography, real asset slots, restrained motion",
+  assets: "background video URL, product UI screenshot, and logo SVG slots",
+  stack: "React + TypeScript + Vite + Tailwind CSS + lucide-react",
+  mustHaves: "responsive navbar\nhero headline and CTA\nexact fonts and colors\nmobile menu\nQA checklist",
+  noGos: "no decorative blobs\nno generic stock imagery\nno unlisted UI libraries\nno vague marketing filler",
+  tone: "premium, precise, cinematic, and practical",
+};
+
+const defaultCompilerInput: PromptCompilerInput = {
+  roughIdea: "a cinematic website hero for an AI product that feels premium, exact, and easy to build",
+  brandName: "SignalForge",
+  siteType: "single-page landing hero",
+  audience: "founders and builders comparing high-end AI tools",
+  visualDirection: "fullscreen visual layer, precise typography, restrained glass controls, and one memorable proof surface",
+  stack: "React + TypeScript + Vite + Tailwind CSS + lucide-react",
+  assets: "use exact URLs when available; otherwise create named video, logo, and product screenshot slots",
+  constraints: "no vague marketing filler, no unlisted UI libraries, no decorative blobs, verify mobile and desktop",
+};
+
+const ratingOptions = ["unrated", "great", "okay", "bad"] as const;
+const statusOptions = ["unrated", "gold", "good", "experimental", "avoid"] as const;
+const buildStatusOptions = ["planned", "running", "passed", "failed", "needs-review"] as const;
+
+function readStoredPrompts() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PromptExample[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.text && item?.title) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredHistory() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PromptVersion[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.text && item?.title).slice(0, 80) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredOutcomes() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(OUTCOME_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as OutcomeRecord[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.promptId && item?.title) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredScreenshots() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SCREENSHOT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ScreenshotRecord[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.url && item?.promptId) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredBuildRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(BUILD_RUN_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as BuildRunRecord[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.promptId && item?.promptText).slice(0, 80) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredQueueJobs() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(QUEUE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as BuildQueueJob[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.promptId && item?.promptText).slice(0, 100) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredLineage() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LINEAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PromptLineageNode[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.title).slice(0, 160) : [];
+  } catch {
+    return [];
+  }
+}
+
+function downloadText(filename: string, text: string, type = "text/plain") {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
+function scoreTone(score: number) {
+  if (score >= 72) return "strong";
+  if (score >= 42) return "mixed";
+  return "weak";
+}
+
+function addPercent(score: number) {
+  return `${Math.max(0, Math.min(100, Math.round(score)))}%`;
+}
+
+function normalizeDnaScore(score: number) {
+  return Math.min(100, Math.round(55 + score * 0.625));
+}
+
+function makePrompt(text: string): PromptExample {
+  const normalized = text.trim();
+  const idBase = slugify(titleFromPrompt(normalized, "user prompt"));
+  return {
+    id: `user-${idBase || "prompt"}-${Date.now()}`,
+    title: titleFromPrompt(normalized, "User prompt"),
+    text: normalized,
+    source: "user",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+type TabKey = "learn" | "compose" | "critic" | "templates" | "lab" | "train";
+
+type PromptVersion = {
+  id: string;
+  kind:
+    | "generated"
+    | "rewrite"
+    | "template"
+    | "pack"
+    | "recipe"
+    | "mix"
+    | "style-guide"
+    | "interview"
+    | "merged"
+    | "skill"
+    | "mutation"
+    | "improved"
+    | "compiled"
+    | "tournament"
+    | "build-run";
+  title: string;
+  text: string;
+  createdAt: string;
+  score?: number;
+};
+
+type ScoreWeights = Record<string, number>;
+
+type StoredCollections = {
+  userPrompts: PromptExample[];
+  history: PromptVersion[];
+  outcomes: OutcomeRecord[];
+  screenshots: ScreenshotRecord[];
+  buildRuns: BuildRunRecord[];
+  queueJobs: BuildQueueJob[];
+  lineage: PromptLineageNode[];
+};
+
+export default function App() {
+  const [userPrompts, setUserPrompts] = useState<PromptExample[]>(() => readStoredPrompts());
+  const [draftPrompt, setDraftPrompt] = useState("");
+  const [selectedId, setSelectedId] = useState(seedPrompts[0]?.id ?? "");
+  const [tab, setTab] = useState<TabKey>("learn");
+  const [composeOptions, setComposeOptions] = useState<ComposeOptions>(defaultComposeOptions);
+  const [evaluationText, setEvaluationText] = useState("");
+  const [copied, setCopied] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTag, setActiveTag] = useState("");
+  const [importNotice, setImportNotice] = useState("");
+  const [history, setHistory] = useState<PromptVersion[]>(() => readStoredHistory());
+  const [mixOptions, setMixOptions] = useState<ArchetypeMixOptions>(defaultMixOptions);
+  const [recipeOptions, setRecipeOptions] = useState<RecipeOptions>(defaultRecipeOptions);
+  const [rubric, setRubric] = useState<QualityRubric>(defaultRubric);
+  const [attachmentExamples, setAttachmentExamples] = useState<PromptExample[]>([]);
+  const [outcomes, setOutcomes] = useState<OutcomeRecord[]>(() => readStoredOutcomes());
+  const [screenshots, setScreenshots] = useState<ScreenshotRecord[]>(() => readStoredScreenshots());
+  const [buildRuns, setBuildRuns] = useState<BuildRunRecord[]>(() => readStoredBuildRuns());
+  const [queueJobs, setQueueJobs] = useState<BuildQueueJob[]>(() => readStoredQueueJobs());
+  const [lineageNodes, setLineageNodes] = useState<PromptLineageNode[]>(() => readStoredLineage());
+  const [dbReady, setDbReady] = useState(false);
+  const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
+  const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
+  const [apiNotice, setApiNotice] = useState("API not checked");
+  const [modelEvaluation, setModelEvaluation] = useState<Record<string, unknown> | undefined>();
+  const [modelNotice, setModelNotice] = useState("Model endpoint not checked");
+  const [modelSettings, setModelSettings] = useState({
+    endpoint: "",
+    apiKey: "",
+    model: "local-fallback",
+    temperature: 0.2,
+    agentCommand: "",
+    buildCommand: "",
+  });
+  const [modelEnvStatus, setModelEnvStatus] = useState<Record<string, boolean> | undefined>();
+  const [visualAnalysisResult, setVisualAnalysisResult] = useState<Record<string, unknown> | undefined>();
+  const [datasetVersions, setDatasetVersions] = useState<DatasetVersion[]>([]);
+  const [autoBattleResult, setAutoBattleResult] = useState<Record<string, unknown> | undefined>();
+  const [wizardIdea, setWizardIdea] = useState("a premium AI product website hero that should become a gold-standard prompt");
+  const [resultImportText, setResultImportText] = useState("");
+  const [activeTrainStage, setActiveTrainStage] = useState("Compile");
+  const [scoreWeights, setScoreWeights] = useState<ScoreWeights>({
+    originality: 18,
+    buildability: 24,
+    visualTaste: 22,
+    exactness: 18,
+    mobile: 10,
+    outcomes: 28,
+  });
+  const [semanticQuery, setSemanticQuery] = useState("");
+  const [vectorQuery, setVectorQuery] = useState("");
+  const [diffLeftId, setDiffLeftId] = useState(seedPrompts[0]?.id ?? "");
+  const [diffRightId, setDiffRightId] = useState(seedPrompts[1]?.id ?? seedPrompts[0]?.id ?? "");
+  const [qaText, setQaText] = useState("");
+  const [interviewBrief, setInterviewBrief] = useState<InterviewBrief>(defaultInterviewBrief);
+  const [mutationSource, setMutationSource] = useState("");
+  const [improveText, setImproveText] = useState("");
+  const [compilerInput, setCompilerInput] = useState<PromptCompilerInput>(defaultCompilerInput);
+
+  const examples = useMemo(() => [...seedPrompts, ...attachmentExamples, ...userPrompts], [attachmentExamples, userPrompts]);
+  const profile = useMemo(() => analyzeCorpus(examples), [examples]);
+  const dnaScore = normalizeDnaScore(profile.detailScore);
+  const clusters = useMemo(() => analyzeArchetypeClusters(examples), [examples]);
+  const health = useMemo(() => analyzeCorpusHealth(examples, clusters, profile), [clusters, examples, profile]);
+  const outcomeSummary = useMemo(() => buildOutcomeSummary(outcomes, examples), [examples, outcomes]);
+  const templates = useMemo(() => buildPromptTemplates(profile), [profile]);
+  const promptPacks = useMemo(() => buildPromptPacks(profile, clusters), [clusters, profile]);
+  const styleGuide = useMemo(() => buildStyleGuide(profile, clusters, health), [clusters, health, profile]);
+  const codexSkill = useMemo(() => buildCodexSkill(profile, clusters, health, outcomes), [clusters, health, outcomes, profile]);
+  const analyzedExamples = useMemo(
+    () => examples.map((example) => ({ example, analysis: analyzePrompt(example.text) })),
+    [examples],
+  );
+  const allTags = useMemo(
+    () =>
+      Array.from(new Set(analyzedExamples.flatMap((item) => item.analysis.tags)))
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 30),
+    [analyzedExamples],
+  );
+  const filteredExamples = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return analyzedExamples.filter(({ analysis, example }) => {
+      const matchesTag = !activeTag || analysis.tags.includes(activeTag);
+      const matchesQuery =
+        !query ||
+        `${example.title} ${example.text} ${analysis.tags.join(" ")} ${analysis.archetypes
+          .map((match) => match.label)
+          .join(" ")}`
+          .toLowerCase()
+          .includes(query);
+      return matchesTag && matchesQuery;
+    });
+  }, [activeTag, analyzedExamples, searchQuery]);
+  const draftAnalysis = useMemo(
+    () => (draftPrompt.trim() ? analyzePrompt(draftPrompt, examples) : undefined),
+    [draftPrompt, examples],
+  );
+  const draftBatchCandidates = useMemo(
+    () => (draftPrompt.trim() ? parsePromptBatch(draftPrompt, "draft paste").slice(0, 24) : []),
+    [draftPrompt],
+  );
+  const selectedPrompt = examples.find((example) => example.id === selectedId) ?? examples[0];
+  const selectedAnalysis = useMemo(
+    () => (selectedPrompt ? analyzePrompt(selectedPrompt.text, examples.filter((item) => item.id !== selectedPrompt.id)) : undefined),
+    [examples, selectedPrompt],
+  );
+  const generatedPrompt = useMemo(
+    () => composeOutcomeAwarePrompt(profile, composeOptions, outcomes, examples),
+    [composeOptions, examples, outcomes, profile],
+  );
+  const evaluationSource = evaluationText.trim() || generatedPrompt;
+  const evaluation = useMemo(() => evaluatePrompt(evaluationSource), [evaluationSource]);
+  const rewrittenPrompt = useMemo(() => rewritePrompt(evaluationSource, profile), [evaluationSource, profile]);
+  const mixedPrompt = useMemo(() => mixArchetypes(profile, clusters, mixOptions, rubric), [clusters, mixOptions, profile, rubric]);
+  const recipePrompt = useMemo(() => buildRecipePrompt(profile, recipeOptions, rubric), [profile, recipeOptions, rubric]);
+  const rubricNotes = useMemo(() => buildRubricNotes(rubric), [rubric]);
+  const semanticResults = useMemo(() => searchSimilarPrompts(semanticQuery, examples, outcomes), [examples, outcomes, semanticQuery]);
+  const diffLeft = examples.find((example) => example.id === diffLeftId) ?? examples[0];
+  const diffRight = examples.find((example) => example.id === diffRightId) ?? examples[1] ?? examples[0];
+  const promptDiff = useMemo(
+    () => (diffLeft && diffRight ? diffPrompts(diffLeft, diffRight) : undefined),
+    [diffLeft, diffRight],
+  );
+  const qaSource = qaText.trim() || generatedPrompt;
+  const visualQa = useMemo(() => auditVisualPrompt(qaSource), [qaSource]);
+  const driftReport = useMemo(() => detectStyleDrift(qaSource, profile, health, outcomes), [health, outcomes, profile, qaSource]);
+  const interviewPrompt = useMemo(
+    () => composeInterviewPrompt(profile, interviewBrief, outcomes),
+    [interviewBrief, outcomes, profile],
+  );
+  const selectedScreenshot = useMemo(
+    () => screenshots.find((screenshot) => screenshot.promptId === selectedPrompt?.id),
+    [screenshots, selectedPrompt],
+  );
+  const selectedBuildRun = useMemo(
+    () => buildRuns.find((run) => run.promptId === selectedPrompt?.id),
+    [buildRuns, selectedPrompt],
+  );
+  const resultScore = useMemo(
+    () => scoreResultArtifact(selectedPrompt, selectedScreenshot, selectedBuildRun),
+    [selectedBuildRun, selectedPrompt, selectedScreenshot],
+  );
+  const selectedScreenshots = useMemo(
+    () => screenshots.filter((screenshot) => screenshot.promptId === selectedPrompt?.id),
+    [screenshots, selectedPrompt],
+  );
+  const runnerPlan = useMemo(
+    () => buildRunnerPlan(selectedPrompt, selectedBuildRun),
+    [selectedBuildRun, selectedPrompt],
+  );
+  const screenshotQa = useMemo(
+    () => scoreScreenshotSet(selectedPrompt, selectedScreenshots, selectedBuildRun),
+    [selectedBuildRun, selectedPrompt, selectedScreenshots],
+  );
+  const dnaCalibration = useMemo(
+    () => calibrateDnaScores(examples, outcomes, buildRuns, screenshots),
+    [buildRuns, examples, outcomes, screenshots],
+  );
+  const corpusCleaning = useMemo(
+    () => buildCorpusCleaningReport(examples, outcomes),
+    [examples, outcomes],
+  );
+  const failureMemory = useMemo(
+    () => buildFailureMemory(outcomes, buildRuns, screenshots),
+    [buildRuns, outcomes, screenshots],
+  );
+  const mutationSourceText = mutationSource.trim() || selectedPrompt?.text || generatedPrompt;
+  const promptMutations = useMemo(
+    () => mutatePromptVariants(mutationSourceText, profile, outcomes),
+    [mutationSourceText, outcomes, profile],
+  );
+  const improvedPrompt = useMemo(
+    () => improvePromptWithLearning(improveText.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
+    [generatedPrompt, improveText, outcomes, profile, resultScore, selectedPrompt],
+  );
+  const compiledPrompt = useMemo(
+    () => compilePromptFromBrief(compilerInput, profile, outcomes, resultScore),
+    [compilerInput, outcomes, profile, resultScore],
+  );
+  const tournament = useMemo(
+    () => buildPromptTournament(mutationSourceText, profile, outcomes, resultScore),
+    [mutationSourceText, outcomes, profile, resultScore],
+  );
+  const leaderboard = useMemo(() => rankPromptExamples(examples, outcomes), [examples, outcomes]);
+  const localIndex = useMemo(() => buildLocalEmbeddingIndex(examples, outcomes), [examples, outcomes]);
+  const vectorResults = useMemo(() => searchVectorPrompts(vectorQuery, examples, outcomes), [examples, outcomes, vectorQuery]);
+  const skillInstallPlan = useMemo(() => buildSkillInstallPlan(codexSkill), [codexSkill]);
+  const scoreBreakdown = useMemo(
+    () => scorePromptModel(selectedPrompt, resultScore, screenshotQa, dnaCalibration, failureMemory, scoreWeights),
+    [dnaCalibration, failureMemory, resultScore, screenshotQa, scoreWeights, selectedPrompt],
+  );
+  const dnaV2 = useMemo(() => scorePromptDnaV2(selectedPrompt, resultScore, screenshotQa), [resultScore, screenshotQa, selectedPrompt]);
+  const goldenRecipes = useMemo(() => distillGoldenRecipes(examples, outcomes, clusters), [clusters, examples, outcomes]);
+  const promptBattle = useMemo(
+    () => buildPromptBattle(mutationSourceText, profile, outcomes, resultScore),
+    [mutationSourceText, outcomes, profile, resultScore],
+  );
+  const repairedPrompt = useMemo(
+    () => repairPromptFromFailure(improveText.trim() || selectedPrompt?.text || generatedPrompt, profile, failureMemory, resultScore, outcomes),
+    [failureMemory, generatedPrompt, improveText, outcomes, profile, resultScore, selectedPrompt],
+  );
+  const wizardCompiled = useMemo(
+    () =>
+      compilePromptFromBrief(
+        {
+          ...compilerInput,
+          roughIdea: wizardIdea,
+        },
+        profile,
+        outcomes,
+        resultScore,
+      ),
+    [compilerInput, outcomes, profile, resultScore, wizardIdea],
+  );
+  const wizardBattle = useMemo(
+    () => buildPromptBattle(wizardCompiled.prompt, profile, outcomes, resultScore),
+    [outcomes, profile, resultScore, wizardCompiled],
+  );
+  const promptMemory = useMemo(
+    () =>
+      buildPromptMemoryExport({
+        clusters,
+        examples,
+        failureMemory,
+        health,
+        index: localIndex,
+        outcomes,
+        profile,
+        scoreWeights,
+      }),
+    [clusters, examples, failureMemory, health, localIndex, outcomes, profile, scoreWeights],
+  );
+  const goldReview = useMemo(
+    () =>
+      buildGoldReviewReport({
+        buildRuns,
+        examples,
+        leftId: diffLeftId,
+        outcomes,
+        rightId: diffRightId,
+        screenshots,
+      }),
+    [buildRuns, diffLeftId, diffRightId, examples, outcomes, screenshots],
+  );
+  const winExplanation = useMemo(
+    () => explainPromptWin(diffLeft, diffRight, outcomes, buildRuns, screenshots),
+    [buildRuns, diffLeft, diffRight, outcomes, screenshots],
+  );
+  const qualityGate = useMemo(
+    () => buildQualityGateReport(selectedPrompt, resultScore, screenshotQa),
+    [resultScore, screenshotQa, selectedPrompt],
+  );
+  const datasetComparison = useMemo(() => compareDatasetVersions(datasetVersions), [datasetVersions]);
+  const generatorPresets = useMemo(
+    () => buildGeneratorPresets(profile, clusters, outcomes, resultScore),
+    [clusters, outcomes, profile, resultScore],
+  );
+  const resultGallery = useMemo(
+    () => buildResultGallery(examples, buildRuns, screenshots),
+    [buildRuns, examples, screenshots],
+  );
+  const reusableMemoryPack = useMemo(
+    () =>
+      buildReusableMemoryPack({
+        failureMemory,
+        generatorPresets,
+        goldenRecipes,
+        promptMemory,
+        qualityGate,
+      }),
+    [failureMemory, generatorPresets, goldenRecipes, promptMemory, qualityGate],
+  );
+  const derivedLineage = useMemo(
+    () => buildPromptLineage(selectedPrompt, history, buildRuns, outcomes, screenshots),
+    [buildRuns, history, outcomes, screenshots, selectedPrompt],
+  );
+  const selectedLineage = useMemo(() => {
+    const promptNodes = lineageNodes.filter((node) => !selectedPrompt || node.promptId === selectedPrompt.id);
+    const byId = new Map([...derivedLineage, ...promptNodes].map((node) => [node.id, node]));
+    return Array.from(byId.values()).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  }, [derivedLineage, lineageNodes, selectedPrompt]);
+  const queueExport = useMemo(() => exportBuildQueue(queueJobs), [queueJobs]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fallback: StoredCollections = {
+      userPrompts,
+      history,
+      outcomes,
+      screenshots,
+      buildRuns,
+      queueJobs,
+      lineage: lineageNodes,
+    };
+
+    const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
+      if (cancelled) return;
+      if (Array.isArray(stored.userPrompts)) setUserPrompts(stored.userPrompts as PromptExample[]);
+      if (Array.isArray(stored.history)) setHistory(stored.history as PromptVersion[]);
+      if (Array.isArray(stored.outcomes)) setOutcomes(stored.outcomes as OutcomeRecord[]);
+      if (Array.isArray(stored.screenshots)) setScreenshots(stored.screenshots as ScreenshotRecord[]);
+      if (Array.isArray(stored.buildRuns)) setBuildRuns(stored.buildRuns as BuildRunRecord[]);
+      if (Array.isArray(stored.queueJobs)) setQueueJobs(stored.queueJobs as BuildQueueJob[]);
+      if (Array.isArray(stored.lineage)) setLineageNodes(stored.lineage as PromptLineageNode[]);
+    };
+
+    async function hydrate() {
+      try {
+        const [healthResult, collectionResult] = await Promise.all([getApiHealth(), getApiCollections()]);
+        if (cancelled) return;
+        setApiHealth(healthResult);
+        const hasSqliteData = Object.values(collectionResult.collections).some((value) => Array.isArray(value) && value.length > 0);
+        if (hasSqliteData) {
+          applyCollections(collectionResult.collections as Partial<Record<keyof StoredCollections, unknown>>);
+          setDbReady(true);
+          setDbStatus("SQLite source of truth ready");
+          setApiNotice(`Loaded from SQLite: ${healthResult.sqlitePath}`);
+          return;
+        }
+        setApiNotice("SQLite online but empty; using browser fallback until first autosync.");
+      } catch (error) {
+        if (!cancelled) setApiNotice(`API offline; using browser fallback. ${error instanceof Error ? error.message : ""}`.trim());
+      }
+
+      const stored = await readAllCollections(fallback);
+      applyCollections(stored);
+      if (cancelled) return;
+      setDbReady(true);
+      setDbStatus("IndexedDB fallback ready");
+    }
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/attachment-prompts.json")
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then((payload: { prompts?: PromptExample[] } | undefined) => {
+        if (cancelled || !Array.isArray(payload?.prompts)) return;
+        setAttachmentExamples(payload.prompts.filter((prompt) => prompt?.text && prompt?.title));
+      })
+      .catch(() => {
+        if (!cancelled) setAttachmentExamples([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(userPrompts));
+    void writeCollection("userPrompts", userPrompts);
+  }, [dbReady, userPrompts]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    void writeCollection("history", history);
+  }, [dbReady, history]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(OUTCOME_KEY, JSON.stringify(outcomes));
+    void writeCollection("outcomes", outcomes);
+  }, [dbReady, outcomes]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(SCREENSHOT_KEY, JSON.stringify(screenshots));
+    void writeCollection("screenshots", screenshots);
+  }, [dbReady, screenshots]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(BUILD_RUN_KEY, JSON.stringify(buildRuns));
+    void writeCollection("buildRuns", buildRuns);
+  }, [buildRuns, dbReady]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(QUEUE_KEY, JSON.stringify(queueJobs));
+    void writeCollection("queueJobs", queueJobs);
+  }, [dbReady, queueJobs]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(LINEAGE_KEY, JSON.stringify(lineageNodes));
+    void writeCollection("lineage", lineageNodes);
+  }, [dbReady, lineageNodes]);
+
+  useEffect(() => {
+    if (!dbReady || !apiHealth?.ok) return;
+    const timer = window.setTimeout(() => {
+      void syncCollections({
+        userPrompts,
+        history,
+        outcomes,
+        screenshots,
+        buildRuns,
+        queueJobs,
+        lineage: lineageNodes,
+      })
+        .then(() => setDbStatus("SQLite autosaved"))
+        .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [apiHealth?.ok, buildRuns, dbReady, history, lineageNodes, outcomes, queueJobs, screenshots, userPrompts]);
+
+  useEffect(() => {
+    if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
+  }, [examples, selectedPrompt]);
+
+  useEffect(() => {
+    void getModelSettings()
+      .then((settings) => setModelEnvStatus(settings as Record<string, boolean>))
+      .catch(() => setModelEnvStatus(undefined));
+  }, []);
+
+  function addLineageNode(node: PromptLineageNode) {
+    setLineageNodes((current) => [node, ...current.filter((item) => item.id !== node.id)].slice(0, 160));
+  }
+
+  function addDraftPrompt() {
+    if (!draftPrompt.trim()) return;
+    const duplicate = detectDuplicatePrompt(draftPrompt, examples);
+    if (duplicate.kind === "exact") {
+      setImportNotice(`Skipped exact duplicate: ${duplicate.match?.title ?? "already in corpus"}`);
+      return;
+    }
+    const prompt = makePrompt(draftPrompt);
+    setUserPrompts((current) => [prompt, ...current]);
+    setSelectedId(prompt.id);
+    setImportNotice(duplicate.kind === "near" ? `Added, but it is close to: ${duplicate.match?.title}` : "Added prompt to corpus.");
+    addLineageNode({
+      id: `lineage-added-${prompt.id}`,
+      parentId: null,
+      promptId: prompt.id,
+      kind: "source",
+      title: prompt.title,
+      score: evaluatePrompt(prompt.text).score,
+      status: "added",
+      detail: "Prompt added to the persistent corpus.",
+      createdAt: prompt.createdAt,
+    });
+    setDraftPrompt("");
+  }
+
+  function addPromptCandidates(candidates: ReturnType<typeof parsePromptBatch>, label = "batch") {
+    const imported: PromptExample[] = [];
+    const skipped: string[] = [];
+    const comparisonPool = [...examples];
+    const now = Date.now();
+
+    for (const [index, candidate] of candidates.entries()) {
+      const duplicate = detectDuplicatePrompt(candidate.text, [...comparisonPool, ...imported]);
+      if (duplicate.kind === "exact") {
+        skipped.push(candidate.title);
+        continue;
+      }
+      const prompt: PromptExample = {
+        id: `user-${slugify(candidate.title) || "prompt"}-${now}-${index}`,
+        title: candidate.title,
+        text: candidate.text,
+        source: "user",
+        createdAt: new Date(now + index).toISOString(),
+      };
+      imported.push(prompt);
+    }
+
+    if (!imported.length) {
+      setImportNotice(`No new prompts found in ${label}. ${skipped.length ? `Skipped ${skipped.length} duplicate(s).` : ""}`.trim());
+      return;
+    }
+
+    setUserPrompts((current) => [...imported, ...current]);
+    setSelectedId(imported[0].id);
+    for (const prompt of imported.slice(0, 12)) {
+      addLineageNode({
+        id: `lineage-bulk-${prompt.id}`,
+        parentId: null,
+        promptId: prompt.id,
+        kind: "source",
+        title: prompt.title,
+        score: evaluatePrompt(prompt.text).score,
+        status: "bulk-imported",
+        detail: `Imported from ${label}.`,
+        createdAt: prompt.createdAt,
+      });
+    }
+    setImportNotice(`Imported ${imported.length} prompt(s) from ${label}. Skipped ${skipped.length} duplicate(s).`);
+  }
+
+  function addDraftPromptBatch() {
+    if (!draftBatchCandidates.length) return;
+    addPromptCandidates(draftBatchCandidates, "draft batch");
+    setDraftPrompt("");
+  }
+
+  async function importPromptFiles(files: FileList | null | undefined) {
+    if (!files?.length) return;
+    const candidates = (
+      await Promise.all(
+        Array.from(files).map(async (file) => {
+          const text = await file.text();
+          return parsePromptBatch(text, file.name);
+        }),
+      )
+    ).flat();
+    addPromptCandidates(candidates, `${files.length} file(s)`);
+  }
+
+  async function importJsonFile(file: File | undefined) {
+    if (!file) return;
+    try {
+      const imported = importCorpus(await file.text());
+      const unique = imported.filter((prompt) => detectDuplicatePrompt(prompt.text, examples).kind !== "exact");
+      setUserPrompts((current) => [...unique, ...current]);
+      if (unique[0]) setSelectedId(unique[0].id);
+      setImportNotice(`Imported ${unique.length} prompts. Skipped ${imported.length - unique.length} duplicates.`);
+    } catch {
+      setImportNotice("Could not import that JSON corpus.");
+    }
+  }
+
+  function exportJson() {
+    downloadText(`prompt-atelier-corpus-${examples.length}.json`, exportCorpus(examples), "application/json");
+  }
+
+  function removePrompt(id: string) {
+    setUserPrompts((current) => current.filter((prompt) => prompt.id !== id));
+    if (selectedId === id) setSelectedId(seedPrompts[0]?.id ?? "");
+  }
+
+  function saveVersion(kind: PromptVersion["kind"], title: string, text: string, score?: number) {
+    const normalized = text.trim();
+    if (!normalized) return;
+    const version: PromptVersion = {
+      id: `${kind}-${Date.now()}`,
+      kind,
+      title,
+      text: normalized,
+      score,
+      createdAt: new Date().toISOString(),
+    };
+    setHistory((current) => [version, ...current].slice(0, 80));
+    if (selectedPrompt) {
+      addLineageNode({
+        id: `lineage-version-${version.id}`,
+        parentId: `lineage-source-${selectedPrompt.id}`,
+        promptId: selectedPrompt.id,
+        kind:
+          kind === "mutation"
+            ? "mutation"
+            : kind === "compiled"
+              ? "compiled"
+              : kind === "tournament"
+                ? "tournament"
+                : kind === "build-run"
+                  ? "build"
+                  : "improved",
+        title,
+        score: score ?? evaluatePrompt(normalized).score,
+        status: kind,
+        detail: `${countWords(normalized)} words saved from ${kind}.`,
+        createdAt: version.createdAt,
+      });
+    }
+    setCopied(`saved-${kind}`);
+    window.setTimeout(() => setCopied(""), 1200);
+  }
+
+  function removeVersion(id: string) {
+    setHistory((current) => current.filter((version) => version.id !== id));
+  }
+
+  function updateOutcome(prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) {
+    const now = new Date().toISOString();
+    setOutcomes((current) => {
+      const existing = current.find((outcome) => outcome.promptId === prompt.id);
+      if (existing) {
+        return current.map((outcome) =>
+          outcome.promptId === prompt.id ? { ...outcome, ...patch, title: prompt.title, updatedAt: now } : outcome,
+        );
+      }
+      return [
+        {
+          promptId: prompt.id,
+          title: prompt.title,
+          rating: patch.rating ?? "unrated",
+          status: patch.status ?? "unrated",
+          notes: patch.notes ?? "",
+          createdAt: now,
+          updatedAt: now,
+        },
+        ...current,
+      ];
+    });
+    addLineageNode({
+      id: `lineage-outcome-${prompt.id}-${now}`,
+      parentId: `lineage-source-${prompt.id}`,
+      promptId: prompt.id,
+      kind: "outcome",
+      title: prompt.title,
+      score: patch.rating === "great" || patch.status === "gold" ? 92 : patch.rating === "bad" || patch.status === "avoid" ? 24 : 58,
+      status: `${patch.rating ?? "same"}/${patch.status ?? "same"}`,
+      detail: patch.notes ?? "Outcome updated.",
+      createdAt: now,
+    });
+  }
+
+  function addScreenshot(record: Omit<ScreenshotRecord, "id" | "createdAt">) {
+    const normalized = record.url.trim();
+    if (!normalized) return;
+    setScreenshots((current) => [
+      {
+        ...record,
+        url: normalized,
+        id: `screenshot-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+      },
+      ...current,
+    ]);
+    addLineageNode({
+      id: `lineage-screenshot-${Date.now()}`,
+      parentId: `lineage-source-${record.promptId}`,
+      promptId: record.promptId,
+      kind: "screenshot",
+      title: record.title,
+      score: record.rating === "great" ? 88 : record.rating === "okay" ? 64 : record.rating === "bad" ? 26 : 52,
+      status: record.rating,
+      detail: record.notes || normalized,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  function removeScreenshot(id: string) {
+    setScreenshots((current) => current.filter((screenshot) => screenshot.id !== id));
+  }
+
+  function addBuildRun(prompt: PromptExample, fields: Omit<BuildRunRecord, "id" | "promptId" | "promptTitle" | "promptText" | "score" | "failureCategories" | "createdAt" | "updatedAt">) {
+    const now = new Date().toISOString();
+    const draftRun: BuildRunRecord = {
+      ...fields,
+      id: `build-${Date.now()}`,
+      promptId: prompt.id,
+      promptTitle: prompt.title,
+      promptText: prompt.text,
+      score: 0,
+      failureCategories: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    const scored = scoreResultArtifact(prompt, undefined, draftRun);
+    const run = {
+      ...draftRun,
+      score: scored.score,
+      failureCategories: scored.failureCategories,
+    };
+    setBuildRuns((current) => [run, ...current].slice(0, 80));
+    addLineageNode({
+      id: `lineage-run-${run.id}`,
+      parentId: `lineage-source-${prompt.id}`,
+      promptId: prompt.id,
+      kind: "build",
+      title: prompt.title,
+      score: run.score,
+      status: run.status,
+      detail: run.resultUrl || run.folderPath || run.notes || "Build run recorded.",
+      createdAt: run.createdAt,
+    });
+  }
+
+  function removeBuildRun(id: string) {
+    setBuildRuns((current) => current.filter((run) => run.id !== id));
+  }
+
+  function queueTournamentFinalists() {
+    if (!selectedPrompt) return;
+    const jobs = tournament.finalists.map((variant) => createBuildQueueJob(selectedPrompt, variant, selectedBuildRun?.resultUrl || "http://127.0.0.1:5173"));
+    setQueueJobs((current) => [...jobs, ...current].slice(0, 80));
+    for (const job of jobs) {
+      addLineageNode({
+        id: `lineage-queue-${job.id}`,
+        parentId: `lineage-source-${selectedPrompt.id}`,
+        promptId: selectedPrompt.id,
+        kind: "tournament",
+        title: job.variantTitle,
+        score: job.score,
+        status: job.status,
+        detail: `Queued for autonomous run in ${job.runFolder}.`,
+        createdAt: job.createdAt,
+      });
+    }
+    setCopied("queued-tournament");
+    window.setTimeout(() => setCopied(""), 1200);
+  }
+
+  function queueBattleVariants(battle: PromptBattle, label = "battle") {
+    if (!selectedPrompt) return;
+    const jobs = battle.variants.map((variant) => createBuildQueueJob(selectedPrompt, variant, selectedBuildRun?.resultUrl || "http://127.0.0.1:5173"));
+    setQueueJobs((current) => [...jobs, ...current].slice(0, 120));
+    for (const job of jobs) {
+      addLineageNode({
+        id: `lineage-${label}-${job.id}`,
+        parentId: `lineage-source-${selectedPrompt.id}`,
+        promptId: selectedPrompt.id,
+        kind: "tournament",
+        title: job.variantTitle,
+        score: job.score,
+        status: "battle-queued",
+        detail: `Queued by ${label} in ${job.runFolder}.`,
+        createdAt: job.createdAt,
+      });
+    }
+    setApiNotice(`Queued ${jobs.length} ${label} variant(s).`);
+  }
+
+  function createDatasetVersion() {
+    const version = createDatasetVersionSnapshot({
+      buildRuns,
+      examples,
+      label: `v${datasetVersions.length + 1}`,
+      outcomes,
+      score: scoreBreakdown,
+      screenshots,
+    });
+    setDatasetVersions((current) => [version, ...current].slice(0, 20));
+    setApiNotice(`Created dataset version ${version.label}.`);
+  }
+
+  function applyGoldReview() {
+    const winner = examples.find((example) => example.id === goldReview.winnerId);
+    const loser = examples.find((example) => example.id === goldReview.loserId);
+    if (winner) {
+      updateOutcome(winner, {
+        rating: "great",
+        status: "gold",
+        notes: `Gold review winner. ${goldReview.learningUpdates.join(" ")}`,
+      });
+    }
+    if (loser) {
+      updateOutcome(loser, {
+        rating: "bad",
+        status: "avoid",
+        notes: `Gold review loser. Compare against ${winner?.title ?? "winner"} before reusing this pattern.`,
+      });
+    }
+    setApiNotice(winner ? `Marked ${winner.title} gold${loser ? ` and ${loser.title} avoid` : ""}.` : "No review winner selected.");
+  }
+
+  function applyGeneratorPreset(preset: GeneratorPreset) {
+    setWizardIdea(preset.bestFor);
+    setCompilerInput((current) => ({
+      ...current,
+      roughIdea: preset.bestFor,
+      brandName: preset.title.replace(/[^A-Za-z0-9]+/g, " ").trim() || current.brandName,
+      siteType: preset.archetype.includes("Section") ? "marketing section" : "single-page landing hero",
+      visualDirection: preset.signals.join(", ") || current.visualDirection,
+    }));
+    setActiveTrainStage("Wizard");
+    setApiNotice(`Loaded ${preset.title} into the one-click wizard.`);
+  }
+
+  function applyProviderPreset(kind: "local" | "openai-compatible" | "codex-agent" | "scaffold-build") {
+    setModelSettings((current) => {
+      if (kind === "local") {
+        return { ...current, endpoint: "", apiKey: "", model: "local-fallback", temperature: 0.2 };
+      }
+      if (kind === "openai-compatible") {
+        return {
+          ...current,
+          endpoint: current.endpoint || "http://127.0.0.1:8788/evaluate",
+          model: current.model === "local-fallback" ? "gpt-5" : current.model,
+          temperature: 0.2,
+        };
+      }
+      if (kind === "codex-agent") {
+        return {
+          ...current,
+          agentCommand: current.agentCommand || "codex exec --full-auto --prompt-file codex-task.md",
+        };
+      }
+      return {
+        ...current,
+        buildCommand: current.buildCommand || "npm run build",
+      };
+    });
+    setApiNotice(`Applied ${kind} provider preset.`);
+  }
+
+  function exportReusableMemoryPack() {
+    downloadText("website-prompt-memory-pack.md", reusableMemoryPack.markdown, "text/markdown");
+    downloadText("website-prompt-memory-pack.json", reusableMemoryPack.json, "application/json");
+    setApiNotice("Exported reusable memory pack as markdown and JSON.");
+  }
+
+  async function runAutonomousBattle() {
+    if (!selectedPrompt) return;
+    const jobs = promptBattle.variants.map((variant) =>
+      createBuildQueueJob(selectedPrompt, variant, selectedBuildRun?.resultUrl || "http://127.0.0.1:5173"),
+    );
+    setQueueJobs((current) => [...jobs, ...current].slice(0, 140));
+    try {
+      const result = await runQueue(
+        { jobs },
+        "",
+        {
+          agentCommand: modelSettings.agentCommand,
+          buildCommand: modelSettings.buildCommand || "npm run build",
+          scaffold: true,
+        },
+      );
+      const parsed = result.parsed as { results?: (Partial<BuildRunRecord> & { variantTitle?: string; runFolder?: string })[] } | null;
+      const normalizedRuns = (parsed?.results ?? []).map((raw) => {
+        const now = new Date().toISOString();
+        const rawStatus = String(raw.status || "");
+        const run: BuildRunRecord = {
+          id: raw.id || `auto-battle-${Date.now()}`,
+          promptId: raw.promptId || selectedPrompt.id,
+          promptTitle: raw.promptTitle || raw.variantTitle || selectedPrompt.title,
+          promptText: raw.promptText || selectedPrompt.text,
+          status: rawStatus === "passed" || rawStatus === "failed" || rawStatus === "needs-review" ? rawStatus : rawStatus === "completed" ? "passed" : "needs-review",
+          resultUrl: raw.resultUrl || "",
+          folderPath: raw.folderPath || raw.runFolder || "",
+          screenshotUrl: raw.screenshotUrl || "",
+          filesChanged: raw.filesChanged || "",
+          errors: raw.errors || "",
+          notes: raw.notes || "Autonomous battle scaffold/build result.",
+          score: 0,
+          failureCategories: [],
+          createdAt: raw.createdAt || now,
+          updatedAt: raw.updatedAt || now,
+        };
+        const scored = scoreResultArtifact(selectedPrompt, undefined, run);
+        return { ...run, score: scored.score, failureCategories: scored.failureCategories };
+      });
+      if (normalizedRuns.length) {
+        setBuildRuns((current) => [...normalizedRuns, ...current.filter((run) => !normalizedRuns.some((item) => item.id === run.id))].slice(0, 120));
+        for (const run of normalizedRuns) {
+          addLineageNode({
+            id: `lineage-auto-battle-${run.id}`,
+            parentId: `lineage-source-${selectedPrompt.id}`,
+            promptId: selectedPrompt.id,
+            kind: "build",
+            title: run.promptTitle,
+            score: run.score,
+            status: run.status,
+            detail: run.folderPath || run.resultUrl || "Autonomous battle run.",
+            createdAt: run.updatedAt,
+          });
+        }
+      }
+      const winner = [...normalizedRuns].sort((a, b) => b.score - a.score)[0];
+      setAutoBattleResult({
+        ok: result.ok,
+        processed: normalizedRuns.length,
+        winner: winner?.promptTitle ?? promptBattle.winner.title,
+        winnerScore: winner?.score ?? promptBattle.winner.score,
+        results: normalizedRuns.map((run) => ({ title: run.promptTitle, score: run.score, status: run.status })),
+      });
+      setApiNotice(result.ok ? `Autonomous battle processed ${normalizedRuns.length || jobs.length} variant(s).` : result.stderr || "Autonomous battle failed.");
+    } catch (error) {
+      setAutoBattleResult({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      setApiNotice(`Autonomous battle failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function removeQueueJob(id: string) {
+    setQueueJobs((current) => current.filter((job) => job.id !== id));
+  }
+
+  function exportQueue() {
+    downloadText("prompt-lab-queue.json", queueExport, "application/json");
+  }
+
+  async function checkApi() {
+    try {
+      const health = await getApiHealth();
+      setApiHealth(health);
+      setApiNotice(`API online: ${health.sqlitePath}`);
+    } catch (error) {
+      setApiHealth(undefined);
+      setApiNotice(`API offline. Start it with npm run api. ${error instanceof Error ? error.message : ""}`.trim());
+    }
+  }
+
+  async function syncToApi() {
+    try {
+      const payload = {
+        userPrompts,
+        history,
+        outcomes,
+        screenshots,
+        buildRuns,
+        queueJobs,
+        lineage: lineageNodes,
+      };
+      await syncCollections(payload);
+      setApiNotice("Synced browser state to SQLite.");
+      void checkApi();
+    } catch (error) {
+      setApiNotice(`Sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function exportTrainingSnapshot() {
+    try {
+      const snapshot = await getTrainingSnapshot();
+      downloadText(`prompt-atelier-training-snapshot-${Date.now()}.json`, JSON.stringify(snapshot, null, 2), "application/json");
+      setApiNotice("Downloaded full training snapshot from SQLite.");
+    } catch (error) {
+      const fallback = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        source: "browser-fallback",
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes },
+        skill: codexSkill,
+        promptMemory,
+        scoring: { scoreWeights, scoreBreakdown },
+        failureMemory,
+        corpusCleaning,
+        localIndex,
+      };
+      downloadText(`prompt-atelier-training-snapshot-${Date.now()}.json`, JSON.stringify(fallback, null, 2), "application/json");
+      setApiNotice(`API snapshot unavailable; downloaded browser fallback. ${error instanceof Error ? error.message : ""}`.trim());
+    }
+  }
+
+  async function installSkillFromApi() {
+    try {
+      const result = await installSkill(codexSkill);
+      setApiHealth((current) => (current ? { ...current, skill: result.skill } : current));
+      setApiNotice(`Installed skill to ${result.skill.path}`);
+    } catch (error) {
+      setApiNotice(`Skill install failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function runQueueViaApi() {
+    try {
+      const result = await runQueue(JSON.parse(queueExport), "", {
+        agentCommand: modelSettings.agentCommand,
+        buildCommand: modelSettings.buildCommand,
+        scaffold: true,
+      });
+      setApiNotice(result.ok ? "API processed queue and scaffolded build folders. Import queue-result.json outputs to train." : result.stderr || "Queue run failed.");
+    } catch (error) {
+      setApiNotice(`Queue run failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function captureSelectedResult() {
+    if (!selectedPrompt) return;
+    const url = selectedBuildRun?.resultUrl || "http://127.0.0.1:5173";
+    try {
+      const out = selectedBuildRun?.folderPath ? `${selectedBuildRun.folderPath}/screenshots` : "output/playwright/prompt-atelier-selected";
+      const result = await captureResult(url, out);
+      const parsed = result.parsed as
+        | {
+            desktop?: { path?: string };
+            mobile?: { path?: string };
+            notes?: string[];
+            score?: number;
+          }
+        | null;
+      const rating: OutcomeRating = parsed?.score && parsed.score >= 75 ? "great" : "okay";
+      if (parsed?.desktop?.path) {
+        addScreenshot({
+          promptId: selectedPrompt.id,
+          title: `${selectedPrompt.title} desktop capture`,
+          url: parsed.desktop.path,
+          notes: parsed.notes?.join(" ") || `Captured from ${url}`,
+          rating,
+        });
+      }
+      if (parsed?.mobile?.path) {
+        addScreenshot({
+          promptId: selectedPrompt.id,
+          title: `${selectedPrompt.title} mobile capture`,
+          url: parsed.mobile.path,
+          notes: parsed.notes?.join(" ") || `Captured from ${url}`,
+          rating,
+        });
+      }
+      setApiNotice(result.ok ? `Captured screenshots from ${url}.` : result.stderr || "Capture failed.");
+    } catch (error) {
+      setApiNotice(`Capture failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function analyzeSelectedVisuals() {
+    const files = [
+      selectedBuildRun?.screenshotUrl,
+      ...selectedScreenshots.map((screenshot) => screenshot.url),
+    ].filter(Boolean) as string[];
+    if (!files.length) {
+      setApiNotice("No screenshot paths available for visual analysis.");
+      return;
+    }
+    try {
+      const result = await analyzeScreenshots(files.slice(0, 4));
+      setVisualAnalysisResult((result.parsed as Record<string, unknown>) ?? { stdout: result.stdout });
+      setApiNotice(result.ok ? "Pixel-level screenshot analysis complete." : result.stderr || "Visual analysis failed.");
+    } catch (error) {
+      setApiNotice(`Visual analysis failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function importResultJson() {
+    try {
+      const parsed = JSON.parse(resultImportText) as unknown;
+      let normalized:
+        | {
+            buildRun: BuildRunRecord;
+            screenshot: ScreenshotRecord | null;
+            lineage: PromptLineageNode;
+          }
+        | undefined;
+      try {
+        normalized = await importResult<BuildRunRecord, ScreenshotRecord, PromptLineageNode>(parsed);
+      } catch {
+        normalized = undefined;
+      }
+      if (normalized?.buildRun) {
+        setBuildRuns((current) => [normalized.buildRun, ...current.filter((run) => run.id !== normalized?.buildRun.id)].slice(0, 100));
+        if (normalized.screenshot) setScreenshots((current) => [normalized!.screenshot!, ...current].slice(0, 100));
+        addLineageNode(normalized.lineage);
+        setApiNotice("Imported result through API and updated local state.");
+      } else {
+        const raw = parsed as Partial<BuildRunRecord> & { runFolder?: string; variantTitle?: string };
+        const now = new Date().toISOString();
+        const buildRun: BuildRunRecord = {
+          id: raw.id || `import-${Date.now()}`,
+          promptId: raw.promptId || selectedPrompt?.id || `imported-${Date.now()}`,
+          promptTitle: raw.promptTitle || raw.variantTitle || selectedPrompt?.title || "Imported result",
+          promptText: raw.promptText || selectedPrompt?.text || "",
+          status: raw.status === "passed" || raw.status === "failed" || raw.status === "needs-review" ? raw.status : "needs-review",
+          resultUrl: raw.resultUrl || "",
+          folderPath: raw.folderPath || raw.runFolder || "",
+          screenshotUrl: raw.screenshotUrl || "",
+          filesChanged: raw.filesChanged || "",
+          errors: raw.errors || "",
+          notes: raw.notes || "Imported from queue-result.json.",
+          score: Number(raw.score || 0),
+          failureCategories: raw.failureCategories || [],
+          createdAt: raw.createdAt || now,
+          updatedAt: raw.updatedAt || now,
+        };
+        setBuildRuns((current) => [buildRun, ...current.filter((run) => run.id !== buildRun.id)].slice(0, 100));
+        addLineageNode({
+          id: `lineage-import-${buildRun.id}`,
+          parentId: `lineage-source-${buildRun.promptId}`,
+          promptId: buildRun.promptId,
+          kind: "build",
+          title: buildRun.promptTitle,
+          score: buildRun.score,
+          status: buildRun.status,
+          detail: buildRun.resultUrl || buildRun.folderPath || "Imported build result.",
+          createdAt: buildRun.updatedAt,
+        });
+        setApiNotice("Imported result locally.");
+      }
+      setResultImportText("");
+    } catch (error) {
+      setApiNotice(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function runModelEvaluation() {
+    if (!selectedPrompt) return;
+    try {
+      const result = await evaluateWithModel({
+        prompt: selectedPrompt.text,
+        memory: promptMemory.markdown,
+        context: {
+          selectedTitle: selectedPrompt.title,
+          scoreWeights,
+          scoreBreakdown,
+        },
+        settings: {
+          endpoint: modelSettings.endpoint,
+          apiKey: modelSettings.apiKey,
+          model: modelSettings.model,
+          temperature: modelSettings.temperature,
+        },
+      });
+      setModelEvaluation(result);
+      setModelNotice(`Model evaluation complete: ${String(result.mode || "local")}`);
+    } catch (error) {
+      setModelNotice(`Model evaluation failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function copyText(value: string, key: string) {
+    await navigator.clipboard.writeText(value);
+    setCopied(key);
+    window.setTimeout(() => setCopied(""), 1200);
+  }
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand-mark" aria-hidden="true">
+          <Sparkles size={22} />
+        </div>
+        <div>
+          <p className="eyebrow">Prompt learning workbench</p>
+          <h1>Website prompt learner</h1>
+        </div>
+        <div className="topbar-actions" aria-label="Corpus metrics">
+          <Metric value={formatNumber(profile.exampleCount)} label="Examples" />
+          <Metric value={formatNumber(clusters.length)} label="Archetypes" />
+          <Metric value={addPercent(dnaScore)} label="DNA score" />
+        </div>
+      </header>
+
+      <main className="workspace">
+        <aside className="panel left-panel">
+          <div className="panel-header">
+            <BookOpen size={18} />
+            <h2>Training corpus</h2>
+          </div>
+
+          <div className="import-box">
+            <textarea
+              value={draftPrompt}
+              onChange={(event) => setDraftPrompt(event.target.value)}
+              placeholder="Paste another excellent website prompt here..."
+            />
+            {draftAnalysis ? <SmartIngestion analysis={draftAnalysis} /> : null}
+            {draftBatchCandidates.length > 1 ? <BatchIngestionPreview candidates={draftBatchCandidates} /> : null}
+            <div className="import-actions">
+              <label className="file-button">
+                <Upload size={15} />
+                Prompt
+                <input
+                  type="file"
+                  accept=".txt,.md,text/plain"
+                  multiple
+                  onChange={(event) => {
+                    void importPromptFiles(event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              <label className="file-button">
+                <Upload size={15} />
+                JSON
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(event) => {
+                    void importJsonFile(event.target.files?.[0]);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={addDraftPrompt}
+                disabled={draftAnalysis?.duplicate.kind === "exact"}
+              >
+                <Plus size={15} />
+                Add
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={addDraftPromptBatch}
+                disabled={draftBatchCandidates.length < 2}
+              >
+                <PackageOpen size={15} />
+                Add batch
+              </button>
+            </div>
+            <div className="output-actions">
+              <button className="ghost-button" type="button" onClick={exportJson}>
+                <Download size={15} />
+                Export corpus
+              </button>
+            </div>
+            {importNotice ? <p className="selected-meta">{importNotice}</p> : null}
+          </div>
+
+          <div className="library-tools">
+            <label className="search-field">
+              <Search size={15} />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search prompts, effects, stacks..."
+              />
+            </label>
+            <div className="tagbar">
+              <button className={!activeTag ? "active" : ""} type="button" onClick={() => setActiveTag("")}>
+                All
+              </button>
+              {allTags.slice(0, 12).map((tag) => (
+                <button
+                  className={activeTag === tag ? "active" : ""}
+                  key={tag}
+                  type="button"
+                  onClick={() => setActiveTag(tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="prompt-list" aria-label="Prompt examples">
+            {filteredExamples.map(({ analysis, example }) => (
+              <button
+                className={`prompt-row ${example.id === selectedPrompt?.id ? "active" : ""}`}
+                key={example.id}
+                type="button"
+                onClick={() => setSelectedId(example.id)}
+              >
+                <span className="source-dot" data-source={example.source} />
+                <span>
+                  <strong>{example.title}</strong>
+                  <small>
+                    {countWords(example.text)} words - {analysis.archetypes[0]?.label ?? "unclustered"}
+                  </small>
+                  <span className="row-tags">{analysis.tags.slice(0, 3).join(" / ")}</span>
+                </span>
+                {example.source === "user" ? (
+                  <span
+                    className="remove"
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removePrompt(example.id);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        removePrompt(example.id);
+                      }
+                    }}
+                    aria-label={`Remove ${example.title}`}
+                  >
+                    <Trash2 size={14} />
+                  </span>
+                ) : (
+                  <span aria-hidden="true" />
+                )}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <section className="center-panel">
+          <nav className="tabs" aria-label="Workspace tabs">
+            <TabButton active={tab === "learn"} icon={<BarChart3 size={16} />} onClick={() => setTab("learn")}>
+              Learn
+            </TabButton>
+            <TabButton active={tab === "compose"} icon={<Wand2 size={16} />} onClick={() => setTab("compose")}>
+              Compose
+            </TabButton>
+            <TabButton active={tab === "critic"} icon={<Gauge size={16} />} onClick={() => setTab("critic")}>
+              Critic
+            </TabButton>
+            <TabButton active={tab === "templates"} icon={<FileText size={16} />} onClick={() => setTab("templates")}>
+              Templates
+            </TabButton>
+            <TabButton active={tab === "lab"} icon={<SlidersHorizontal size={16} />} onClick={() => setTab("lab")}>
+              Lab
+            </TabButton>
+            <TabButton active={tab === "train"} icon={<Sparkles size={16} />} onClick={() => setTab("train")}>
+              Train
+            </TabButton>
+          </nav>
+
+          {tab === "learn" ? (
+            <LearnView
+              clusters={clusters}
+              dnaScore={dnaScore}
+              profile={profile}
+              selectedAnalysis={selectedAnalysis}
+              selectedPrompt={selectedPrompt}
+            />
+          ) : tab === "compose" ? (
+            <ComposeView
+              clusters={clusters}
+              copied={copied === "generated"}
+              generatedPrompt={generatedPrompt}
+              onCopy={() => void copyText(generatedPrompt, "generated")}
+              onSave={() => saveVersion("generated", `${composeOptions.brandName || "Generated"} prompt`, generatedPrompt, evaluatePrompt(generatedPrompt).score)}
+              options={composeOptions}
+              setOptions={setComposeOptions}
+            />
+          ) : tab === "critic" ? (
+            <CriticView
+              evaluation={evaluation}
+              rewrittenPrompt={rewrittenPrompt}
+              text={evaluationText}
+              setText={setEvaluationText}
+              onCopy={() => void copyText(rewrittenPrompt, "rewrite")}
+              onSave={() => saveVersion("rewrite", "Critic rewrite", rewrittenPrompt, evaluatePrompt(rewrittenPrompt).score)}
+              copied={copied === "rewrite"}
+            />
+          ) : tab === "templates" ? (
+            <TemplatesView
+              copied={copied}
+              onCopy={(template) => void copyText(template.prompt, template.id)}
+              onSave={(template) => saveVersion("template", template.title, template.prompt, evaluatePrompt(template.prompt).score)}
+              templates={templates}
+            />
+          ) : tab === "lab" ? (
+            <LabView
+              clusters={clusters}
+              copied={copied}
+              health={health}
+              history={history}
+              mixedPrompt={mixedPrompt}
+              mixOptions={mixOptions}
+              onCopy={(value, key) => void copyText(value, key)}
+              onDownload={downloadText}
+              onRemoveVersion={removeVersion}
+              onSave={saveVersion}
+              packs={promptPacks}
+              recipeOptions={recipeOptions}
+              recipePrompt={recipePrompt}
+              rubric={rubric}
+              rubricNotes={rubricNotes}
+              setMixOptions={setMixOptions}
+              setRecipeOptions={setRecipeOptions}
+              setRubric={setRubric}
+              styleGuide={styleGuide}
+            />
+          ) : (
+            <TrainView
+              activeTrainStage={activeTrainStage}
+              autoBattleResult={autoBattleResult}
+              apiHealth={apiHealth}
+              apiNotice={apiNotice}
+              buildRuns={buildRuns}
+              codexSkill={codexSkill}
+              compiledPrompt={compiledPrompt}
+              compilerInput={compilerInput}
+              copied={copied}
+              corpusCleaning={corpusCleaning}
+              dbStatus={dbStatus}
+              dnaCalibration={dnaCalibration}
+              datasetVersions={datasetVersions}
+              datasetComparison={datasetComparison}
+              dnaV2={dnaV2}
+              diffLeftId={diffLeftId}
+              diffRightId={diffRightId}
+              examples={examples}
+              failureMemory={failureMemory}
+              improvedPrompt={improvedPrompt}
+              improveText={improveText}
+              interviewBrief={interviewBrief}
+              interviewPrompt={interviewPrompt}
+              goldenRecipes={goldenRecipes}
+              goldReview={goldReview}
+              generatorPresets={generatorPresets}
+              leaderboard={leaderboard}
+              localIndex={localIndex}
+              modelEvaluation={modelEvaluation}
+              modelEnvStatus={modelEnvStatus}
+              modelNotice={modelNotice}
+              modelSettings={modelSettings}
+              mutationSource={mutationSource}
+              mutations={promptMutations}
+              onAddBuildRun={addBuildRun}
+              onAddScreenshot={addScreenshot}
+              onCaptureSelectedResult={captureSelectedResult}
+              onCheckApi={checkApi}
+              onCreateDatasetVersion={createDatasetVersion}
+              onApplyGoldReview={applyGoldReview}
+              onApplyGeneratorPreset={applyGeneratorPreset}
+              onApplyProviderPreset={applyProviderPreset}
+              onCopy={(value, key) => void copyText(value, key)}
+              onDownload={downloadText}
+              onExportQueue={exportQueue}
+              onExportMemoryPack={exportReusableMemoryPack}
+              onExportTrainingSnapshot={exportTrainingSnapshot}
+              onImportResultJson={importResultJson}
+              onInstallSkill={installSkillFromApi}
+              onModelEvaluate={runModelEvaluation}
+              onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
+              onRunAutonomousBattle={runAutonomousBattle}
+              onQueueTournament={queueTournamentFinalists}
+              onQueueWizard={() => queueBattleVariants(wizardBattle, "one-click wizard")}
+              onRemoveBuildRun={removeBuildRun}
+              onRemoveQueueJob={removeQueueJob}
+              onRemoveScreenshot={removeScreenshot}
+              onRunQueueViaApi={runQueueViaApi}
+              onSave={saveVersion}
+              onSelectPrompt={setSelectedId}
+              onSyncToApi={syncToApi}
+              onUpdateOutcome={updateOutcome}
+              outcomeSummary={outcomeSummary}
+              outcomes={outcomes}
+              promptBattle={promptBattle}
+              promptMemory={promptMemory}
+              promptDiff={promptDiff}
+              qualityGate={qualityGate}
+              qaText={qaText}
+              queueExport={queueExport}
+              queueJobs={queueJobs}
+              resultImportText={resultImportText}
+              resultScore={resultScore}
+              runnerPlan={runnerPlan}
+              screenshotQa={screenshotQa}
+              scoreBreakdown={scoreBreakdown}
+              scoreWeights={scoreWeights}
+              screenshots={screenshots}
+              searchResults={semanticResults}
+              selectedPrompt={selectedPrompt}
+              selectedLineage={selectedLineage}
+              semanticQuery={semanticQuery}
+              setActiveTrainStage={setActiveTrainStage}
+              setCompilerInput={setCompilerInput}
+              setDiffLeftId={setDiffLeftId}
+              setDiffRightId={setDiffRightId}
+              setImproveText={setImproveText}
+              setInterviewBrief={setInterviewBrief}
+              setModelSettings={setModelSettings}
+              setMutationSource={setMutationSource}
+              setQaText={setQaText}
+              setSemanticQuery={setSemanticQuery}
+              setResultImportText={setResultImportText}
+              setScoreWeights={setScoreWeights}
+              setVectorQuery={setVectorQuery}
+              skillInstallPlan={skillInstallPlan}
+              tournament={tournament}
+              vectorQuery={vectorQuery}
+              vectorResults={vectorResults}
+              visualQa={visualQa}
+              visualAnalysisResult={visualAnalysisResult}
+              onAnalyzeSelectedVisuals={analyzeSelectedVisuals}
+              repairedPrompt={repairedPrompt}
+              resultGallery={resultGallery}
+              reusableMemoryPack={reusableMemoryPack}
+              setWizardIdea={setWizardIdea}
+              wizardBattle={wizardBattle}
+              wizardCompiled={wizardCompiled}
+              wizardIdea={wizardIdea}
+              driftReport={driftReport}
+              winExplanation={winExplanation}
+            />
+          )}
+        </section>
+
+        <aside className="panel right-panel">
+          <div className="panel-header">
+            <Lightbulb size={18} />
+            <h2>Learned rules</h2>
+          </div>
+          <div className="rule-list">
+            {profile.learnedRules.map((rule, index) => (
+              <div className="rule" key={rule}>
+                <span>{index + 1}</span>
+                <p>{rule}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mini-card">
+            <h3>Active archetypes</h3>
+            <div className="cluster-list compact">
+              {clusters.slice(0, 5).map((cluster) => (
+                <ClusterCard cluster={cluster} key={cluster.key} />
+              ))}
+            </div>
+          </div>
+          <div className="mini-card">
+            <h3>Signature phrases</h3>
+            <FeaturePills features={profile.signaturePhrases} empty="No signature phrases learned yet." />
+          </div>
+        </aside>
+      </main>
+    </div>
+  );
+}
+
+function Metric({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="metric">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  children,
+  icon,
+  onClick,
+}: {
+  active: boolean;
+  children: string;
+  icon: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button className={`tab ${active ? "active" : ""}`} type="button" onClick={onClick}>
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function SmartIngestion({ analysis }: { analysis: PromptAnalysis }) {
+  const duplicateLabel =
+    analysis.duplicate.kind === "exact"
+      ? `Exact duplicate of ${analysis.duplicate.match?.title ?? "an existing prompt"}`
+      : analysis.duplicate.kind === "near"
+        ? `Near ${Math.round(analysis.duplicate.score * 100)}% match: ${analysis.duplicate.match?.title}`
+        : "Distinct prompt";
+
+  return (
+    <div className="analysis-card">
+      <div>
+        <strong>{analysis.title}</strong>
+        <span>{analysis.wordCount} words / {analysis.assetCount} assets / {analysis.archetypes[0]?.label ?? "unclustered"}</span>
+      </div>
+      <p data-tone={analysis.duplicate.kind}>{duplicateLabel}</p>
+      <div className="chips">
+        {analysis.tags.slice(0, 6).map((tag) => (
+          <span key={tag}>{tag}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BatchIngestionPreview({ candidates }: { candidates: ReturnType<typeof parsePromptBatch> }) {
+  const averageScore = Math.round(candidates.reduce((sum, candidate) => sum + candidate.score, 0) / Math.max(1, candidates.length));
+  return (
+    <div className="analysis-card batch-preview">
+      <div>
+        <strong>{candidates.length} prompt candidates detected</strong>
+        <span>Average score {averageScore} / imports exact stack, assets, sections, constraints, and QA signals</span>
+      </div>
+      <div className="batch-candidate-list">
+        {candidates.slice(0, 5).map((candidate) => (
+          <article key={candidate.id}>
+            <strong>{candidate.title}</strong>
+            <span>{candidate.score} score / {candidate.summary.join(" / ")}</span>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LearnView({
+  clusters,
+  dnaScore,
+  profile,
+  selectedAnalysis,
+  selectedPrompt,
+}: {
+  clusters: ArchetypeCluster[];
+  dnaScore: number;
+  profile: PromptProfile;
+  selectedAnalysis?: PromptAnalysis;
+  selectedPrompt?: PromptExample;
+}) {
+  return (
+    <div className="learn-grid">
+      <section className="panel hero-panel">
+        <div>
+          <p className="eyebrow">Pattern model</p>
+          <h2>Learning what makes website prompts executable.</h2>
+          <p>
+            The corpus is now fingerprinted for duplicate risk, tags, archetypes, DNA dimensions, technical
+            coverage, reusable templates, and rewrite guidance.
+          </p>
+        </div>
+        <ScoreRing score={dnaScore} label="DNA score" />
+      </section>
+
+      <section className="insight-grid">
+        <div className="panel category-panel">
+          <div className="panel-header">
+            <BarChart3 size={18} />
+            <h2>Prompt DNA</h2>
+          </div>
+          {selectedAnalysis ? <DnaList dna={selectedAnalysis.dna} /> : null}
+        </div>
+        <div className="panel category-panel">
+          <div className="panel-header">
+            <Tags size={18} />
+            <h2>Selected fingerprint</h2>
+          </div>
+          {selectedAnalysis ? (
+            <>
+              <div className="chips">
+                {selectedAnalysis.tags.map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
+              </div>
+              <p className="selected-meta">
+                {selectedAnalysis.stack.join(" + ") || "No explicit stack"} / {selectedAnalysis.fonts.join(" + ") || "No explicit fonts"}
+              </p>
+            </>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="panel category-panel">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Category coverage</h2>
+        </div>
+        <ScoreList scores={profile.categoryScores} />
+      </section>
+
+      <section className="panel category-panel">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Archetype clustering</h2>
+        </div>
+        <div className="cluster-list">
+          {clusters.map((cluster) => (
+            <ClusterCard cluster={cluster} key={cluster.key} />
+          ))}
+        </div>
+      </section>
+
+      <section className="feature-grid">
+        {categoryOrder.slice(0, 8).map((key) => (
+          <div className="panel feature-card" key={key}>
+            <h3>{categoryLabels[key]}</h3>
+            <FeaturePills features={profile.features[key]} empty="Still learning this signal." />
+          </div>
+        ))}
+      </section>
+
+      <section className="panel selected-panel">
+        <h3>Selected example</h3>
+        {selectedPrompt ? (
+          <>
+            <p className="selected-meta">
+              {selectedPrompt.title} - {countWords(selectedPrompt.text)} words - {selectedPrompt.source}
+            </p>
+            <pre>{selectedPrompt.text}</pre>
+          </>
+        ) : (
+          <p className="selected-meta">No prompt selected.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ComposeView({
+  clusters,
+  copied,
+  generatedPrompt,
+  onCopy,
+  onSave,
+  options,
+  setOptions,
+}: {
+  clusters: ArchetypeCluster[];
+  copied: boolean;
+  generatedPrompt: string;
+  onCopy: () => void;
+  onSave: () => void;
+  options: ComposeOptions;
+  setOptions: Dispatch<SetStateAction<ComposeOptions>>;
+}) {
+  function update<K extends keyof ComposeOptions>(key: K, value: ComposeOptions[K]) {
+    setOptions((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <div className="compose-grid">
+      <section className="panel form-panel">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Prompt brief</h2>
+        </div>
+        <Field label="Brand name">
+          <input value={options.brandName} onChange={(event) => update("brandName", event.target.value)} />
+        </Field>
+        <Field label="Site type">
+          <input value={options.siteType} onChange={(event) => update("siteType", event.target.value)} />
+        </Field>
+        <Field label="Archetype">
+          <select value={options.archetype} onChange={(event) => update("archetype", event.target.value)}>
+            {[options.archetype, ...clusters.map((cluster) => cluster.label)]
+              .filter((value, index, array) => value && array.indexOf(value) === index)
+              .map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+          </select>
+        </Field>
+        <Field label="Mood">
+          <input value={options.mood} onChange={(event) => update("mood", event.target.value)} />
+        </Field>
+        <Field label="Output flavor">
+          <input value={options.outputFlavor} onChange={(event) => update("outputFlavor", event.target.value)} />
+        </Field>
+        <Field label="Visual signature">
+          <textarea
+            value={options.visualSignature}
+            onChange={(event) => update("visualSignature", event.target.value)}
+          />
+        </Field>
+        <Field label="Brief">
+          <textarea value={options.brief} onChange={(event) => update("brief", event.target.value)} />
+        </Field>
+
+        <SliderField label="Detail" value={options.detailLevel} onChange={(value) => update("detailLevel", value)} />
+        <SliderField label="Creativity" value={options.creativity} onChange={(value) => update("creativity", value)} />
+        <SliderField label="Rigor" value={options.rigor} onChange={(value) => update("rigor", value)} />
+
+        <div className="toggle-grid">
+          <Toggle checked={options.includeAssets} label="Assets" onChange={(checked) => update("includeAssets", checked)} />
+          <Toggle checked={options.includeMotion} label="Motion" onChange={(checked) => update("includeMotion", checked)} />
+          <Toggle checked={options.includeQA} label="QA" onChange={(checked) => update("includeQA", checked)} />
+        </div>
+      </section>
+
+      <section className="panel output-panel">
+        <div className="output-header">
+          <div className="panel-header">
+            <FileText size={18} />
+            <h2>Generated prompt</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onCopy} aria-label="Copy generated prompt">
+            {copied ? <Check size={16} /> : <Copy size={16} />}
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={onSave}>
+            <Save size={15} />
+            Save
+          </button>
+        </div>
+        <textarea className="generated-output" readOnly value={generatedPrompt} />
+      </section>
+    </div>
+  );
+}
+
+function CriticView({
+  copied,
+  evaluation,
+  onCopy,
+  onSave,
+  rewrittenPrompt,
+  setText,
+  text,
+}: {
+  copied: boolean;
+  evaluation: Evaluation;
+  onCopy: () => void;
+  onSave: () => void;
+  rewrittenPrompt: string;
+  setText: (value: string) => void;
+  text: string;
+}) {
+  return (
+    <div className="evaluate-grid">
+      <section className="panel evaluator-panel">
+        <div className="panel-header">
+          <Clipboard size={18} />
+          <h2>Prompt to critique</h2>
+        </div>
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder="Paste a draft prompt here, or leave blank to critique the generated prompt."
+        />
+      </section>
+
+      <section className="panel evaluation-panel">
+        <div className="evaluation-top">
+          <ScoreRing score={evaluation.score} label="Prompt score" />
+          <p>
+            Critic mode finds vague spots, missing implementation details, and the strongest next rewrite based on
+            the learned corpus.
+          </p>
+        </div>
+        <ScoreList compact scores={evaluation.categoryScores} />
+        <div className="feedback-columns">
+          <FeedbackList title="What works" items={evaluation.findings} empty="No strong signals yet." />
+          <FeedbackList title="Upgrade next" items={evaluation.upgrades} empty="No major gaps detected." />
+        </div>
+        <div className="output-header rewrite-header">
+          <h3>Rewritten stronger version</h3>
+          <div className="button-row">
+            <button className="icon-button" type="button" onClick={onCopy} aria-label="Copy rewritten prompt">
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+            </button>
+            <button className="ghost-button compact-button" type="button" onClick={onSave}>
+              <Save size={15} />
+              Save
+            </button>
+          </div>
+        </div>
+        <textarea className="generated-output rewrite-output" readOnly value={rewrittenPrompt} />
+      </section>
+    </div>
+  );
+}
+
+function TemplatesView({
+  copied,
+  onCopy,
+  onSave,
+  templates,
+}: {
+  copied: string;
+  onCopy: (template: PromptTemplate) => void;
+  onSave: (template: PromptTemplate) => void;
+  templates: PromptTemplate[];
+}) {
+  return (
+    <div className="learn-grid">
+      <section className="panel hero-panel">
+        <div>
+          <p className="eyebrow">Golden templates</p>
+          <h2>Reusable prompt skeletons distilled from the corpus.</h2>
+          <p>Use these as starting points when you want consistent high-fidelity output without pasting a giant prompt from scratch.</p>
+        </div>
+      </section>
+      <section className="template-grid">
+        {templates.map((template) => (
+          <article className="panel template-card" key={template.id}>
+            <div className="output-header">
+              <div>
+                <h3>{template.title}</h3>
+                <p>{template.bestFor}</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => onCopy(template)} aria-label={`Copy ${template.title}`}>
+                {copied === template.id ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSave(template)}>
+                <Save size={15} />
+                Save
+              </button>
+            </div>
+            <pre>{template.prompt}</pre>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function packToText(pack: PromptPack) {
+  return [`# ${pack.title}`, pack.description, ...pack.prompts.map((prompt, index) => `## Prompt ${index + 1}\n\n${prompt}`)].join(
+    "\n\n",
+  );
+}
+
+function LabView({
+  clusters,
+  copied,
+  health,
+  history,
+  mixedPrompt,
+  mixOptions,
+  onCopy,
+  onDownload,
+  onRemoveVersion,
+  onSave,
+  packs,
+  recipeOptions,
+  recipePrompt,
+  rubric,
+  rubricNotes,
+  setMixOptions,
+  setRecipeOptions,
+  setRubric,
+  styleGuide,
+}: {
+  clusters: ArchetypeCluster[];
+  copied: string;
+  health: CorpusHealth;
+  history: PromptVersion[];
+  mixedPrompt: string;
+  mixOptions: ArchetypeMixOptions;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onRemoveVersion: (id: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  packs: PromptPack[];
+  recipeOptions: RecipeOptions;
+  recipePrompt: string;
+  rubric: QualityRubric;
+  rubricNotes: string[];
+  setMixOptions: Dispatch<SetStateAction<ArchetypeMixOptions>>;
+  setRecipeOptions: Dispatch<SetStateAction<RecipeOptions>>;
+  setRubric: Dispatch<SetStateAction<QualityRubric>>;
+  styleGuide: string;
+}) {
+  function updateMix<K extends keyof ArchetypeMixOptions>(key: K, value: ArchetypeMixOptions[K]) {
+    setMixOptions((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateRecipe<K extends keyof RecipeOptions>(key: K, value: RecipeOptions[K]) {
+    setRecipeOptions((current) => ({ ...current, [key]: value }));
+  }
+
+  function toggleArchetype(key: string) {
+    setMixOptions((current) => ({
+      ...current,
+      archetypes: current.archetypes.includes(key)
+        ? current.archetypes.filter((value) => value !== key)
+        : [...current.archetypes, key].slice(-3),
+    }));
+  }
+
+  function updateRubric<K extends keyof QualityRubric>(key: K, value: number) {
+    setRubric((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <div className="lab-grid">
+      <section className="panel hero-panel lab-hero">
+        <div>
+          <p className="eyebrow">Prompt lab</p>
+          <h2>Turn the corpus into reusable taste systems.</h2>
+          <p>
+            Mix archetypes, build recipe prompts, tune a quality rubric, export prompt packs, and save versions for
+            comparison.
+          </p>
+        </div>
+      </section>
+
+      <section className="lab-columns">
+        <div className="panel lab-panel">
+          <div className="panel-header">
+            <Shuffle size={18} />
+            <h2>Archetype mixer</h2>
+          </div>
+          <Field label="Brand name">
+            <input value={mixOptions.brandName} onChange={(event) => updateMix("brandName", event.target.value)} />
+          </Field>
+          <Field label="Site type">
+            <input value={mixOptions.siteType} onChange={(event) => updateMix("siteType", event.target.value)} />
+          </Field>
+          <Field label="Mood">
+            <input value={mixOptions.mood} onChange={(event) => updateMix("mood", event.target.value)} />
+          </Field>
+          <Field label="Constraints">
+            <textarea value={mixOptions.constraints} onChange={(event) => updateMix("constraints", event.target.value)} />
+          </Field>
+          <div className="choice-grid">
+            {clusters.slice(0, 8).map((cluster) => (
+              <button
+                className={`choice-card ${mixOptions.archetypes.includes(cluster.key) ? "active" : ""}`}
+                key={cluster.key}
+                type="button"
+                onClick={() => toggleArchetype(cluster.key)}
+              >
+                <strong>{cluster.label}</strong>
+                <span>{cluster.count} examples</span>
+              </button>
+            ))}
+          </div>
+          <div className="toggle-grid one-line">
+            <Toggle checked={mixOptions.includeAssets} label="Include asset rules" onChange={(checked) => updateMix("includeAssets", checked)} />
+          </div>
+          <div className="output-header">
+            <h3>Mixed prompt</h3>
+            <div className="button-row">
+              <button className="icon-button" type="button" onClick={() => onCopy(mixedPrompt, "mixed")} aria-label="Copy mixed prompt">
+                {copied === "mixed" ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSave("mix", `${mixOptions.brandName} archetype mix`, mixedPrompt, evaluatePrompt(mixedPrompt).score)}>
+                <Save size={15} />
+                Save
+              </button>
+            </div>
+          </div>
+          <textarea className="generated-output small-output" readOnly value={mixedPrompt} />
+        </div>
+
+        <div className="panel lab-panel">
+          <div className="panel-header">
+            <ListChecks size={18} />
+            <h2>Recipe builder</h2>
+          </div>
+          <div className="two-field-grid">
+            <Field label="Brand">
+              <input value={recipeOptions.brandName} onChange={(event) => updateRecipe("brandName", event.target.value)} />
+            </Field>
+            <Field label="Industry">
+              <input value={recipeOptions.industry} onChange={(event) => updateRecipe("industry", event.target.value)} />
+            </Field>
+          </div>
+          <Field label="Audience">
+            <input value={recipeOptions.audience} onChange={(event) => updateRecipe("audience", event.target.value)} />
+          </Field>
+          <Field label="Stack">
+            <input value={recipeOptions.stack} onChange={(event) => updateRecipe("stack", event.target.value)} />
+          </Field>
+          <Field label="Layout">
+            <textarea value={recipeOptions.layout} onChange={(event) => updateRecipe("layout", event.target.value)} />
+          </Field>
+          <Field label="Navigation">
+            <textarea value={recipeOptions.nav} onChange={(event) => updateRecipe("nav", event.target.value)} />
+          </Field>
+          <Field label="Motion">
+            <textarea value={recipeOptions.motion} onChange={(event) => updateRecipe("motion", event.target.value)} />
+          </Field>
+          <Field label="Assets">
+            <textarea value={recipeOptions.assets} onChange={(event) => updateRecipe("assets", event.target.value)} />
+          </Field>
+          <SliderField label="Strictness" value={recipeOptions.strictness} onChange={(value) => updateRecipe("strictness", value)} />
+          <div className="output-header">
+            <h3>Recipe prompt</h3>
+            <div className="button-row">
+              <button className="icon-button" type="button" onClick={() => onCopy(recipePrompt, "recipe")} aria-label="Copy recipe prompt">
+                {copied === "recipe" ? <Check size={16} /> : <Copy size={16} />}
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSave("recipe", `${recipeOptions.brandName} recipe`, recipePrompt, evaluatePrompt(recipePrompt).score)}>
+                <Save size={15} />
+                Save
+              </button>
+            </div>
+          </div>
+          <textarea className="generated-output small-output" readOnly value={recipePrompt} />
+        </div>
+      </section>
+
+      <section className="lab-columns">
+        <div className="panel lab-panel">
+          <div className="panel-header">
+            <Gauge size={18} />
+            <h2>Quality rubric editor</h2>
+          </div>
+          <div className="rubric-grid">
+            {(Object.keys(rubric) as (keyof QualityRubric)[]).map((key) => (
+              <SliderField
+                key={key}
+                label={key.replace(/([A-Z])/g, " $1")}
+                value={rubric[key]}
+                onChange={(value) => updateRubric(key, value)}
+              />
+            ))}
+          </div>
+          <div className="feedback-list">
+            <h3>Rubric instructions</h3>
+            {rubricNotes.map((note) => (
+              <p key={note}>
+                <Check size={14} />
+                {note}
+              </p>
+            ))}
+          </div>
+        </div>
+
+        <HealthPanel health={health} />
+      </section>
+
+      <section className="lab-columns">
+        <PromptPackPanel
+          copied={copied}
+          onCopy={onCopy}
+          onDownload={onDownload}
+          onSave={onSave}
+          packs={packs}
+        />
+
+        <section className="panel lab-panel">
+          <div className="panel-header">
+            <Archive size={18} />
+            <h2>Taste rules export</h2>
+          </div>
+          <p className="selected-meta">A portable style guide you can paste into future prompt-writing sessions.</p>
+          <div className="button-row">
+            <button className="ghost-button compact-button" type="button" onClick={() => onCopy(styleGuide, "style-guide")}>
+              {copied === "style-guide" ? <Check size={15} /> : <Copy size={15} />}
+              Copy guide
+            </button>
+            <button className="primary-button compact-button" type="button" onClick={() => onDownload("PROMPT_STYLE_GUIDE.md", styleGuide, "text/markdown")}>
+              <Download size={15} />
+              Download
+            </button>
+            <button className="ghost-button compact-button" type="button" onClick={() => onSave("style-guide", "Prompt Atelier style guide", styleGuide)}>
+              <Save size={15} />
+              Save
+            </button>
+          </div>
+          <textarea className="generated-output style-guide-output" readOnly value={styleGuide} />
+        </section>
+      </section>
+
+      <PromptHistoryPanel
+        history={history}
+        onCopy={onCopy}
+        onDownload={onDownload}
+        onRemove={onRemoveVersion}
+      />
+    </div>
+  );
+}
+
+function HealthPanel({ health }: { health: CorpusHealth }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <BarChart3 size={18} />
+        <h2>Corpus health dashboard</h2>
+      </div>
+      <div className="health-grid">
+        <div className="health-card">
+          <h3>Strengths</h3>
+          {health.strengths.map((item) => (
+            <p key={item}>{item}</p>
+          ))}
+        </div>
+        <div className="health-card">
+          <h3>Gaps</h3>
+          {health.gaps.map((item) => (
+            <p key={item}>{item}</p>
+          ))}
+        </div>
+        <div className="health-card wide">
+          <h3>Recommendations</h3>
+          {health.recommendations.map((item) => (
+            <p key={item}>{item}</p>
+          ))}
+        </div>
+      </div>
+      <div className="feature-list health-balance">
+        {health.balance.slice(0, 14).map((feature) => (
+          <span key={feature.label}>
+            {feature.label}
+            <small>{feature.count}</small>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PromptPackPanel({
+  copied,
+  onCopy,
+  onDownload,
+  onSave,
+  packs,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  packs: PromptPack[];
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <PackageOpen size={18} />
+        <h2>Prompt packs</h2>
+      </div>
+      <div className="pack-list">
+        {packs.map((pack) => {
+          const text = packToText(pack);
+          return (
+            <article className="pack-card" key={pack.id}>
+              <div>
+                <strong>{pack.title}</strong>
+                <span>{pack.prompts.length} prompts</span>
+              </div>
+              <p>{pack.description}</p>
+              <div className="button-row">
+                <button className="ghost-button compact-button" type="button" onClick={() => onCopy(text, pack.id)}>
+                  {copied === pack.id ? <Check size={15} /> : <Copy size={15} />}
+                  Copy
+                </button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onDownload(`${pack.id}.md`, text, "text/markdown")}>
+                  <Download size={15} />
+                  Export
+                </button>
+                <button className="primary-button compact-button" type="button" onClick={() => onSave("pack", pack.title, text)}>
+                  <Save size={15} />
+                  Save
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PromptHistoryPanel({
+  history,
+  onCopy,
+  onDownload,
+  onRemove,
+}: {
+  history: PromptVersion[];
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [leftId, setLeftId] = useState("");
+  const [rightId, setRightId] = useState("");
+  const left = history.find((version) => version.id === leftId) ?? history[0];
+  const right = history.find((version) => version.id === rightId) ?? history[1];
+  const exportText = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), history }, null, 2);
+
+  return (
+    <section className="panel lab-panel history-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Save size={18} />
+          <h2>Version history</h2>
+        </div>
+        <button
+          className="ghost-button compact-button"
+          type="button"
+          onClick={() => onDownload("prompt-atelier-version-history.json", exportText, "application/json")}
+          disabled={!history.length}
+        >
+          <Download size={15} />
+          Export history
+        </button>
+      </div>
+      {history.length ? (
+        <>
+          <div className="history-list">
+            {history.slice(0, 12).map((version) => (
+              <article className="history-card" key={version.id}>
+                <div>
+                  <strong>{version.title}</strong>
+                  <span>
+                    {version.kind} / {new Date(version.createdAt).toLocaleString()} {version.score ? `/ ${version.score}` : ""}
+                  </span>
+                </div>
+                <div className="button-row">
+                  <button className="icon-button" type="button" onClick={() => onCopy(version.text, version.id)} aria-label={`Copy ${version.title}`}>
+                    <Copy size={15} />
+                  </button>
+                  <button className="icon-button danger" type="button" onClick={() => onRemove(version.id)} aria-label={`Remove ${version.title}`}>
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="compare-controls">
+            <Field label="Compare left">
+              <select value={left?.id ?? ""} onChange={(event) => setLeftId(event.target.value)}>
+                {history.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.title}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Compare right">
+              <select value={right?.id ?? ""} onChange={(event) => setRightId(event.target.value)}>
+                {history.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.title}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <div className="compare-grid">
+            <pre>{left?.text ?? "Save a version first."}</pre>
+            <pre>{right?.text ?? "Save a second version to compare."}</pre>
+          </div>
+        </>
+      ) : (
+        <p className="selected-meta">No saved versions yet. Save generated prompts, rewrites, packs, or the style guide.</p>
+      )}
+    </section>
+  );
+}
+
+function TrainView({
+  activeTrainStage,
+  autoBattleResult,
+  apiHealth,
+  apiNotice,
+  buildRuns,
+  codexSkill,
+  compiledPrompt,
+  compilerInput,
+  copied,
+  corpusCleaning,
+  dbStatus,
+  dnaCalibration,
+  datasetVersions,
+  datasetComparison,
+  dnaV2,
+  diffLeftId,
+  diffRightId,
+  driftReport,
+  examples,
+  failureMemory,
+  improvedPrompt,
+  improveText,
+  interviewBrief,
+  interviewPrompt,
+  goldenRecipes,
+  goldReview,
+  generatorPresets,
+  leaderboard,
+  localIndex,
+  modelEvaluation,
+  modelEnvStatus,
+  modelNotice,
+  modelSettings,
+  mutationSource,
+  mutations,
+  onAddBuildRun,
+  onAddScreenshot,
+  onApplyGeneratorPreset,
+  onApplyGoldReview,
+  onApplyProviderPreset,
+  onAnalyzeSelectedVisuals,
+  onCaptureSelectedResult,
+  onCheckApi,
+  onCreateDatasetVersion,
+  onCopy,
+  onDownload,
+  onExportMemoryPack,
+  onExportQueue,
+  onExportTrainingSnapshot,
+  onImportResultJson,
+  onInstallSkill,
+  onModelEvaluate,
+  onQueueBattle,
+  onRunAutonomousBattle,
+  onQueueTournament,
+  onQueueWizard,
+  onRemoveBuildRun,
+  onRemoveQueueJob,
+  onRemoveScreenshot,
+  onRunQueueViaApi,
+  onSave,
+  onSelectPrompt,
+  onSyncToApi,
+  onUpdateOutcome,
+  outcomeSummary,
+  outcomes,
+  promptBattle,
+  promptMemory,
+  promptDiff,
+  qualityGate,
+  qaText,
+  queueExport,
+  queueJobs,
+  resultImportText,
+  resultScore,
+  runnerPlan,
+  screenshotQa,
+  scoreBreakdown,
+  scoreWeights,
+  screenshots,
+  searchResults,
+  selectedPrompt,
+  selectedLineage,
+  semanticQuery,
+  setActiveTrainStage,
+  setCompilerInput,
+  setDiffLeftId,
+  setDiffRightId,
+  setImproveText,
+  setInterviewBrief,
+  setModelSettings,
+  setMutationSource,
+  setQaText,
+  setResultImportText,
+  setScoreWeights,
+  setSemanticQuery,
+  setVectorQuery,
+  skillInstallPlan,
+  tournament,
+  vectorQuery,
+  vectorResults,
+  visualQa,
+  visualAnalysisResult,
+  repairedPrompt,
+  resultGallery,
+  reusableMemoryPack,
+  setWizardIdea,
+  wizardBattle,
+  wizardCompiled,
+  wizardIdea,
+  winExplanation,
+}: {
+  activeTrainStage: string;
+  autoBattleResult?: Record<string, unknown>;
+  apiHealth?: ApiHealth;
+  apiNotice: string;
+  buildRuns: BuildRunRecord[];
+  codexSkill: string;
+  compiledPrompt: CompiledPrompt;
+  compilerInput: PromptCompilerInput;
+  copied: string;
+  corpusCleaning: CorpusCleaningReport;
+  dbStatus: string;
+  dnaCalibration: DnaCalibrationReport;
+  datasetVersions: DatasetVersion[];
+  datasetComparison: DatasetVersionComparison;
+  dnaV2: PromptDnaV2;
+  diffLeftId: string;
+  diffRightId: string;
+  driftReport: DriftReport;
+  examples: PromptExample[];
+  failureMemory: FailureMemoryReport;
+  improvedPrompt: string;
+  improveText: string;
+  interviewBrief: InterviewBrief;
+  interviewPrompt: string;
+  goldenRecipes: GoldenRecipe[];
+  goldReview: GoldReviewReport;
+  generatorPresets: GeneratorPreset[];
+  leaderboard: PromptRank[];
+  localIndex: LocalEmbeddingIndex;
+  modelEvaluation?: Record<string, unknown>;
+  modelEnvStatus?: Record<string, boolean>;
+  modelNotice: string;
+  modelSettings: {
+    endpoint: string;
+    apiKey: string;
+    model: string;
+    temperature: number;
+    agentCommand: string;
+    buildCommand: string;
+  };
+  mutationSource: string;
+  mutations: PromptMutation[];
+  onAddBuildRun: (prompt: PromptExample, fields: Omit<BuildRunRecord, "id" | "promptId" | "promptTitle" | "promptText" | "score" | "failureCategories" | "createdAt" | "updatedAt">) => void;
+  onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
+  onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
+  onApplyGoldReview: () => void;
+  onApplyProviderPreset: (kind: "local" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
+  onAnalyzeSelectedVisuals: () => void;
+  onCaptureSelectedResult: () => void;
+  onCheckApi: () => void;
+  onCreateDatasetVersion: () => void;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onExportMemoryPack: () => void;
+  onExportQueue: () => void;
+  onExportTrainingSnapshot: () => void;
+  onImportResultJson: () => void;
+  onInstallSkill: () => void;
+  onModelEvaluate: () => void;
+  onQueueBattle: () => void;
+  onRunAutonomousBattle: () => void;
+  onQueueTournament: () => void;
+  onQueueWizard: () => void;
+  onRemoveBuildRun: (id: string) => void;
+  onRemoveQueueJob: (id: string) => void;
+  onRemoveScreenshot: (id: string) => void;
+  onRunQueueViaApi: () => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  onSelectPrompt: (id: string) => void;
+  onSyncToApi: () => void;
+  onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
+  outcomeSummary: OutcomeSummary;
+  outcomes: OutcomeRecord[];
+  promptBattle: PromptBattle;
+  promptMemory: PromptMemoryExport;
+  promptDiff?: PromptDiff;
+  qualityGate: QualityGateReport;
+  qaText: string;
+  queueExport: string;
+  queueJobs: BuildQueueJob[];
+  resultImportText: string;
+  resultScore: ResultScore;
+  runnerPlan?: BuildRunnerPlan;
+  screenshotQa: ScreenshotQaReport;
+  scoreBreakdown: ScoreBreakdown;
+  scoreWeights: ScoreWeights;
+  screenshots: ScreenshotRecord[];
+  searchResults: SearchResult[];
+  selectedPrompt?: PromptExample;
+  selectedLineage: PromptLineageNode[];
+  semanticQuery: string;
+  setActiveTrainStage: (stage: string) => void;
+  setCompilerInput: Dispatch<SetStateAction<PromptCompilerInput>>;
+  setDiffLeftId: (id: string) => void;
+  setDiffRightId: (id: string) => void;
+  setImproveText: (value: string) => void;
+  setInterviewBrief: Dispatch<SetStateAction<InterviewBrief>>;
+  setModelSettings: Dispatch<
+    SetStateAction<{
+      endpoint: string;
+      apiKey: string;
+      model: string;
+      temperature: number;
+      agentCommand: string;
+      buildCommand: string;
+    }>
+  >;
+  setMutationSource: (value: string) => void;
+  setQaText: (value: string) => void;
+  setResultImportText: (value: string) => void;
+  setScoreWeights: Dispatch<SetStateAction<ScoreWeights>>;
+  setSemanticQuery: (value: string) => void;
+  setVectorQuery: (value: string) => void;
+  skillInstallPlan: SkillInstallPlan;
+  tournament: PromptTournament;
+  vectorQuery: string;
+  vectorResults: VectorSearchResult[];
+  visualQa: VisualQaReport;
+  visualAnalysisResult?: Record<string, unknown>;
+  repairedPrompt: string;
+  resultGallery: ResultGalleryItem[];
+  reusableMemoryPack: ReusableMemoryPack;
+  setWizardIdea: (value: string) => void;
+  wizardBattle: PromptBattle;
+  wizardCompiled: CompiledPrompt;
+  wizardIdea: string;
+  winExplanation: PromptWinExplanationReport;
+}) {
+  function updateBrief<K extends keyof InterviewBrief>(key: K, value: InterviewBrief[K]) {
+    setInterviewBrief((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <div className="train-grid">
+      <section className="panel hero-panel train-hero">
+        <div>
+          <p className="eyebrow">Outcome training</p>
+          <h2>Closed-loop prompt learning command center.</h2>
+          <p>
+            Run prompts, capture screenshots, calibrate DNA against actual results, clean the corpus, remember failures,
+            compile rough ideas, and tournament-test variants.
+          </p>
+        </div>
+        <div className="outcome-scoreboard">
+          <Metric value={formatNumber(dnaCalibration.calibratedScore)} label="Calibrated DNA" />
+          <Metric value={formatNumber(outcomeSummary.counts.gold)} label="Gold" />
+          <Metric value={formatNumber(outcomeSummary.counts.great)} label="Great" />
+          <Metric value={formatNumber(outcomeSummary.counts.avoid)} label="Avoid" />
+        </div>
+      </section>
+
+      <TrainCommandCenter
+        corpusCleaning={corpusCleaning}
+        dbStatus={dbStatus}
+        dnaCalibration={dnaCalibration}
+        failureMemory={failureMemory}
+        queueJobs={queueJobs}
+        resultScore={resultScore}
+        screenshotQa={screenshotQa}
+        scoreBreakdown={scoreBreakdown}
+      />
+
+      <BackendApiPanel
+        apiHealth={apiHealth}
+        apiNotice={apiNotice}
+        onCaptureSelectedResult={onCaptureSelectedResult}
+        onCheckApi={onCheckApi}
+        onInstallSkill={onInstallSkill}
+        onRunQueueViaApi={onRunQueueViaApi}
+        onSyncToApi={onSyncToApi}
+        queueJobs={queueJobs}
+      />
+
+      <StageNavPanel activeStage={activeTrainStage} setActiveStage={setActiveTrainStage} />
+
+      <section className="train-columns">
+        <QualityGatePanel copied={copied} onCopy={onCopy} qualityGate={qualityGate} />
+        <GoldReviewPanel goldReview={goldReview} onApplyGoldReview={onApplyGoldReview} />
+      </section>
+
+      <section className="train-columns">
+        <AutonomousBattlePanel
+          autoBattleResult={autoBattleResult}
+          onQueueBattle={onQueueBattle}
+          onRunAutonomousBattle={onRunAutonomousBattle}
+          promptBattle={promptBattle}
+        />
+        <PromptWinInsightPanel winExplanation={winExplanation} />
+      </section>
+
+      <section className="train-columns">
+        <GeneratorPresetPanel
+          copied={copied}
+          generatorPresets={generatorPresets}
+          onApplyGeneratorPreset={onApplyGeneratorPreset}
+          onCopy={onCopy}
+          onSave={onSave}
+        />
+        <DatasetComparePanel datasetComparison={datasetComparison} />
+      </section>
+
+      <section className="train-columns">
+        <ResultGalleryPanel resultGallery={resultGallery} />
+        <ReusableMemoryPackPanel
+          copied={copied}
+          onCopy={onCopy}
+          onExportMemoryPack={onExportMemoryPack}
+          reusableMemoryPack={reusableMemoryPack}
+        />
+      </section>
+
+      <OneClickWizardPanel
+        copied={copied}
+        onCopy={onCopy}
+        onQueueWizard={onQueueWizard}
+        onSave={onSave}
+        setWizardIdea={setWizardIdea}
+        wizardBattle={wizardBattle}
+        wizardCompiled={wizardCompiled}
+        wizardIdea={wizardIdea}
+      />
+
+      <section className="train-columns">
+        <DnaV2Panel dnaV2={dnaV2} />
+        <GoldenRecipesPanel goldenRecipes={goldenRecipes} />
+      </section>
+
+      <section className="train-columns">
+        <PromptBattlePanel copied={copied} onCopy={onCopy} onQueueBattle={onQueueBattle} onSave={onSave} promptBattle={promptBattle} />
+        <FailureRepairPanel copied={copied} onCopy={onCopy} onSave={onSave} repairedPrompt={repairedPrompt} />
+      </section>
+
+      <section className="train-columns">
+        <DatasetVersionPanel
+          datasetVersions={datasetVersions}
+          onCopy={onCopy}
+          onCreateDatasetVersion={onCreateDatasetVersion}
+          copied={copied}
+        />
+        <ModelProviderSettingsPanel
+          modelEnvStatus={modelEnvStatus}
+          modelSettings={modelSettings}
+          onApplyProviderPreset={onApplyProviderPreset}
+          setModelSettings={setModelSettings}
+        />
+      </section>
+
+      <VisualAnalyzerPanel
+        onAnalyzeSelectedVisuals={onAnalyzeSelectedVisuals}
+        visualAnalysisResult={visualAnalysisResult}
+      />
+
+      <section className="train-columns">
+        <ResultImporterPanel
+          onImportResultJson={onImportResultJson}
+          resultImportText={resultImportText}
+          setResultImportText={setResultImportText}
+        />
+        <TrainingSnapshotPanel
+          copied={copied}
+          onCopy={onCopy}
+          onExportTrainingSnapshot={onExportTrainingSnapshot}
+          queueExport={queueExport}
+          scoreWeights={scoreWeights}
+        />
+      </section>
+
+      <section className="train-columns">
+        <PromptMemoryPanel copied={copied} onCopy={onCopy} onDownload={onDownload} promptMemory={promptMemory} />
+        <ModelIntegrationPanel
+          modelEvaluation={modelEvaluation}
+          modelNotice={modelNotice}
+          onModelEvaluate={onModelEvaluate}
+          selectedPrompt={selectedPrompt}
+        />
+      </section>
+
+      <section className="train-columns">
+        <PromptResultComparisonPanel
+          buildRuns={buildRuns}
+          diffLeftId={diffLeftId}
+          diffRightId={diffRightId}
+          examples={examples}
+          screenshots={screenshots}
+          scoreWeights={scoreWeights}
+          setDiffLeftId={setDiffLeftId}
+          setDiffRightId={setDiffRightId}
+        />
+      </section>
+
+      <section className="train-columns">
+        <VisualComparisonPanel buildRuns={buildRuns} screenshots={screenshots} selectedPrompt={selectedPrompt} />
+        <RunTimelinePanel buildRuns={buildRuns} lineage={selectedLineage} queueJobs={queueJobs} screenshots={screenshots} />
+      </section>
+
+      <section className="train-columns">
+        <ScoringWeightPanel scoreWeights={scoreWeights} setScoreWeights={setScoreWeights} />
+        <PromptLineagePanel lineage={selectedLineage} />
+      </section>
+
+      <section className="train-columns">
+        <BuildQueuePanel
+          copied={copied}
+          onCopy={onCopy}
+          onExportQueue={onExportQueue}
+          onQueueTournament={onQueueTournament}
+          onRemoveQueueJob={onRemoveQueueJob}
+          queueExport={queueExport}
+          queueJobs={queueJobs}
+        />
+        <ScoreModelPanel scoreBreakdown={scoreBreakdown} />
+      </section>
+
+      <section className="train-columns">
+        <VectorSearchPanel
+          onSelectPrompt={onSelectPrompt}
+          query={vectorQuery}
+          results={vectorResults}
+          setQuery={setVectorQuery}
+        />
+      </section>
+
+      <section className="train-columns">
+        <BuildRunPanel
+          buildRuns={buildRuns}
+          copied={copied}
+          onAddBuildRun={onAddBuildRun}
+          onCopy={onCopy}
+          onDownload={onDownload}
+          onRemoveBuildRun={onRemoveBuildRun}
+          onSave={onSave}
+          runnerPlan={runnerPlan}
+          selectedPrompt={selectedPrompt}
+        />
+        <ScreenshotQaPanel copied={copied} onCopy={onCopy} screenshotQa={screenshotQa} />
+      </section>
+
+      <section className="train-columns">
+        <ResultScorePanel resultScore={resultScore} />
+        <DnaCalibrationPanel dnaCalibration={dnaCalibration} onSelectPrompt={onSelectPrompt} />
+      </section>
+
+      <section className="train-columns">
+        <CorpusCleaningPanel corpusCleaning={corpusCleaning} onSelectPrompt={onSelectPrompt} />
+        <FailureMemoryPanel copied={copied} failureMemory={failureMemory} onCopy={onCopy} />
+      </section>
+
+      <section className="train-columns">
+        <PromptCompilerPanel
+          compiledPrompt={compiledPrompt}
+          compilerInput={compilerInput}
+          copied={copied}
+          onCopy={onCopy}
+          onSave={onSave}
+          setCompilerInput={setCompilerInput}
+        />
+        <TournamentPanel copied={copied} onCopy={onCopy} onSave={onSave} tournament={tournament} />
+      </section>
+
+      <section className="train-columns">
+        <OutcomePanel
+          outcomes={outcomes}
+          outcomeSummary={outcomeSummary}
+          selectedPrompt={selectedPrompt}
+          onUpdateOutcome={onUpdateOutcome}
+        />
+        <ScreenshotPanel
+          onAddScreenshot={onAddScreenshot}
+          onRemoveScreenshot={onRemoveScreenshot}
+          screenshots={screenshots}
+          selectedPrompt={selectedPrompt}
+        />
+      </section>
+
+      <section className="train-columns">
+        <SemanticSearchPanel
+          onSelectPrompt={onSelectPrompt}
+          query={semanticQuery}
+          results={searchResults}
+          setQuery={setSemanticQuery}
+        />
+        <PromptDiffPanel
+          copied={copied}
+          diff={promptDiff}
+          examples={examples}
+          leftId={diffLeftId}
+          onCopy={onCopy}
+          onSave={onSave}
+          rightId={diffRightId}
+          setLeftId={setDiffLeftId}
+          setRightId={setDiffRightId}
+        />
+      </section>
+
+      <section className="train-columns">
+        <VisualQaPanel driftReport={driftReport} qaText={qaText} setQaText={setQaText} visualQa={visualQa} />
+        <InterviewPanel
+          brief={interviewBrief}
+          copied={copied}
+          onCopy={onCopy}
+          onSave={onSave}
+          prompt={interviewPrompt}
+          updateBrief={updateBrief}
+        />
+      </section>
+
+      <section className="train-columns">
+        <MutationLabPanel
+          copied={copied}
+          mutations={mutations}
+          mutationSource={mutationSource}
+          onCopy={onCopy}
+          onSave={onSave}
+          setMutationSource={setMutationSource}
+        />
+        <ImprovePanel
+          copied={copied}
+          improvedPrompt={improvedPrompt}
+          improveText={improveText}
+          onCopy={onCopy}
+          onSave={onSave}
+          setImproveText={setImproveText}
+        />
+      </section>
+
+      <section className="train-columns">
+        <LeaderboardPanel leaderboard={leaderboard} onSelectPrompt={onSelectPrompt} />
+        <SkillInstallPanel copied={copied} onCopy={onCopy} plan={skillInstallPlan} />
+      </section>
+
+      <section className="train-columns">
+        <LocalIndexPanel localIndex={localIndex} />
+        <GuidedWorkflowPanel />
+      </section>
+
+      <section className="panel lab-panel">
+        <div className="output-header">
+          <div className="panel-header">
+            <Archive size={18} />
+            <h2>Export as Codex skill</h2>
+          </div>
+          <div className="button-row">
+            <button className="ghost-button compact-button" type="button" onClick={() => onCopy(codexSkill, "codex-skill")}>
+              {copied === "codex-skill" ? <Check size={15} /> : <Copy size={15} />}
+              Copy
+            </button>
+            <button className="primary-button compact-button" type="button" onClick={() => onDownload("website-prompt-atelier-SKILL.md", codexSkill, "text/markdown")}>
+              <Download size={15} />
+              Download
+            </button>
+            <button className="ghost-button compact-button" type="button" onClick={() => onSave("skill", "Website Prompt Atelier skill", codexSkill)}>
+              <Save size={15} />
+              Save
+            </button>
+          </div>
+        </div>
+        <textarea className="generated-output style-guide-output" readOnly value={codexSkill} />
+      </section>
+    </div>
+  );
+}
+
+function TrainCommandCenter({
+  corpusCleaning,
+  dbStatus,
+  dnaCalibration,
+  failureMemory,
+  queueJobs,
+  resultScore,
+  screenshotQa,
+  scoreBreakdown,
+}: {
+  corpusCleaning: CorpusCleaningReport;
+  dbStatus: string;
+  dnaCalibration: DnaCalibrationReport;
+  failureMemory: FailureMemoryReport;
+  queueJobs: BuildQueueJob[];
+  resultScore: ResultScore;
+  screenshotQa: ScreenshotQaReport;
+  scoreBreakdown: ScoreBreakdown;
+}) {
+  const steps = [
+    {
+      title: "1. Run",
+      value: queueJobs.length ? Math.min(100, 55 + queueJobs.length * 10) : resultScore.score,
+      detail: queueJobs.length ? `${queueJobs.length} queued build job(s) ready.` : "Create a run folder, build from the prompt, and record the URL.",
+    },
+    {
+      title: "2. Capture",
+      value: screenshotQa.score,
+      detail: "Save desktop/mobile screenshots and visual notes.",
+    },
+    {
+      title: "3. Score",
+      value: scoreBreakdown.finalScore,
+      detail: "Blend prompt quality, predicted build, actual result, taste, and failure risk.",
+    },
+    {
+      title: "4. Clean",
+      value: Math.max(0, 100 - corpusCleaning.weakPrompts.length * 4 - corpusCleaning.nearDuplicates.length * 3),
+      detail: "Merge duplicates, quarantine weak prompts, and preserve the gold set.",
+    },
+  ];
+
+  return (
+    <section className="panel lab-panel command-center-panel">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Closed-loop workflow</h2>
+      </div>
+      <div className="command-center-grid">
+        {steps.map((step) => (
+          <article className="command-center-card" key={step.title}>
+            <strong>{step.title}</strong>
+            <span data-tone={scoreTone(step.value)}>{step.value}</span>
+            <p>{step.detail}</p>
+          </article>
+        ))}
+      </div>
+      <div className="workflow-strip">
+        <span>{dbStatus}</span>
+        <span>{failureMemory.categories.length || 0} remembered failure types</span>
+        <span>{dnaCalibration.rows.length} rated calibration rows</span>
+        <span>{corpusCleaning.exactDuplicates.length + corpusCleaning.nearDuplicates.length} duplicate groups</span>
+      </div>
+    </section>
+  );
+}
+
+function BackendApiPanel({
+  apiHealth,
+  apiNotice,
+  onCheckApi,
+  onCaptureSelectedResult,
+  onInstallSkill,
+  onRunQueueViaApi,
+  onSyncToApi,
+  queueJobs,
+}: {
+  apiHealth?: ApiHealth;
+  apiNotice: string;
+  onCheckApi: () => void;
+  onCaptureSelectedResult: () => void;
+  onInstallSkill: () => void;
+  onRunQueueViaApi: () => void;
+  onSyncToApi: () => void;
+  queueJobs: BuildQueueJob[];
+}) {
+  return (
+    <section className="panel lab-panel backend-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Local backend API + SQLite</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onCheckApi}>Check API</button>
+          <button className="ghost-button compact-button" type="button" onClick={onSyncToApi}>Sync SQLite</button>
+          <button className="ghost-button compact-button" type="button" onClick={onRunQueueViaApi} disabled={!queueJobs.length}>Run queue</button>
+          <button className="ghost-button compact-button" type="button" onClick={onCaptureSelectedResult}>Capture URL</button>
+          <button className="primary-button compact-button" type="button" onClick={onInstallSkill}>Install skill</button>
+        </div>
+      </div>
+      <div className="backend-grid">
+        <article className="index-card">
+          <strong>{apiHealth?.ok ? "Online" : "Offline"}</strong>
+          <span>API status</span>
+        </article>
+        <article className="index-card">
+          <strong>{apiHealth?.skill.installed ? "Installed" : "Missing"}</strong>
+          <span>Codex skill</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>SQLite</h3>
+          <p>{apiHealth?.sqlitePath || "Start with npm run api"}</p>
+        </article>
+      </div>
+      <p className="selected-meta">{apiNotice}</p>
+      <div className="command-box">
+        <code>npm run api</code>
+      </div>
+    </section>
+  );
+}
+
+function StageNavPanel({
+  activeStage,
+  setActiveStage,
+}: {
+  activeStage: string;
+  setActiveStage: (stage: string) => void;
+}) {
+  const stages = ["Wizard", "Compile", "Battle", "Run", "Analyze", "Version", "Export Skill"];
+  return (
+    <section className="panel lab-panel stage-panel">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Guided product workflow</h2>
+      </div>
+      <div className="stage-nav">
+        {stages.map((stage) => (
+          <button className={activeStage === stage ? "active" : ""} key={stage} type="button" onClick={() => setActiveStage(stage)}>
+            {stage}
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta">
+        Current stage: {activeStage}. Advanced panels stay available below, but this strip is the product path through the lab.
+      </p>
+    </section>
+  );
+}
+
+function QualityGatePanel({
+  copied,
+  onCopy,
+  qualityGate,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  qualityGate: QualityGateReport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Ready-to-build quality gate</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(qualityGate.nextPromptPatch, "quality-gate-patch")}>
+          {copied === "quality-gate-patch" ? <Check size={15} /> : <Copy size={15} />}
+          Copy patch
+        </button>
+      </div>
+      <div className="gate-summary">
+        <ScoreRing score={qualityGate.score} label={qualityGate.ready ? "Ready" : "Blocked"} />
+        <div>
+          <strong>{qualityGate.ready ? "Prompt is ready to run" : `${qualityGate.blocking.length || qualityGate.missing.length} issue(s) before build`}</strong>
+          <p>{qualityGate.ready ? "The prompt clears stack, assets, layout, responsive, constraints, and QA checks." : qualityGate.missing.slice(0, 2).join(" ")}</p>
+        </div>
+      </div>
+      <div className="gate-check-grid">
+        {qualityGate.checks.map((check) => (
+          <article className="gate-check-card" data-pass={check.passed} key={check.key}>
+            <div className="dna-v2-topline">
+              <strong>{check.label}</strong>
+              <span data-tone={scoreTone(check.score)}>{check.score}</span>
+            </div>
+            <p>{check.evidence.slice(0, 3).join(" / ") || check.fix}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GoldReviewPanel({
+  goldReview,
+  onApplyGoldReview,
+}: {
+  goldReview: GoldReviewReport;
+  onApplyGoldReview: () => void;
+}) {
+  const candidates = [goldReview.left, goldReview.right].filter(Boolean) as NonNullable<GoldReviewReport["left"]>[];
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Gold vs bad reviewer</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onApplyGoldReview} disabled={!goldReview.winnerId}>
+          <Check size={15} />
+          Apply labels
+        </button>
+      </div>
+      <div className="review-grid">
+        {candidates.map((candidate) => (
+          <article className="review-card" data-winner={candidate.id === goldReview.winnerId} key={candidate.id}>
+            <span>{candidate.id === goldReview.winnerId ? "recommended gold" : "candidate"}</span>
+            <strong>{candidate.title}</strong>
+            <em>{candidate.score}</em>
+            <p>{candidate.evidence.join(" / ")}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Learning updates" items={goldReview.learningUpdates} empty="Select two prompts to generate label updates." />
+    </section>
+  );
+}
+
+function AutonomousBattlePanel({
+  autoBattleResult,
+  onQueueBattle,
+  onRunAutonomousBattle,
+  promptBattle,
+}: {
+  autoBattleResult?: Record<string, unknown>;
+  onQueueBattle: () => void;
+  onRunAutonomousBattle: () => void;
+  promptBattle: PromptBattle;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Shuffle size={18} />
+          <h2>Autonomous battle runner</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onQueueBattle}>
+            <Plus size={15} />
+            Queue
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={onRunAutonomousBattle}>
+            <Hammer size={15} />
+            Run now
+          </button>
+        </div>
+      </div>
+      <div className="winner-card">
+        <span>{promptBattle.variants.length} variants</span>
+        <strong>{String(autoBattleResult?.winner ?? promptBattle.winner.title)}</strong>
+        <p>{autoBattleResult ? `Processed ${String(autoBattleResult.processed ?? 0)} run(s), winner score ${String(autoBattleResult.winnerScore ?? promptBattle.winner.score)}.` : promptBattle.explanation.join(" ")}</p>
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={autoBattleResult ? JSON.stringify(autoBattleResult, null, 2) : promptBattle.queuePlan.join("\n")} />
+    </section>
+  );
+}
+
+function PromptWinInsightPanel({ winExplanation }: { winExplanation: PromptWinExplanationReport }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Lightbulb size={18} />
+        <h2>Prompt diff intelligence</h2>
+      </div>
+      <FeedbackList title="Summary" items={winExplanation.summary} empty="Select two prompts to compare." />
+      <div className="signal-list">
+        {winExplanation.likelyWinningSignals.slice(0, 6).map((signal) => (
+          <article className="signal-card" data-side={signal.side} key={signal.id}>
+            <span>{signal.side}</span>
+            <strong>{signal.label}</strong>
+            <p>{signal.detail}</p>
+          </article>
+        ))}
+      </div>
+      <p className="selected-meta">{winExplanation.nextExperiment}</p>
+    </section>
+  );
+}
+
+function GeneratorPresetPanel({
+  copied,
+  generatorPresets,
+  onApplyGeneratorPreset,
+  onCopy,
+  onSave,
+}: {
+  copied: string;
+  generatorPresets: GeneratorPreset[];
+  onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Tags size={18} />
+        <h2>Learned generator presets</h2>
+      </div>
+      <div className="preset-grid">
+        {generatorPresets.slice(0, 6).map((preset) => (
+          <article className="preset-card" key={preset.id}>
+            <div className="dna-v2-topline">
+              <strong>{preset.title}</strong>
+              <span data-tone={scoreTone(preset.score)}>{preset.score}</span>
+            </div>
+            <p>{preset.bestFor}</p>
+            <small>{preset.signals.slice(0, 4).join(", ")}</small>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onApplyGeneratorPreset(preset)}>Use</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(preset.prompt, `preset-${preset.id}`)}>
+                {copied === `preset-${preset.id}` ? <Check size={15} /> : <Copy size={15} />}
+                Copy
+              </button>
+              <button className="primary-button compact-button" type="button" onClick={() => onSave("template", `${preset.title} preset`, preset.prompt, preset.score)}>Save</button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DatasetComparePanel({ datasetComparison }: { datasetComparison: DatasetVersionComparison }) {
+  const entries = Object.entries(datasetComparison.deltas).filter(([, value]) => value !== 0).slice(0, 8);
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <BarChart3 size={18} />
+        <h2>Dataset version compare</h2>
+      </div>
+      <div className="compare-version-grid">
+        <article className="index-card">
+          <strong>{datasetComparison.current?.label ?? "none"}</strong>
+          <span>current</span>
+        </article>
+        <article className="index-card">
+          <strong>{datasetComparison.baseline?.label ?? "none"}</strong>
+          <span>baseline</span>
+        </article>
+      </div>
+      <div className="delta-list">
+        {entries.length ? entries.map(([key, value]) => (
+          <span data-positive={value > 0} key={key}>{key}: {value > 0 ? "+" : ""}{value}</span>
+        )) : <p className="selected-meta">Create at least two dataset versions to compare deltas.</p>}
+      </div>
+      <FeedbackList title="Version notes" items={datasetComparison.notes} empty="No version notes yet." />
+    </section>
+  );
+}
+
+function ResultGalleryPanel({ resultGallery }: { resultGallery: ResultGalleryItem[] }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <FileText size={18} />
+        <h2>Result gallery</h2>
+      </div>
+      <div className="result-gallery-grid">
+        {resultGallery.length ? resultGallery.slice(0, 6).map((item) => (
+          <article className="gallery-card" key={item.id}>
+            {item.image && /^(https?:|data:|\/)/.test(item.image) ? <img src={item.image} alt={item.title} /> : <div className="empty-shot">No screenshot</div>}
+            <strong>{item.title}</strong>
+            <span>{item.status} / {item.score}</span>
+            <p>{item.notes || item.resultUrl || "No notes yet."}</p>
+          </article>
+        )) : <p className="selected-meta">Capture screenshots or import queue results to build a visual memory gallery.</p>}
+      </div>
+    </section>
+  );
+}
+
+function ReusableMemoryPackPanel({
+  copied,
+  onCopy,
+  onExportMemoryPack,
+  reusableMemoryPack,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onExportMemoryPack: () => void;
+  reusableMemoryPack: ReusableMemoryPack;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Reusable memory pack</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(reusableMemoryPack.markdown, "memory-pack-md")}>
+            {copied === "memory-pack-md" ? <Check size={15} /> : <Copy size={15} />}
+            Copy MD
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={onExportMemoryPack}>
+            <Download size={15} />
+            Export
+          </button>
+        </div>
+      </div>
+      <div className="memory-pack-grid">
+        {reusableMemoryPack.sections.map((section) => (
+          <article className="index-card" key={section.title}>
+            <strong>{section.count}</strong>
+            <span>{section.title}</span>
+          </article>
+        ))}
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={reusableMemoryPack.markdown} />
+    </section>
+  );
+}
+
+function OneClickWizardPanel({
+  copied,
+  onCopy,
+  onQueueWizard,
+  onSave,
+  setWizardIdea,
+  wizardBattle,
+  wizardCompiled,
+  wizardIdea,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onQueueWizard: () => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setWizardIdea: (value: string) => void;
+  wizardBattle: PromptBattle;
+  wizardCompiled: CompiledPrompt;
+  wizardIdea: string;
+}) {
+  return (
+    <section className="panel lab-panel wizard-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>One-click great prompt flow</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(wizardCompiled.prompt, "wizard-prompt")}>
+            {copied === "wizard-prompt" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => onSave("compiled", "One-click compiled prompt", wizardCompiled.prompt, wizardCompiled.score)}>
+            <Save size={15} />
+            Save
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={onQueueWizard}>
+            <Shuffle size={15} />
+            Queue battle
+          </button>
+        </div>
+      </div>
+      <div className="wizard-grid">
+        <div>
+          <Field label="Rough website idea">
+            <textarea value={wizardIdea} onChange={(event) => setWizardIdea(event.target.value)} />
+          </Field>
+          <div className="wizard-meta-grid">
+            <article className="index-card">
+              <strong>{wizardCompiled.score}</strong>
+              <span>compiled score</span>
+            </article>
+            <article className="index-card">
+              <strong>{wizardBattle.winner?.score ?? 0}</strong>
+              <span>battle winner</span>
+            </article>
+          </div>
+          <FeedbackList title="Compiler assumptions" items={wizardCompiled.assumptions} empty="No assumptions were needed." />
+        </div>
+        <div>
+          <div className="winner-card">
+            <span>Recommended variant</span>
+            <strong>{wizardBattle.winner?.title ?? "No winner yet"}</strong>
+            <p>{wizardBattle.explanation.join(" / ") || "The wizard will generate a battle winner after the idea is compiled."}</p>
+          </div>
+          <textarea className="generated-output mini-output" readOnly value={wizardCompiled.prompt} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DnaV2Panel({ dnaV2 }: { dnaV2: PromptDnaV2 }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Prompt DNA v2</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={dnaV2.overall} label="DNA v2" />
+      </div>
+      <div className="dna-v2-list">
+        {dnaV2.dimensions.map((dimension) => (
+          <article className="dna-v2-card" key={dimension.key}>
+            <div className="dna-v2-topline">
+              <strong>{dimension.label}</strong>
+              <span data-tone={scoreTone(dimension.score)}>{dimension.score}</span>
+            </div>
+            <div className="bar">
+              <i data-tone={scoreTone(dimension.score)} style={{ width: `${dimension.score}%` }} />
+            </div>
+            <p>{dimension.evidence.slice(0, 2).join(" / ") || "No strong evidence yet."}</p>
+            <small>{dimension.fix}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GoldenRecipesPanel({ goldenRecipes }: { goldenRecipes: GoldenRecipe[] }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Trophy size={18} />
+        <h2>Golden prompt recipes</h2>
+      </div>
+      <div className="recipe-list">
+        {goldenRecipes.length ? (
+          goldenRecipes.map((recipe) => (
+            <article className="recipe-card" key={recipe.archetype}>
+              <div className="dna-v2-topline">
+                <strong>{recipe.archetype}</strong>
+                <span data-tone={scoreTone(recipe.score)}>{recipe.score}</span>
+              </div>
+              <p>{recipe.recipe.slice(0, 4).join(" / ")}</p>
+              <small>Examples: {recipe.examples.join(", ")}</small>
+              {recipe.avoid.length ? <em>Avoid: {recipe.avoid.join(", ")}</em> : null}
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">Mark more prompts as gold to distill reusable recipes.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PromptBattlePanel({
+  copied,
+  onCopy,
+  onQueueBattle,
+  onSave,
+  promptBattle,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onQueueBattle: () => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  promptBattle: PromptBattle;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Shuffle size={18} />
+          <h2>Prompt battle mode</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onQueueBattle}>
+            <Plus size={15} />
+            Queue all
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(promptBattle.winner.prompt, "battle-winner")}>
+            {copied === "battle-winner" ? <Check size={15} /> : <Copy size={15} />}
+            Copy winner
+          </button>
+          <button
+            className="primary-button compact-button"
+            type="button"
+            onClick={() => onSave("tournament", promptBattle.winner.title, promptBattle.winner.prompt, promptBattle.winner.score)}
+          >
+            <Save size={15} />
+            Save winner
+          </button>
+        </div>
+      </div>
+      <div className="winner-card">
+        <span>Battle winner</span>
+        <strong>{promptBattle.winner.title}</strong>
+        <p>{promptBattle.explanation.join(" / ")}</p>
+      </div>
+      <div className="battle-list">
+        {promptBattle.variants.map((variant) => (
+          <article className="battle-card" key={variant.id}>
+            <div className="dna-v2-topline">
+              <strong>{variant.title}</strong>
+              <span data-tone={scoreTone(variant.score)}>{variant.score}</span>
+            </div>
+            <p>{variant.intent}</p>
+            <small>{promptBattle.queuePlan.find((item) => item.includes(variant.title)) ?? "Queue and compare this variant visually."}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FailureRepairPanel({
+  copied,
+  onCopy,
+  onSave,
+  repairedPrompt,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  repairedPrompt: string;
+}) {
+  const score = evaluatePrompt(repairedPrompt).score;
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Failure memory auto-repair</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(repairedPrompt, "repair-prompt")}>
+            {copied === "repair-prompt" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onSave("improved", "Failure-memory repaired prompt", repairedPrompt, score)}>
+            <Save size={15} />
+            Save
+          </button>
+        </div>
+      </div>
+      <p className="selected-meta">Injects safeguards learned from failed build runs, weak screenshots, and avoid-tagged outcomes.</p>
+      <textarea className="generated-output style-guide-output" readOnly value={repairedPrompt} />
+    </section>
+  );
+}
+
+function DatasetVersionPanel({
+  copied,
+  datasetVersions,
+  onCopy,
+  onCreateDatasetVersion,
+}: {
+  copied: string;
+  datasetVersions: DatasetVersion[];
+  onCopy: (value: string, key: string) => void;
+  onCreateDatasetVersion: () => void;
+}) {
+  const latestJson = JSON.stringify(datasetVersions[0] ?? {}, null, 2);
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Dataset versioning</h2>
+        </div>
+        <div className="button-row">
+          <button className="primary-button compact-button" type="button" onClick={onCreateDatasetVersion}>
+            <Plus size={15} />
+            Create version
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(latestJson, "dataset-version")} disabled={!datasetVersions.length}>
+            {copied === "dataset-version" ? <Check size={15} /> : <Copy size={15} />}
+            Copy latest
+          </button>
+        </div>
+      </div>
+      <div className="version-list">
+        {datasetVersions.length ? (
+          datasetVersions.map((version) => (
+            <article className="version-card" key={version.id}>
+              <strong>{version.label}</strong>
+              <span>{version.scores.final} score / {version.counts.examples} prompts</span>
+              <p>
+                {version.counts.outcomes} outcomes, {version.counts.screenshots} screenshots, {version.counts.buildRuns} runs
+              </p>
+              <small>{new Date(version.createdAt).toLocaleString()}</small>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">Create a snapshot before a major training batch so score changes are traceable.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ModelProviderSettingsPanel({
+  modelEnvStatus,
+  modelSettings,
+  onApplyProviderPreset,
+  setModelSettings,
+}: {
+  modelEnvStatus?: Record<string, boolean>;
+  modelSettings: {
+    endpoint: string;
+    apiKey: string;
+    model: string;
+    temperature: number;
+    agentCommand: string;
+    buildCommand: string;
+  };
+  onApplyProviderPreset: (kind: "local" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
+  setModelSettings: Dispatch<
+    SetStateAction<{
+      endpoint: string;
+      apiKey: string;
+      model: string;
+      temperature: number;
+      agentCommand: string;
+      buildCommand: string;
+    }>
+  >;
+}) {
+  const statuses = [
+    ["endpoint", Boolean(modelSettings.endpoint || modelEnvStatus?.endpointConfigured)],
+    ["api key", Boolean(modelSettings.apiKey || modelEnvStatus?.apiKeyConfigured)],
+    ["agent", Boolean(modelSettings.agentCommand || modelEnvStatus?.agentCommandConfigured)],
+    ["build", Boolean(modelSettings.buildCommand || modelEnvStatus?.buildCommandConfigured)],
+  ] as const;
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Sparkles size={18} />
+        <h2>External model provider settings</h2>
+      </div>
+      <div className="env-status-grid">
+        {statuses.map(([label, ready]) => (
+          <span data-ready={ready} key={label}>
+            {label}: {ready ? "ready" : "local"}
+          </span>
+        ))}
+      </div>
+      <div className="provider-preset-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("local")}>Local fallback</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("openai-compatible")}>OpenAI-compatible</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("codex-agent")}>Codex agent</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("scaffold-build")}>Scaffold build</button>
+      </div>
+      <Field label="Model endpoint">
+        <input
+          value={modelSettings.endpoint}
+          onChange={(event) => setModelSettings((current) => ({ ...current, endpoint: event.target.value }))}
+          placeholder="https://api.example.com/evaluate"
+        />
+      </Field>
+      <div className="two-field-grid">
+        <Field label="API key">
+          <input
+            type="password"
+            value={modelSettings.apiKey}
+            onChange={(event) => setModelSettings((current) => ({ ...current, apiKey: event.target.value }))}
+            placeholder="Optional; stored only in browser state"
+          />
+        </Field>
+        <Field label="Model">
+          <input
+            value={modelSettings.model}
+            onChange={(event) => setModelSettings((current) => ({ ...current, model: event.target.value }))}
+            placeholder="gpt-5"
+          />
+        </Field>
+      </div>
+      <Field label="Temperature">
+        <input
+          max={1}
+          min={0}
+          step={0.05}
+          type="number"
+          value={modelSettings.temperature}
+          onChange={(event) => setModelSettings((current) => ({ ...current, temperature: Number(event.target.value) }))}
+        />
+      </Field>
+      <Field label="Agent command for queue runner">
+        <input
+          value={modelSettings.agentCommand}
+          onChange={(event) => setModelSettings((current) => ({ ...current, agentCommand: event.target.value }))}
+          placeholder="codex exec --full-auto --prompt-file codex-task.md"
+        />
+      </Field>
+      <Field label="Build command override">
+        <input
+          value={modelSettings.buildCommand}
+          onChange={(event) => setModelSettings((current) => ({ ...current, buildCommand: event.target.value }))}
+          placeholder="npm run build"
+        />
+      </Field>
+    </section>
+  );
+}
+
+function VisualAnalyzerPanel({
+  onAnalyzeSelectedVisuals,
+  visualAnalysisResult,
+}: {
+  onAnalyzeSelectedVisuals: () => void;
+  visualAnalysisResult?: Record<string, unknown>;
+}) {
+  const output = visualAnalysisResult
+    ? JSON.stringify(visualAnalysisResult, null, 2)
+    : "Capture or import screenshots, then run pixel analysis to catch blank, low-contrast, or low-detail renders.";
+
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <FileText size={18} />
+          <h2>Pixel visual analyzer</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onAnalyzeSelectedVisuals}>
+          <Gauge size={15} />
+          Analyze selected screenshots
+        </button>
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={output} />
+    </section>
+  );
+}
+
+function ResultImporterPanel({
+  onImportResultJson,
+  resultImportText,
+  setResultImportText,
+}: {
+  onImportResultJson: () => void;
+  resultImportText: string;
+  setResultImportText: (value: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Download size={18} />
+        <h2>Automatic result importer</h2>
+      </div>
+      <Field label="queue-result.json">
+        <textarea
+          value={resultImportText}
+          onChange={(event) => setResultImportText(event.target.value)}
+          placeholder="Paste queue-result.json here to create a build run, screenshot, lineage node, and failure memory."
+        />
+      </Field>
+      <button className="primary-button wide-button" type="button" onClick={onImportResultJson} disabled={!resultImportText.trim()}>
+        <Upload size={15} />
+        Import result
+      </button>
+    </section>
+  );
+}
+
+function TrainingSnapshotPanel({
+  copied,
+  onCopy,
+  onExportTrainingSnapshot,
+  queueExport,
+  scoreWeights,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onExportTrainingSnapshot: () => void;
+  queueExport: string;
+  scoreWeights: Record<string, number>;
+}) {
+  const weightsText = JSON.stringify(scoreWeights, null, 2);
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Archive size={18} />
+        <h2>Training snapshot export</h2>
+      </div>
+      <p className="selected-meta">Exports corpus, outcomes, runs, lineage, scoring weights, failure memory, and installed skill content when API is online.</p>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onExportTrainingSnapshot}>
+          <Download size={15} />
+          Export snapshot
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(queueExport, "snapshot-queue")}>
+          {copied === "snapshot-queue" ? <Check size={15} /> : <Copy size={15} />}
+          Copy queue
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(weightsText, "score-weights")}>
+          {copied === "score-weights" ? <Check size={15} /> : <Copy size={15} />}
+          Copy weights
+        </button>
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={weightsText} />
+    </section>
+  );
+}
+
+function PromptMemoryPanel({
+  copied,
+  onCopy,
+  onDownload,
+  promptMemory,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  promptMemory: PromptMemoryExport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Prompt memory compiler</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(promptMemory.markdown, "prompt-memory-md")}>
+            {copied === "prompt-memory-md" ? <Check size={15} /> : <Copy size={15} />}
+            Copy MD
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(promptMemory.json, "prompt-memory-json")}>
+            {copied === "prompt-memory-json" ? <Check size={15} /> : <Copy size={15} />}
+            Copy JSON
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onDownload("website-prompt-memory.md", promptMemory.markdown, "text/markdown")}>
+            <Download size={15} />
+            Download
+          </button>
+        </div>
+      </div>
+      <div className="memory-section-grid">
+        {promptMemory.sections.slice(0, 6).map((section) => (
+          <article className="index-card wide-index-card" key={section.title}>
+            <h3>{section.title}</h3>
+            <p>{section.items.slice(0, 4).join(" / ") || "No signal learned yet."}</p>
+          </article>
+        ))}
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={promptMemory.markdown} />
+    </section>
+  );
+}
+
+function ModelIntegrationPanel({
+  modelEvaluation,
+  modelNotice,
+  onModelEvaluate,
+  selectedPrompt,
+}: {
+  modelEvaluation?: Record<string, unknown>;
+  modelNotice: string;
+  onModelEvaluate: () => void;
+  selectedPrompt?: PromptExample;
+}) {
+  const resultText = modelEvaluation ? JSON.stringify(modelEvaluation, null, 2) : "No model evaluation yet.";
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Sparkles size={18} />
+        <h2>Model integration</h2>
+      </div>
+      <p className="selected-meta">
+        Sends the selected prompt plus compiled memory to the local API. Set <code>PROMPT_LAB_MODEL_ENDPOINT</code> for an external evaluator; otherwise it uses a local fallback.
+      </p>
+      <button className="primary-button wide-button" type="button" onClick={onModelEvaluate} disabled={!selectedPrompt}>
+        <Sparkles size={15} />
+        Evaluate selected prompt
+      </button>
+      <p className="selected-meta">{modelNotice}</p>
+      <textarea className="generated-output mini-output" readOnly value={resultText} />
+    </section>
+  );
+}
+
+function PromptResultComparisonPanel({
+  buildRuns,
+  diffLeftId,
+  diffRightId,
+  examples,
+  screenshots,
+  scoreWeights,
+  setDiffLeftId,
+  setDiffRightId,
+}: {
+  buildRuns: BuildRunRecord[];
+  diffLeftId: string;
+  diffRightId: string;
+  examples: PromptExample[];
+  screenshots: ScreenshotRecord[];
+  scoreWeights: ScoreWeights;
+  setDiffLeftId: (id: string) => void;
+  setDiffRightId: (id: string) => void;
+}) {
+  const left = examples.find((example) => example.id === diffLeftId) ?? examples[0];
+  const right = examples.find((example) => example.id === diffRightId) ?? examples[1] ?? examples[0];
+  const cards = [left, right].filter(Boolean).map((example) => {
+    const shot = screenshots.find((item) => item.promptId === example.id);
+    const run = buildRuns.find((item) => item.promptId === example.id);
+    const promptScore = evaluatePrompt(example.text).score;
+    const visualScore = auditVisualPrompt(example.text).score;
+    const resultScore = scoreResultArtifact(example, shot, run).score;
+    const weightedTotal =
+      (promptScore * (scoreWeights.exactness ?? 18) +
+        visualScore * (scoreWeights.visualTaste ?? 22) +
+        resultScore * (scoreWeights.outcomes ?? 28) +
+        (shot ? 86 : 42) * (scoreWeights.mobile ?? 10)) /
+      Math.max(1, (scoreWeights.exactness ?? 18) + (scoreWeights.visualTaste ?? 22) + (scoreWeights.outcomes ?? 28) + (scoreWeights.mobile ?? 10));
+    return {
+      example,
+      run,
+      score: Math.round(weightedTotal),
+      shot,
+      promptScore,
+      resultScore,
+      visualScore,
+    };
+  });
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <FileText size={18} />
+        <h2>Prompt/result comparison</h2>
+      </div>
+      <div className="compare-selectors">
+        <Field label="Prompt A">
+          <select value={left?.id ?? ""} onChange={(event) => setDiffLeftId(event.target.value)}>
+            {examples.map((example) => (
+              <option key={example.id} value={example.id}>{example.title}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Prompt B">
+          <select value={right?.id ?? ""} onChange={(event) => setDiffRightId(event.target.value)}>
+            {examples.map((example) => (
+              <option key={example.id} value={example.id}>{example.title}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div className="comparison-grid result-comparison-grid">
+        {cards.map((card) => (
+          <article className="comparison-card" key={card.example.id}>
+            {card.shot?.url && /^(https?:|data:|\/)/.test(card.shot.url) ? <img src={card.shot.url} alt={card.shot.title} /> : <div className="empty-shot">No screenshot yet</div>}
+            <strong>{card.example.title}</strong>
+            <span>{card.score} weighted / {card.resultScore} result</span>
+            <p>Prompt {card.promptScore} / Visual {card.visualScore} / {card.run?.status ?? "not run"}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function VisualComparisonPanel({
+  buildRuns,
+  screenshots,
+  selectedPrompt,
+}: {
+  buildRuns: BuildRunRecord[];
+  screenshots: ScreenshotRecord[];
+  selectedPrompt?: PromptExample;
+}) {
+  const promptScreenshots = screenshots.filter((item) => !selectedPrompt || item.promptId === selectedPrompt.id).slice(0, 4);
+  const promptRuns = buildRuns.filter((run) => !selectedPrompt || run.promptId === selectedPrompt.id).slice(0, 4);
+  const cards = promptScreenshots.length
+    ? promptScreenshots.map((shot) => ({ title: shot.title, image: shot.url, meta: shot.rating, detail: shot.notes }))
+    : promptRuns.map((run) => ({ title: run.promptTitle, image: run.screenshotUrl, meta: `${run.score} score`, detail: run.notes || run.resultUrl }));
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <FileText size={18} />
+        <h2>Visual comparison gallery</h2>
+      </div>
+      <div className="comparison-grid">
+        {cards.length ? (
+          cards.map((card) => (
+            <article className="comparison-card" key={`${card.title}-${card.image}`}>
+              {card.image && /^(https?:|data:|\/)/.test(card.image) ? <img src={card.image} alt={card.title} /> : <div className="empty-shot">No renderable image</div>}
+              <strong>{card.title}</strong>
+              <span>{card.meta}</span>
+              <p>{card.detail || "No notes yet."}</p>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">Import queue results or add screenshots to compare finalist outputs.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RunTimelinePanel({
+  buildRuns,
+  lineage,
+  queueJobs,
+  screenshots,
+}: {
+  buildRuns: BuildRunRecord[];
+  lineage: PromptLineageNode[];
+  queueJobs: BuildQueueJob[];
+  screenshots: ScreenshotRecord[];
+}) {
+  const events = [
+    ...queueJobs.map((job) => ({ time: job.updatedAt, title: job.variantTitle, status: job.status, detail: job.runFolder })),
+    ...buildRuns.map((run) => ({ time: run.updatedAt, title: run.promptTitle, status: run.status, detail: run.resultUrl || run.folderPath })),
+    ...screenshots.map((shot) => ({ time: shot.createdAt, title: shot.title, status: shot.rating, detail: shot.notes })),
+    ...lineage.map((node) => ({ time: node.createdAt, title: node.title, status: node.kind, detail: node.detail })),
+  ]
+    .sort((a, b) => Date.parse(b.time) - Date.parse(a.time))
+    .slice(0, 10);
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Run timeline</h2>
+      </div>
+      <div className="timeline-list">
+        {events.length ? (
+          events.map((event) => (
+            <article className="timeline-card" key={`${event.time}-${event.title}-${event.status}`}>
+              <span>{event.status}</span>
+              <div>
+                <strong>{event.title}</strong>
+                <p>{event.detail || "No detail."}</p>
+                <small>{new Date(event.time).toLocaleString()}</small>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">The run timeline will fill as jobs are queued, built, captured, scored, and trained.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ScoringWeightPanel({
+  scoreWeights,
+  setScoreWeights,
+}: {
+  scoreWeights: ScoreWeights;
+  setScoreWeights: Dispatch<SetStateAction<ScoreWeights>>;
+}) {
+  function update(key: string, value: number) {
+    setScoreWeights((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <SlidersHorizontal size={18} />
+        <h2>Scoring weight editor</h2>
+      </div>
+      {Object.entries(scoreWeights).map(([key, value]) => (
+        <label className="slider-field" key={key}>
+          <span>
+            {key}
+            <strong>{value}</strong>
+          </span>
+          <input min={0} max={40} type="range" value={value} onChange={(event) => update(key, Number(event.target.value))} />
+        </label>
+      ))}
+      <p className="selected-meta">Weights are stored in exported training snapshots and can guide future scoring model tuning.</p>
+    </section>
+  );
+}
+
+function BuildQueuePanel({
+  copied,
+  onCopy,
+  onExportQueue,
+  onQueueTournament,
+  onRemoveQueueJob,
+  queueExport,
+  queueJobs,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onExportQueue: () => void;
+  onQueueTournament: () => void;
+  onRemoveQueueJob: (id: string) => void;
+  queueExport: string;
+  queueJobs: BuildQueueJob[];
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Hammer size={18} />
+        <h2>Autonomous run queue</h2>
+      </div>
+      <p className="selected-meta">Queue tournament finalists, export the queue, then process it with the local runner.</p>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onQueueTournament}>
+          <Plus size={15} />
+          Run Tournament
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={onExportQueue} disabled={!queueJobs.length}>
+          <Download size={15} />
+          Export queue
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(queueExport, "queue-json")} disabled={!queueJobs.length}>
+          {copied === "queue-json" ? <Check size={15} /> : <Copy size={15} />}
+          Copy JSON
+        </button>
+      </div>
+      <div className="command-box">
+        <code>npm run run:queue -- --queue prompt-lab-queue.json --scaffold</code>
+      </div>
+      <div className="queue-list">
+        {queueJobs.length ? (
+          queueJobs.slice(0, 8).map((job) => (
+            <article className="queue-card" key={job.id}>
+              <div>
+                <strong>{job.variantTitle}</strong>
+                <span>{job.status} / {job.score} score</span>
+              </div>
+              <p>{job.runFolder}</p>
+              <button className="icon-button danger" type="button" onClick={() => onRemoveQueueJob(job.id)} aria-label={`Remove ${job.variantTitle}`}>
+                <Trash2 size={14} />
+              </button>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">No queued jobs yet. Use Run Tournament to queue the top two finalists.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PromptLineagePanel({ lineage }: { lineage: PromptLineageNode[] }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Archive size={18} />
+        <h2>Prompt lineage tree</h2>
+      </div>
+      <div className="lineage-list">
+        {lineage.length ? (
+          lineage.map((node) => (
+            <article className="lineage-card" data-kind={node.kind} key={node.id}>
+              <span>{node.kind}</span>
+              <div>
+                <strong>{node.title}</strong>
+                <p>{node.detail}</p>
+                <small>{node.status} / {node.score} score</small>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">No lineage yet. Save a version, queue a tournament, or record a build result.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ScoreModelPanel({ scoreBreakdown }: { scoreBreakdown: ScoreBreakdown }) {
+  const rows = [
+    ["Prompt quality", scoreBreakdown.promptQuality],
+    ["Predicted build", scoreBreakdown.predictedBuild],
+    ["Actual result", scoreBreakdown.actualResult],
+    ["Visual taste", scoreBreakdown.visualTaste],
+    ["Failure risk", scoreBreakdown.failureRisk],
+  ] as const;
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Five-part scoring model</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={scoreBreakdown.finalScore} label="Final score" />
+      </div>
+      <div className="score-list compact">
+        {rows.map(([label, score]) => (
+          <div className="score-row" key={label}>
+            <span>{label}</span>
+            <div className="bar">
+              <i data-tone={scoreTone(label === "Failure risk" ? 100 - score : score)} style={{ width: `${Math.max(0, Math.min(100, score))}%` }} />
+            </div>
+            <strong>{score}</strong>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Score notes" items={scoreBreakdown.notes} empty="No scoring notes." />
+    </section>
+  );
+}
+
+function VectorSearchPanel({
+  onSelectPrompt,
+  query,
+  results,
+  setQuery,
+}: {
+  onSelectPrompt: (id: string) => void;
+  query: string;
+  results: VectorSearchResult[];
+  setQuery: (value: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Search size={18} />
+        <h2>Vector prompt search</h2>
+      </div>
+      <Field label="Embedding-style query">
+        <textarea
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Example: premium video hero with exact responsive rules, result screenshots, and failure-proof assets"
+        />
+      </Field>
+      <div className="search-results">
+        {results.length ? (
+          results.map((result) => (
+            <button className="result-card" key={result.example.id} type="button" onClick={() => onSelectPrompt(result.example.id)}>
+              <strong>{result.example.title}</strong>
+              <span>{result.score}% vector match</span>
+              <p>{result.reasons.join(" / ") || "Dense local vector overlap"}</p>
+            </button>
+          ))
+        ) : (
+          <p className="selected-meta">Type an intent to search the local hashed embedding index.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function BuildRunPanel({
+  buildRuns,
+  copied,
+  onAddBuildRun,
+  onCopy,
+  onDownload,
+  onRemoveBuildRun,
+  onSave,
+  runnerPlan,
+  selectedPrompt,
+}: {
+  buildRuns: BuildRunRecord[];
+  copied: string;
+  onAddBuildRun: (prompt: PromptExample, fields: Omit<BuildRunRecord, "id" | "promptId" | "promptTitle" | "promptText" | "score" | "failureCategories" | "createdAt" | "updatedAt">) => void;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onRemoveBuildRun: (id: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  runnerPlan?: BuildRunnerPlan;
+  selectedPrompt?: PromptExample;
+}) {
+  const [status, setStatus] = useState<BuildStatus>("planned");
+  const [resultUrl, setResultUrl] = useState("");
+  const [folderPath, setFolderPath] = useState("");
+  const [screenshotUrl, setScreenshotUrl] = useState("");
+  const [filesChanged, setFilesChanged] = useState("");
+  const [errors, setErrors] = useState("");
+  const [notes, setNotes] = useState("");
+  const handoff = selectedPrompt
+    ? createBuildRunHandoff(selectedPrompt, { status, resultUrl, folderPath, screenshotUrl, filesChanged, errors, notes })
+    : "";
+  const command = selectedPrompt
+    ? `npm run run:prompt -- --prompt-file ./prompt.md --title "${selectedPrompt.title.replace(/"/g, "'")}"`
+    : "Select a prompt first";
+  const visibleRuns = selectedPrompt
+    ? buildRuns.filter((run) => run.promptId === selectedPrompt.id).slice(0, 5)
+    : buildRuns.slice(0, 5);
+
+  function addRun() {
+    if (!selectedPrompt) return;
+    onAddBuildRun(selectedPrompt, {
+      status,
+      resultUrl,
+      folderPath,
+      screenshotUrl,
+      filesChanged,
+      errors,
+      notes,
+    });
+    setResultUrl("");
+    setFolderPath("");
+    setScreenshotUrl("");
+    setFilesChanged("");
+    setErrors("");
+    setNotes("");
+    setStatus("planned");
+  }
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Hammer size={18} />
+        <h2>Prompt-to-result build runs</h2>
+      </div>
+      <p className="selected-meta">{selectedPrompt ? selectedPrompt.title : "Select a prompt to create a build run."}</p>
+      <div className="command-box">
+        <code>{command}</code>
+      </div>
+      {runnerPlan ? (
+        <div className="automation-steps">
+          {runnerPlan.commands.map((item, index) => (
+            <article className="automation-step" key={item.label}>
+              <span>{index + 1}</span>
+              <div>
+                <strong>{item.label}</strong>
+                <code>{item.command}</code>
+              </div>
+              <button className="icon-button" type="button" onClick={() => onCopy(item.command, `runner-${index}`)} aria-label={`Copy ${item.label}`}>
+                {copied === `runner-${index}` ? <Check size={15} /> : <Copy size={15} />}
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : null}
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(runnerPlan?.handoff ?? handoff, "build-handoff")} disabled={!selectedPrompt}>
+          {copied === "build-handoff" ? <Check size={15} /> : <Copy size={15} />}
+          Copy handoff
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onDownload("prompt-build-run.md", runnerPlan?.handoff ?? handoff, "text/markdown")} disabled={!selectedPrompt}>
+          <Download size={15} />
+          Download handoff
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onSave("build-run", "Prompt build run handoff", handoff)} disabled={!selectedPrompt}>
+          <Save size={15} />
+          Save
+        </button>
+      </div>
+      <div className="two-field-grid">
+        <Field label="Status">
+          <select value={status} onChange={(event) => setStatus(event.target.value as BuildStatus)}>
+            {buildStatusOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Result URL">
+          <input value={resultUrl} onChange={(event) => setResultUrl(event.target.value)} placeholder="http://127.0.0.1:3000" />
+        </Field>
+      </div>
+      <Field label="Folder path">
+        <input value={folderPath} onChange={(event) => setFolderPath(event.target.value)} placeholder="/Users/program/Documents/Prompts/prompt-runs/..." />
+      </Field>
+      <Field label="Screenshot URL/path">
+        <input value={screenshotUrl} onChange={(event) => setScreenshotUrl(event.target.value)} placeholder="screenshot path or image URL" />
+      </Field>
+      <Field label="Files changed">
+        <textarea value={filesChanged} onChange={(event) => setFilesChanged(event.target.value)} placeholder="src/App.tsx, src/styles.css..." />
+      </Field>
+      <Field label="Errors">
+        <textarea value={errors} onChange={(event) => setErrors(event.target.value)} placeholder="Console, build, TypeScript, or visual issues." />
+      </Field>
+      <Field label="Notes">
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="What did the prompt/result teach us?" />
+      </Field>
+      <button className="primary-button wide-button" type="button" onClick={addRun} disabled={!selectedPrompt}>
+        <Plus size={15} />
+        Record build run
+      </button>
+      <div className="run-list">
+        {visibleRuns.length ? (
+          visibleRuns.map((run) => (
+            <article className="run-card" key={run.id}>
+              <div>
+                <strong>{run.promptTitle}</strong>
+                <span>
+                  {run.status} / {run.score} score
+                </span>
+              </div>
+              <p>{run.resultUrl || run.folderPath || "No URL/folder recorded yet."}</p>
+              {run.failureCategories.length ? <p>Failures: {run.failureCategories.join(", ")}</p> : null}
+              <button className="icon-button danger" type="button" onClick={() => onRemoveBuildRun(run.id)} aria-label={`Remove ${run.promptTitle}`}>
+                <Trash2 size={14} />
+              </button>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">No build runs recorded for this prompt yet.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ResultScorePanel({ resultScore }: { resultScore: ResultScore }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Automatic result scoring</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={resultScore.score} label="Result score" />
+      </div>
+      <div className="qa-grid">
+        {resultScore.checks.map((check) => (
+          <article className="qa-card" key={check.label}>
+            <strong>{check.label}</strong>
+            <span>{check.score}</span>
+            <p>{check.notes[0]}</p>
+          </article>
+        ))}
+      </div>
+      <div className="feedback-list">
+        <h3>
+          <AlertTriangle size={15} />
+          Failure taxonomy
+        </h3>
+        {resultScore.failureCategories.length ? (
+          resultScore.failureCategories.map((item) => (
+            <p key={item}>
+              <AlertTriangle size={14} />
+              {item}
+            </p>
+          ))
+        ) : (
+          <em>No failure categories detected.</em>
+        )}
+      </div>
+      <FeedbackList title="Next scoring actions" items={resultScore.recommendations} empty="No scoring actions needed." />
+    </section>
+  );
+}
+
+function ScreenshotQaPanel({
+  copied,
+  onCopy,
+  screenshotQa,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  screenshotQa: ScreenshotQaReport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <FileText size={18} />
+        <h2>Screenshot capture and visual scoring</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={screenshotQa.score} label="Capture QA" />
+      </div>
+      <div className="automation-steps">
+        {screenshotQa.captureCommands.map((command, index) => (
+          <article className="automation-step" key={command}>
+            <span>{index + 1}</span>
+            <div>
+              <strong>{index === 0 ? "Default capture" : "Explicit viewports"}</strong>
+              <code>{command}</code>
+            </div>
+            <button className="icon-button" type="button" onClick={() => onCopy(command, `capture-${index}`)} aria-label="Copy capture command">
+              {copied === `capture-${index}` ? <Check size={15} /> : <Copy size={15} />}
+            </button>
+          </article>
+        ))}
+      </div>
+      <div className="qa-grid">
+        {screenshotQa.items.map((item) => (
+          <article className="qa-card" key={item.label}>
+            <strong>{item.label}</strong>
+            <span>{item.score}</span>
+            <p>{item.notes[0]}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Capture notes" items={screenshotQa.notes} empty="No screenshot notes." />
+    </section>
+  );
+}
+
+function DnaCalibrationPanel({
+  dnaCalibration,
+  onSelectPrompt,
+}: {
+  dnaCalibration: DnaCalibrationReport;
+  onSelectPrompt: (id: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Prompt DNA calibration</h2>
+      </div>
+      <div className="index-grid">
+        <article className="index-card">
+          <strong>{dnaCalibration.predictedAverage || 0}</strong>
+          <span>predicted avg</span>
+        </article>
+        <article className="index-card">
+          <strong>{dnaCalibration.actualAverage || 0}</strong>
+          <span>actual avg</span>
+        </article>
+        <article className="index-card">
+          <strong>{dnaCalibration.correlation}</strong>
+          <span>correlation</span>
+        </article>
+        <article className="index-card">
+          <strong>{dnaCalibration.calibratedScore || 0}</strong>
+          <span>calibrated DNA</span>
+        </article>
+      </div>
+      <FeedbackList title="Calibration insights" items={dnaCalibration.insights} empty="No calibration insights yet." />
+      <div className="leaderboard-list compact-list">
+        {dnaCalibration.rows.slice(0, 6).map((row) => (
+          <button className="leaderboard-card" key={row.promptId} type="button" onClick={() => onSelectPrompt(row.promptId)}>
+            <span className="rank-badge">{row.delta >= 0 ? "+" : "-"}</span>
+            <div>
+              <strong>{row.title}</strong>
+              <p>
+                Predicted {row.predicted} / Actual {row.actual}
+              </p>
+            </div>
+            <em>{row.delta >= 0 ? `+${row.delta}` : row.delta}</em>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CorpusCleaningPanel({
+  corpusCleaning,
+  onSelectPrompt,
+}: {
+  corpusCleaning: CorpusCleaningReport;
+  onSelectPrompt: (id: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Archive size={18} />
+        <h2>Corpus cleaning dashboard</h2>
+      </div>
+      <div className="index-grid">
+        <article className="index-card">
+          <strong>{corpusCleaning.exactDuplicates.length}</strong>
+          <span>exact duplicate groups</span>
+        </article>
+        <article className="index-card">
+          <strong>{corpusCleaning.nearDuplicates.length}</strong>
+          <span>near duplicate groups</span>
+        </article>
+        <article className="index-card">
+          <strong>{corpusCleaning.weakPrompts.length}</strong>
+          <span>weak/quarantine</span>
+        </article>
+        <article className="index-card">
+          <strong>{corpusCleaning.archetypeBalance.filter((item) => item.status === "dominant").length}</strong>
+          <span>dominant archetypes</span>
+        </article>
+      </div>
+      <FeedbackList title="Cleaning recommendations" items={corpusCleaning.recommendations} empty="Corpus looks clean." />
+      <div className="cleaning-list">
+        {corpusCleaning.weakPrompts.slice(0, 6).map((item) => (
+          <button className="result-card" key={item.example.id} type="button" onClick={() => onSelectPrompt(item.example.id)}>
+            <strong>{item.example.title}</strong>
+            <span>{item.score} evaluator score</span>
+            <p>{item.reasons.join(" / ")}</p>
+          </button>
+        ))}
+      </div>
+      <div className="feature-list balance-list">
+        {corpusCleaning.archetypeBalance.slice(0, 10).map((item) => (
+          <span data-status={item.status} key={item.label}>
+            {item.label}
+            <small>{item.count}</small>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FailureMemoryPanel({
+  copied,
+  failureMemory,
+  onCopy,
+}: {
+  copied: string;
+  failureMemory: FailureMemoryReport;
+  onCopy: (value: string, key: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <AlertTriangle size={18} />
+        <h2>Result failure memory</h2>
+      </div>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(failureMemory.promptPatch, "failure-patch")}>
+          {copied === "failure-patch" ? <Check size={15} /> : <Copy size={15} />}
+          Copy patch
+        </button>
+      </div>
+      <div className="failure-list">
+        {failureMemory.categories.length ? (
+          failureMemory.categories.map((item) => (
+            <article className="failure-card" key={item.category}>
+              <div>
+                <strong>{item.category}</strong>
+                <span>{item.count} hits / severity {item.severity}</span>
+              </div>
+              <p>{item.fix}</p>
+              {item.prompts.length ? <small>{item.prompts.join(" / ")}</small> : null}
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">No recorded failures yet. The default memory still guards common website build risks.</p>
+        )}
+      </div>
+      <FeedbackList title="Avoid rules" items={failureMemory.avoidRules} empty="No avoid rules yet." />
+    </section>
+  );
+}
+
+function PromptCompilerPanel({
+  compiledPrompt,
+  compilerInput,
+  copied,
+  onCopy,
+  onSave,
+  setCompilerInput,
+}: {
+  compiledPrompt: CompiledPrompt;
+  compilerInput: PromptCompilerInput;
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setCompilerInput: Dispatch<SetStateAction<PromptCompilerInput>>;
+}) {
+  function update<K extends keyof PromptCompilerInput>(key: K, value: PromptCompilerInput[K]) {
+    setCompilerInput((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Wand2 size={18} />
+        <h2>Prompt compiler</h2>
+      </div>
+      <Field label="Rough idea">
+        <textarea value={compilerInput.roughIdea} onChange={(event) => update("roughIdea", event.target.value)} />
+      </Field>
+      <div className="two-field-grid">
+        <Field label="Brand">
+          <input value={compilerInput.brandName} onChange={(event) => update("brandName", event.target.value)} />
+        </Field>
+        <Field label="Site type">
+          <input value={compilerInput.siteType} onChange={(event) => update("siteType", event.target.value)} />
+        </Field>
+      </div>
+      <Field label="Audience">
+        <input value={compilerInput.audience} onChange={(event) => update("audience", event.target.value)} />
+      </Field>
+      <Field label="Visual direction">
+        <textarea value={compilerInput.visualDirection} onChange={(event) => update("visualDirection", event.target.value)} />
+      </Field>
+      <div className="two-field-grid">
+        <Field label="Stack">
+          <textarea value={compilerInput.stack} onChange={(event) => update("stack", event.target.value)} />
+        </Field>
+        <Field label="Assets">
+          <textarea value={compilerInput.assets} onChange={(event) => update("assets", event.target.value)} />
+        </Field>
+      </div>
+      <Field label="Constraints">
+        <textarea value={compilerInput.constraints} onChange={(event) => update("constraints", event.target.value)} />
+      </Field>
+      <div className="output-header">
+        <div>
+          <h3>Compiled build prompt</h3>
+          <p className="selected-meta">{compiledPrompt.score} score / {compiledPrompt.sections.length} sections</p>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(compiledPrompt.prompt, "compiled")}>
+            {copied === "compiled" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onSave("compiled", `${compilerInput.brandName || "Compiled"} prompt`, compiledPrompt.prompt, compiledPrompt.score)}>
+            <Save size={15} />
+            Save
+          </button>
+        </div>
+      </div>
+      <FeedbackList title="Compiler assumptions" items={compiledPrompt.assumptions} empty="No assumptions; the brief is explicit." />
+      <textarea className="generated-output small-output" readOnly value={compiledPrompt.prompt} />
+    </section>
+  );
+}
+
+function TournamentPanel({
+  copied,
+  onCopy,
+  onSave,
+  tournament,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  tournament: PromptTournament;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Trophy size={18} />
+        <h2>A/B prompt tournament</h2>
+      </div>
+      <article className="winner-card">
+        <span>Recommended winner</span>
+        <strong>{tournament.recommendation.title}</strong>
+        <p>{tournament.recommendation.intent}</p>
+        <em>{tournament.recommendation.score}</em>
+      </article>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(tournament.recommendation.prompt, "tournament-winner")}>
+          {copied === "tournament-winner" ? <Check size={15} /> : <Copy size={15} />}
+          Copy winner
+        </button>
+        <button
+          className="primary-button compact-button"
+          type="button"
+          onClick={() => onSave("tournament", tournament.recommendation.title, tournament.recommendation.prompt, tournament.recommendation.score)}
+        >
+          <Save size={15} />
+          Save winner
+        </button>
+      </div>
+      <div className="mutation-list">
+        {tournament.finalists.map((variant) => (
+          <article className="mutation-card" key={variant.id}>
+            <div className="output-header">
+              <div>
+                <strong>{variant.title}</strong>
+                <span>{variant.intent}</span>
+              </div>
+              <div className="diff-score">
+                <strong>{variant.score}</strong>
+                <span>score</span>
+              </div>
+            </div>
+            <textarea className="generated-output small-output" readOnly value={variant.prompt} />
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Tournament notes" items={tournament.scoringNotes} empty="No tournament notes." />
+    </section>
+  );
+}
+
+function OutcomePanel({
+  outcomes,
+  outcomeSummary,
+  onUpdateOutcome,
+  selectedPrompt,
+}: {
+  outcomes: OutcomeRecord[];
+  outcomeSummary: OutcomeSummary;
+  onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
+  selectedPrompt?: PromptExample;
+}) {
+  const selectedOutcome = outcomes.find((outcome) => outcome.promptId === selectedPrompt?.id);
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Sparkles size={18} />
+        <h2>Outcome tracking and gold set</h2>
+      </div>
+      {selectedPrompt ? (
+        <>
+          <p className="selected-meta">{selectedPrompt.title}</p>
+          <div className="two-field-grid">
+            <Field label="Built result">
+              <select
+                value={selectedOutcome?.rating ?? "unrated"}
+                onChange={(event) => onUpdateOutcome(selectedPrompt, { rating: event.target.value as OutcomeRecord["rating"] })}
+              >
+                {ratingOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Training status">
+              <select
+                value={selectedOutcome?.status ?? "unrated"}
+                onChange={(event) => onUpdateOutcome(selectedPrompt, { status: event.target.value as OutcomeRecord["status"] })}
+              >
+                {statusOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <Field label="Outcome notes">
+            <textarea
+              value={selectedOutcome?.notes ?? ""}
+              onChange={(event) => onUpdateOutcome(selectedPrompt, { notes: event.target.value })}
+              placeholder="What did the built result get right or wrong?"
+            />
+          </Field>
+        </>
+      ) : (
+        <p className="selected-meta">Select a prompt to rate it.</p>
+      )}
+      <div className="health-grid compact-health">
+        <div className="health-card">
+          <h3>Successful signals</h3>
+          {(outcomeSummary.goldSignals.length ? outcomeSummary.goldSignals : ["No gold signals yet."]).map((item) => (
+            <p key={item}>{item}</p>
+          ))}
+        </div>
+        <div className="health-card">
+          <h3>Avoid signals</h3>
+          {(outcomeSummary.avoidSignals.length ? outcomeSummary.avoidSignals : ["No avoid signals yet."]).map((item) => (
+            <p key={item}>{item}</p>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ScreenshotPanel({
+  onAddScreenshot,
+  onRemoveScreenshot,
+  screenshots,
+  selectedPrompt,
+}: {
+  onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
+  onRemoveScreenshot: (id: string) => void;
+  screenshots: ScreenshotRecord[];
+  selectedPrompt?: PromptExample;
+}) {
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [rating, setRating] = useState<ScreenshotRecord["rating"]>("unrated");
+  const visible = screenshots.filter((screenshot) => !selectedPrompt || screenshot.promptId === selectedPrompt.id).slice(0, 8);
+
+  function add() {
+    if (!selectedPrompt || !url.trim()) return;
+    onAddScreenshot({
+      promptId: selectedPrompt.id,
+      title: title.trim() || selectedPrompt.title,
+      url,
+      notes,
+      rating,
+    });
+    setUrl("");
+    setTitle("");
+    setNotes("");
+    setRating("unrated");
+  }
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <FileText size={18} />
+        <h2>Result screenshot library</h2>
+      </div>
+      <Field label="Image URL or data URL">
+        <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://... or data:image/..." />
+      </Field>
+      <div className="two-field-grid">
+        <Field label="Title">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Homepage desktop result" />
+        </Field>
+        <Field label="Rating">
+          <select value={rating} onChange={(event) => setRating(event.target.value as ScreenshotRecord["rating"])}>
+            {ratingOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Notes">
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="What should the prompt learn from this result?" />
+      </Field>
+      <button className="primary-button wide-button" type="button" onClick={add} disabled={!selectedPrompt || !url.trim()}>
+        <Plus size={15} />
+        Add result screenshot
+      </button>
+      <div className="screenshot-grid">
+        {visible.length ? (
+          visible.map((screenshot) => (
+            <article className="screenshot-card" key={screenshot.id}>
+              <img src={screenshot.url} alt={screenshot.title} />
+              <div>
+                <strong>{screenshot.title}</strong>
+                <span>{screenshot.rating}</span>
+              </div>
+              {screenshot.notes ? <p>{screenshot.notes}</p> : null}
+              <button className="icon-button danger" type="button" onClick={() => onRemoveScreenshot(screenshot.id)} aria-label={`Remove ${screenshot.title}`}>
+                <Trash2 size={14} />
+              </button>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">No screenshots saved for this prompt yet.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SemanticSearchPanel({
+  onSelectPrompt,
+  query,
+  results,
+  setQuery,
+}: {
+  onSelectPrompt: (id: string) => void;
+  query: string;
+  results: SearchResult[];
+  setQuery: (value: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Search size={18} />
+        <h2>Semantic similarity search</h2>
+      </div>
+      <Field label="Search intent">
+        <textarea
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Example: dark liquid-glass SaaS hero with video, mobile menu, exact motion, and no decorative blobs"
+        />
+      </Field>
+      <div className="search-results">
+        {results.length ? (
+          results.map((result) => (
+            <button className="result-card" key={result.example.id} type="button" onClick={() => onSelectPrompt(result.example.id)}>
+              <strong>{result.example.title}</strong>
+              <span>{result.score}% match</span>
+              <p>{result.reasons.join(" / ") || "Semantic overlap"}</p>
+            </button>
+          ))
+        ) : (
+          <p className="selected-meta">Type a design intent to find close prompts.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PromptDiffPanel({
+  copied,
+  diff,
+  examples,
+  leftId,
+  onCopy,
+  onSave,
+  rightId,
+  setLeftId,
+  setRightId,
+}: {
+  copied: string;
+  diff?: PromptDiff;
+  examples: PromptExample[];
+  leftId: string;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  rightId: string;
+  setLeftId: (id: string) => void;
+  setRightId: (id: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Clipboard size={18} />
+        <h2>Prompt diff and merge</h2>
+      </div>
+      <div className="two-field-grid">
+        <Field label="Left prompt">
+          <select value={leftId} onChange={(event) => setLeftId(event.target.value)}>
+            {examples.map((example) => (
+              <option key={example.id} value={example.id}>
+                {example.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Right prompt">
+          <select value={rightId} onChange={(event) => setRightId(event.target.value)}>
+            {examples.map((example) => (
+              <option key={example.id} value={example.id}>
+                {example.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {diff ? (
+        <>
+          <div className="diff-score">
+            <strong>{diff.similarity}%</strong>
+            <span>similar</span>
+          </div>
+          <div className="diff-list">
+            {diff.categories.slice(0, 8).map((category) => (
+              <article className="diff-card" key={category.key}>
+                <strong>{category.label}</strong>
+                <p>Shared: {category.shared.slice(0, 5).join(", ") || "none"}</p>
+                <p>Left only: {category.leftOnly.slice(0, 4).join(", ") || "none"}</p>
+                <p>Right only: {category.rightOnly.slice(0, 4).join(", ") || "none"}</p>
+              </article>
+            ))}
+          </div>
+          <div className="output-header">
+            <h3>Merged prompt</h3>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(diff.mergedPrompt, "merged")}>
+                {copied === "merged" ? <Check size={15} /> : <Copy size={15} />}
+                Copy
+              </button>
+              <button className="primary-button compact-button" type="button" onClick={() => onSave("merged", "Merged prompt", diff.mergedPrompt, evaluatePrompt(diff.mergedPrompt).score)}>
+                <Save size={15} />
+                Save
+              </button>
+            </div>
+          </div>
+          <textarea className="generated-output small-output" readOnly value={diff.mergedPrompt} />
+        </>
+      ) : (
+        <p className="selected-meta">Choose two prompts to compare.</p>
+      )}
+    </section>
+  );
+}
+
+function VisualQaPanel({
+  driftReport,
+  qaText,
+  setQaText,
+  visualQa,
+}: {
+  driftReport: DriftReport;
+  qaText: string;
+  setQaText: (value: string) => void;
+  visualQa: VisualQaReport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Visual QA and drift detector</h2>
+      </div>
+      <Field label="Prompt to audit">
+        <textarea value={qaText} onChange={(event) => setQaText(event.target.value)} placeholder="Leave blank to audit the generated prompt." />
+      </Field>
+      <div className="qa-score-row">
+        <ScoreRing score={visualQa.score} label="Visual QA" />
+        <ScoreRing score={driftReport.score} label="Taste fit" />
+      </div>
+      <div className="qa-grid">
+        {visualQa.items.map((item) => (
+          <article className="qa-card" key={item.label}>
+            <strong>{item.label}</strong>
+            <span>{item.score}</span>
+            <p>{item.notes[0]}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Drift warnings" items={driftReport.warnings} empty="No drift warnings." />
+      <FeedbackList title="Corrective rules" items={driftReport.correctiveRules} empty="No corrective rules needed." />
+    </section>
+  );
+}
+
+function InterviewPanel({
+  brief,
+  copied,
+  onCopy,
+  onSave,
+  prompt,
+  updateBrief,
+}: {
+  brief: InterviewBrief;
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  prompt: string;
+  updateBrief: <K extends keyof InterviewBrief>(key: K, value: InterviewBrief[K]) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Wand2 size={18} />
+        <h2>Brief-to-prompt interview</h2>
+      </div>
+      <div className="two-field-grid">
+        <Field label="Brand">
+          <input value={brief.brandName} onChange={(event) => updateBrief("brandName", event.target.value)} />
+        </Field>
+        <Field label="Site type">
+          <input value={brief.siteType} onChange={(event) => updateBrief("siteType", event.target.value)} />
+        </Field>
+      </div>
+      <Field label="Audience">
+        <input value={brief.audience} onChange={(event) => updateBrief("audience", event.target.value)} />
+      </Field>
+      <Field label="Goal">
+        <textarea value={brief.goal} onChange={(event) => updateBrief("goal", event.target.value)} />
+      </Field>
+      <Field label="Visual direction">
+        <textarea value={brief.visualDirection} onChange={(event) => updateBrief("visualDirection", event.target.value)} />
+      </Field>
+      <Field label="Assets">
+        <textarea value={brief.assets} onChange={(event) => updateBrief("assets", event.target.value)} />
+      </Field>
+      <Field label="Stack">
+        <input value={brief.stack} onChange={(event) => updateBrief("stack", event.target.value)} />
+      </Field>
+      <div className="two-field-grid">
+        <Field label="Must-haves">
+          <textarea value={brief.mustHaves} onChange={(event) => updateBrief("mustHaves", event.target.value)} />
+        </Field>
+        <Field label="No-go rules">
+          <textarea value={brief.noGos} onChange={(event) => updateBrief("noGos", event.target.value)} />
+        </Field>
+      </div>
+      <Field label="Tone">
+        <input value={brief.tone} onChange={(event) => updateBrief("tone", event.target.value)} />
+      </Field>
+      <div className="output-header">
+        <h3>Interview-generated prompt</h3>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(prompt, "interview")}>
+            {copied === "interview" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onSave("interview", `${brief.brandName} interview prompt`, prompt, evaluatePrompt(prompt).score)}>
+            <Save size={15} />
+            Save
+          </button>
+        </div>
+      </div>
+      <textarea className="generated-output small-output" readOnly value={prompt} />
+    </section>
+  );
+}
+
+function MutationLabPanel({
+  copied,
+  mutationSource,
+  mutations,
+  onCopy,
+  onSave,
+  setMutationSource,
+}: {
+  copied: string;
+  mutationSource: string;
+  mutations: PromptMutation[];
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setMutationSource: (value: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Shuffle size={18} />
+        <h2>Prompt mutation lab</h2>
+      </div>
+      <Field label="Source prompt override">
+        <textarea
+          value={mutationSource}
+          onChange={(event) => setMutationSource(event.target.value)}
+          placeholder="Leave blank to mutate the currently generated prompt."
+        />
+      </Field>
+      <div className="mutation-list">
+        {mutations.map((mutation) => (
+          <article className="mutation-card" key={mutation.id}>
+            <div className="output-header">
+              <div>
+                <strong>{mutation.title}</strong>
+                <span>{mutation.intent}</span>
+              </div>
+              <div className="diff-score">
+                <strong>{mutation.score}</strong>
+                <span>DNA</span>
+              </div>
+            </div>
+            <p>{mutation.intent}</p>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(mutation.prompt, mutation.id)}>
+                {copied === mutation.id ? <Check size={15} /> : <Copy size={15} />}
+                Copy
+              </button>
+              <button
+                className="primary-button compact-button"
+                type="button"
+                onClick={() => onSave("mutation", mutation.title, mutation.prompt, mutation.score)}
+              >
+                <Save size={15} />
+                Save
+              </button>
+            </div>
+            <textarea className="generated-output small-output" readOnly value={mutation.prompt} />
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ImprovePanel({
+  copied,
+  improvedPrompt,
+  improveText,
+  onCopy,
+  onSave,
+  setImproveText,
+}: {
+  copied: string;
+  improvedPrompt: string;
+  improveText: string;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setImproveText: (value: string) => void;
+}) {
+  const score = evaluatePrompt(improvedPrompt).score;
+  const source = improveText.trim();
+  const lower = source.toLowerCase();
+  const missingQuestions = [
+    /react|vite|typescript|tailwind|css|next/.test(lower) ? "" : "What exact stack and dependency boundaries should the build use?",
+    /font|typeface|google fonts|font-family/.test(lower) ? "" : "Which fonts, weights, and text roles should be specified?",
+    /#[0-9a-f]{3,8}|hsl|rgba|color|foreground|background/i.test(source) ? "" : "What color tokens and exact values define the visual system?",
+    /url|video|image|asset|svg|mp4|webm/.test(lower) ? "" : "What exact media/assets or fallback slots should be used?",
+    /mobile|responsive|sm:|md:|lg:|breakpoint|clamp/.test(lower) ? "" : "What mobile and desktop behaviors must be locked?",
+    /verify|test|screenshot|qa|accessibility|aria/.test(lower) ? "" : "How should the output be verified visually and functionally?",
+  ].filter(Boolean);
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Wand2 size={18} />
+        <h2>Weak prompt repair</h2>
+      </div>
+      <Field label="Prompt to improve">
+        <textarea
+          value={improveText}
+          onChange={(event) => setImproveText(event.target.value)}
+          placeholder="Leave blank to improve the currently generated prompt with learned gold and avoid signals."
+        />
+      </Field>
+      <FeedbackList
+        title="Missing questions before build"
+        items={missingQuestions}
+        empty="This prompt already answers the main implementation questions."
+      />
+      <div className="output-header">
+        <div>
+          <h3>Outcome-aware rewrite</h3>
+          <p className="selected-meta">Applies gold signals, avoid rules, result scoring, and visual QA constraints.</p>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(improvedPrompt, "improved-prompt")}>
+            {copied === "improved-prompt" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onSave("improved", "Outcome-aware improved prompt", improvedPrompt, score)}>
+            <Save size={15} />
+            Save
+          </button>
+        </div>
+      </div>
+      <textarea className="generated-output style-guide-output" readOnly value={improvedPrompt} />
+    </section>
+  );
+}
+
+function LeaderboardPanel({
+  leaderboard,
+  onSelectPrompt,
+}: {
+  leaderboard: PromptRank[];
+  onSelectPrompt: (id: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Trophy size={18} />
+        <h2>Prompt DNA leaderboard</h2>
+      </div>
+      <div className="leaderboard-list">
+        {leaderboard.slice(0, 10).map((rank, index) => (
+          <button className="leaderboard-card" key={rank.example.id} type="button" onClick={() => onSelectPrompt(rank.example.id)}>
+            <span className="rank-badge">{index + 1}</span>
+            <div>
+              <strong>{rank.example.title}</strong>
+              <p>{rank.reasons.join(" / ")}</p>
+              <small>
+                DNA {rank.dnaScore} / Originality {rank.originality} / Outcome {rank.outcomeBoost >= 0 ? "+" : ""}
+                {rank.outcomeBoost}
+              </small>
+            </div>
+            <em>{rank.score}</em>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function LocalIndexPanel({ localIndex }: { localIndex: LocalEmbeddingIndex }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <BookOpen size={18} />
+        <h2>Local intent index</h2>
+      </div>
+      <div className="index-grid">
+        <article className="index-card">
+          <strong>{formatNumber(localIndex.promptCount)}</strong>
+          <span>indexed prompts</span>
+        </article>
+        <article className="index-card">
+          <strong>{formatNumber(localIndex.weightedPromptCount)}</strong>
+          <span>weighted examples</span>
+        </article>
+      </div>
+      <FeaturePills
+        empty="No common local terms found."
+        features={localIndex.topTerms}
+      />
+      <div className="index-grid">
+        <article className="index-card wide-index-card">
+          <h3>Gold vocabulary</h3>
+          <p>{localIndex.goldTerms.map((term) => term.label).join(", ") || "Mark outcomes as gold to build this vocabulary."}</p>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Avoid vocabulary</h3>
+          <p>{localIndex.avoidTerms.map((term) => term.label).join(", ") || "Mark weak outcomes as avoid to build this vocabulary."}</p>
+        </article>
+      </div>
+      <FeedbackList title="Index notes" items={localIndex.notes} empty="No index notes yet." />
+    </section>
+  );
+}
+
+function SkillInstallPanel({
+  copied,
+  onCopy,
+  plan,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  plan: SkillInstallPlan;
+}) {
+  const commandText = plan.commands.join("\n");
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <PackageOpen size={18} />
+        <h2>Codex skill install status</h2>
+      </div>
+      <div className="winner-card">
+        <span>{plan.status}</span>
+        <strong>{plan.targetPath}</strong>
+        <p>Export the latest skill after training, then install it locally so future Codex threads inherit this prompt taste.</p>
+      </div>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(commandText, "skill-install-plan")}>
+          {copied === "skill-install-plan" ? <Check size={15} /> : <Copy size={15} />}
+          Copy commands
+        </button>
+      </div>
+      <div className="automation-steps">
+        {plan.commands.map((command, index) => (
+          <article className="automation-step" key={command}>
+            <span>{index + 1}</span>
+            <div>
+              <strong>{index === 0 ? "Export" : index === 1 ? "Install" : "Verify"}</strong>
+              <code>{command}</code>
+            </div>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Install checklist" items={plan.checklist} empty="No checklist." />
+    </section>
+  );
+}
+
+function GuidedWorkflowPanel() {
+  const steps = [
+    "Import a batch of great prompts or compile one from a rough idea.",
+    "Run model evaluation and tournament scoring against the prompt memory.",
+    "Queue finalists and use Run queue to scaffold agent-ready Vite folders.",
+    "Capture desktop/mobile screenshots and import queue-result.json evidence.",
+    "Compare prompt/result pairs, then mark the winner gold and weak patterns avoid.",
+    "Export the prompt memory and install the updated Codex skill.",
+  ];
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Guided train loop</h2>
+      </div>
+      <div className="guided-steps">
+        {steps.map((step, index) => (
+          <article className="guided-step" key={step}>
+            <span>{index + 1}</span>
+            <p>{step}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ScoreRing({ label, score }: { label: string; score: number }) {
+  return (
+    <div className="score-ring" data-tone={scoreTone(score)}>
+      <strong>{score}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function DnaList({ dna }: { dna: Record<DnaKey, number> }) {
+  return (
+    <div className="score-list compact">
+      {dnaOrder.map((key) => {
+        const score = dna[key];
+        return (
+          <div className="score-row" key={key}>
+            <span>{dnaLabels[key]}</span>
+            <div className="bar">
+              <i data-tone={scoreTone(score)} style={{ width: `${score}%` }} />
+            </div>
+            <strong>{score}</strong>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ScoreList({ compact = false, scores }: { compact?: boolean; scores: Record<CategoryKey, number> }) {
+  return (
+    <div className={`score-list ${compact ? "compact" : ""}`}>
+      {categoryOrder.map((key) => {
+        const score = scores[key];
+        const tone = scoreTone(score);
+        return (
+          <div className="score-row" key={key}>
+            <span>{categoryLabels[key]}</span>
+            <div className="bar">
+              <i data-tone={tone} style={{ width: `${score}%` }} />
+            </div>
+            <strong>{score}</strong>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ClusterCard({ cluster }: { cluster: ArchetypeCluster }) {
+  return (
+    <article className="cluster-card">
+      <div>
+        <strong>{cluster.label}</strong>
+        <span>{cluster.count} prompts / {cluster.score}% match</span>
+      </div>
+      <p>{cluster.signals.slice(0, 5).join(" / ")}</p>
+    </article>
+  );
+}
+
+function FeaturePills({ empty, features }: { empty: string; features: Feature[] }) {
+  if (!features.length) return <em>{empty}</em>;
+  return (
+    <div className="feature-list">
+      {features.slice(0, 10).map((feature) => (
+        <span key={feature.label}>
+          {feature.label}
+          <small>{feature.count}</small>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Field({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function SliderField({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label className="slider-field">
+      <span>
+        {label}
+        <strong>{value}</strong>
+      </span>
+      <input
+        min={1}
+        max={10}
+        type="range"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
+  );
+}
+
+function Toggle({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="toggle">
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function FeedbackList({ empty, items, title }: { empty: string; items: string[]; title: string }) {
+  return (
+    <div className="feedback-list">
+      <h3>{title}</h3>
+      {items.length ? (
+        items.map((item) => (
+          <p key={item}>
+            <Check size={14} />
+            {item}
+          </p>
+        ))
+      ) : (
+        <em>{empty}</em>
+      )}
+    </div>
+  );
+}
