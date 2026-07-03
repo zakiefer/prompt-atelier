@@ -6,9 +6,13 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom"],
-          icons: ["lucide-react"],
+        manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) return "react";
+          if (id.includes("node_modules/lucide-react")) return "icons";
+          if (id.includes("/src/promptEngine.ts")) return "prompt-engine";
+          if (id.includes("/src/prompts/") || id.includes("/src/seedPrompts.ts")) return "prompt-corpus";
+          if (id.includes("/src/promptApi.ts") || id.includes("/src/promptDb.ts")) return "prompt-storage";
+          return undefined;
         },
       },
     },

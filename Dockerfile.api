@@ -1,0 +1,18 @@
+FROM node:24-slim
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY scripts ./scripts
+COPY src ./src
+COPY public ./public
+COPY vite.config.ts tsconfig*.json index.html ./
+
+ENV PROMPT_LAB_API_HOST=0.0.0.0
+ENV PROMPT_LAB_DATA_DIR=/var/data/prompt-atelier
+
+EXPOSE 8787
+
+CMD ["npm", "run", "api"]

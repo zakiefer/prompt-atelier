@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type Dispatch, type DragEvent, type ReactNode, type SetStateAction } from "react";
 import {
   Archive,
   AlertTriangle,
@@ -226,6 +226,7 @@ const MODEL_BATCH_KEY = "prompt-atelier-model-batch-evaluations";
 const PAIRWISE_REVIEW_KEY = "prompt-atelier-pairwise-reviews";
 const BACKUP_KEY = "prompt-atelier-backup-snapshots";
 const ONBOARDING_KEY = "prompt-atelier-onboarding-mode";
+const WORKSPACE_KEY = "prompt-atelier-active-workspace";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -470,6 +471,16 @@ function readStoredOnboardingMode(): OnboardingMode {
   return value === "demo" || value === "blank" || value === "upload" || value === "trained" ? value : "blank";
 }
 
+function readStoredWorkspace(): WorkspaceKey {
+  if (typeof window === "undefined") return "all";
+  const value = window.localStorage.getItem(WORKSPACE_KEY);
+  return isWorkspaceKey(value) ? value : "all";
+}
+
+function isWorkspaceKey(value: unknown): value is WorkspaceKey {
+  return typeof value === "string" && workspacePresets.some((workspace) => workspace.key === value);
+}
+
 function downloadText(filename: string, text: string, type = "text/plain") {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement("a");
@@ -538,6 +549,21 @@ type PromptVersion = {
 type ScoreWeights = Record<string, number>;
 type CurationDecision = "learn" | "quarantine" | "review";
 type OnboardingMode = "demo" | "blank" | "upload" | "trained";
+type WorkspaceKey = "all" | "hero" | "saas" | "agency" | "dashboard" | "auth-commerce";
+
+const workspacePresets: {
+  key: WorkspaceKey;
+  label: string;
+  description: string;
+  query: string[];
+}[] = [
+  { key: "all", label: "All prompts", description: "Use the entire curated website corpus.", query: [] },
+  { key: "hero", label: "Hero systems", description: "Video, liquid glass, cinematic, and first-viewport prompts.", query: ["hero", "video", "cinematic", "liquid glass", "fullscreen"] },
+  { key: "saas", label: "SaaS/product", description: "SaaS, product, dashboard, analytics, and conversion surfaces.", query: ["saas", "product", "dashboard", "analytics", "workflow"] },
+  { key: "agency", label: "Agency/portfolio", description: "Creative studio, portfolio, case-study, and editorial prompts.", query: ["agency", "portfolio", "studio", "creative", "case"] },
+  { key: "dashboard", label: "Dashboard/tools", description: "Operational interfaces, data products, and tool surfaces.", query: ["dashboard", "data", "tool", "workflow", "automation"] },
+  { key: "auth-commerce", label: "Auth/commerce", description: "Signup, commerce, product, form, and conversion prompts.", query: ["signup", "login", "commerce", "product", "form"] },
+];
 
 type ModelBatchEvaluation = {
   id: string;
@@ -571,6 +597,7 @@ type StoredCollections = {
   modelBatchEvaluations: ModelBatchEvaluation[];
   pairwiseReviews: PairwiseReviewRecord[];
   backupSnapshots: TrainingBackupSnapshot[];
+  activeWorkspace: WorkspaceKey;
 };
 
 export default function App() {
@@ -599,6 +626,7 @@ export default function App() {
   const [pairwiseReviews, setPairwiseReviews] = useState<PairwiseReviewRecord[]>(() => readStoredPairwiseReviews());
   const [backupSnapshots, setBackupSnapshots] = useState<TrainingBackupSnapshot[]>(() => readStoredBackupSnapshots());
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>(() => readStoredOnboardingMode());
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>(() => readStoredWorkspace());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
@@ -648,8 +676,19 @@ export default function App() {
   const [apiEvents, setApiEvents] = useState<ApiEvent[]>([]);
 
   const examples = useMemo(() => [...seedPrompts, ...attachmentExamples, ...userPrompts], [attachmentExamples, userPrompts]);
-  const curationReport = useMemo(() => curatePromptCorpus(examples, curationDecisions), [curationDecisions, examples]);
-  const sourceSafety = useMemo(() => buildSourceSafetyReport(examples, curationReport), [curationReport, examples]);
+  const activeWorkspacePreset = workspacePresets.find((workspace) => workspace.key === activeWorkspace) ?? workspacePresets[0];
+  const workspaceExamples = useMemo(() => {
+    if (!activeWorkspacePreset.query.length) return examples;
+    const query = activeWorkspacePreset.query.map((item) => item.toLowerCase());
+    return examples.filter((example) => {
+      const analysis = analyzePrompt(example.text);
+      const haystack = `${example.title} ${example.text} ${analysis.tags.join(" ")} ${analysis.archetypes.map((match) => match.label).join(" ")}`.toLowerCase();
+      return query.some((term) => haystack.includes(term));
+    });
+  }, [activeWorkspacePreset, examples]);
+  const curationReport = useMemo(() => curatePromptCorpus(workspaceExamples, curationDecisions), [curationDecisions, workspaceExamples]);
+  const fullCorpusCurationReport = useMemo(() => curatePromptCorpus(examples, curationDecisions), [curationDecisions, examples]);
+  const sourceSafety = useMemo(() => buildSourceSafetyReport(examples, fullCorpusCurationReport), [examples, fullCorpusCurationReport]);
   const leakageGuard = useMemo(() => buildLeakageGuardReport(examples), [examples]);
   const learningExamples = useMemo(() => {
     const learnSet = new Set(curationReport.learnIds);
@@ -1004,6 +1043,7 @@ export default function App() {
       modelBatchEvaluations,
       pairwiseReviews,
       backupSnapshots,
+      activeWorkspace,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -1022,6 +1062,7 @@ export default function App() {
       if (Array.isArray(stored.modelBatchEvaluations)) setModelBatchEvaluations((stored.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
       if (Array.isArray(stored.pairwiseReviews)) setPairwiseReviews((stored.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
       if (Array.isArray(stored.backupSnapshots)) setBackupSnapshots((stored.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
+      if (isWorkspaceKey(stored.activeWorkspace)) setActiveWorkspace(stored.activeWorkspace);
     };
 
     async function hydrate() {
@@ -1029,7 +1070,11 @@ export default function App() {
         const [healthResult, collectionResult] = await Promise.all([getApiHealth(), getApiCollections()]);
         if (cancelled) return;
         setApiHealth(healthResult);
-        const hasSqliteData = Object.values(collectionResult.collections).some((value) => Array.isArray(value) && value.length > 0);
+        const hasSqliteData = Object.values(collectionResult.collections).some((value) => {
+          if (Array.isArray(value)) return value.length > 0;
+          if (typeof value === "string") return value.length > 0;
+          return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
+        });
         if (hasSqliteData) {
           applyCollections(collectionResult.collections as Partial<Record<keyof StoredCollections, unknown>>);
           setDbReady(true);
@@ -1148,6 +1193,11 @@ export default function App() {
   }, [onboardingMode]);
 
   useEffect(() => {
+    window.localStorage.setItem(WORKSPACE_KEY, activeWorkspace);
+    if (dbReady) void writeCollection("activeWorkspace", activeWorkspace);
+  }, [activeWorkspace, dbReady]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -1163,12 +1213,13 @@ export default function App() {
         modelBatchEvaluations,
         pairwiseReviews,
         backupSnapshots,
+        activeWorkspace,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [apiHealth?.ok, backupSnapshots, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -1494,6 +1545,107 @@ export default function App() {
     setApiNotice(`Queued ${jobs.length} ${label} variant(s).`);
   }
 
+  function runOneClickLearningLoop() {
+    const variant = guidedWizard.variants[0] ?? learnedGeneratorVariants[0];
+    if (!variant) {
+      setApiNotice("No generated variant is available yet. Complete the guided prompt workflow first.");
+      return;
+    }
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    const prompt: PromptExample = {
+      id: `loop-${slugify(variant.title) || "prompt"}-${now}`,
+      title: variant.title,
+      text: variant.prompt,
+      source: "user",
+      createdAt,
+    };
+    const job = createBuildQueueJob(
+      prompt,
+      { title: variant.title, prompt: variant.prompt, score: variant.score },
+      selectedBuildRun?.resultUrl || "http://127.0.0.1:5173",
+    );
+    const draftRun: BuildRunRecord = {
+      id: `loop-run-${now}`,
+      promptId: prompt.id,
+      promptTitle: prompt.title,
+      promptText: prompt.text,
+      status: "needs-review",
+      resultUrl: "",
+      folderPath: job.runFolder,
+      screenshotUrl: "",
+      filesChanged: "Generated by one-click learning loop.",
+      errors: "",
+      notes: "One-click loop generated the prompt, queued a build job, scored the prompt locally, and labeled it experimental. Run the queue and attach screenshots before promoting to gold.",
+      score: 0,
+      failureCategories: [],
+      createdAt,
+      updatedAt: createdAt,
+    };
+    const scored = scoreResultArtifact(prompt, undefined, draftRun);
+    const run = { ...draftRun, score: scored.score, failureCategories: scored.failureCategories };
+    const historyVersion: PromptVersion = {
+      id: `generated-${now}`,
+      kind: "generated",
+      title: prompt.title,
+      text: prompt.text,
+      score: variant.score,
+      createdAt,
+    };
+    const outcome: OutcomeRecord = {
+      promptId: prompt.id,
+      title: prompt.title,
+      rating: run.score >= 75 ? "okay" : "unrated",
+      status: run.score >= 75 ? "good" : "experimental",
+      notes: `One-click loop local score ${run.score}/100. Build queue job ${job.id} is ready; attach screenshot proof before gold promotion.`,
+      createdAt,
+      updatedAt: createdAt,
+    };
+    const lineageBatch: PromptLineageNode[] = [
+      {
+        id: `lineage-loop-source-${prompt.id}`,
+        parentId: null,
+        promptId: prompt.id,
+        kind: "source",
+        title: prompt.title,
+        score: variant.score,
+        status: "generated",
+        detail: "Created by one-click learning loop.",
+        createdAt,
+      },
+      {
+        id: `lineage-loop-queue-${job.id}`,
+        parentId: `lineage-loop-source-${prompt.id}`,
+        promptId: prompt.id,
+        kind: "tournament",
+        title: job.variantTitle,
+        score: job.score,
+        status: "queued",
+        detail: `Queued in ${job.runFolder}.`,
+        createdAt,
+      },
+      {
+        id: `lineage-loop-run-${run.id}`,
+        parentId: `lineage-loop-queue-${job.id}`,
+        promptId: prompt.id,
+        kind: "build",
+        title: run.promptTitle,
+        score: run.score,
+        status: run.status,
+        detail: run.notes,
+        createdAt,
+      },
+    ];
+    setUserPrompts((current) => [prompt, ...current]);
+    setSelectedId(prompt.id);
+    setHistory((current) => [historyVersion, ...current].slice(0, 80));
+    setQueueJobs((current) => [job, ...current].slice(0, 120));
+    setBuildRuns((current) => [run, ...current].slice(0, 80));
+    setOutcomes((current) => [outcome, ...current].slice(0, 160));
+    setLineageNodes((current) => [...lineageBatch, ...current].slice(0, 160));
+    setApiNotice(`One-click loop created ${prompt.title}, queued one run, scored ${run.score}/100, and labeled it ${run.score >= 75 ? "good" : "experimental"}.`);
+  }
+
   function createDatasetVersion() {
     const version = createDatasetVersionSnapshot({
       buildRuns,
@@ -1681,6 +1833,7 @@ export default function App() {
       curationDecisions,
       modelBatchEvaluations,
       pairwiseReviews,
+      activeWorkspace,
     };
     const backup: TrainingBackupSnapshot = {
       id: `backup-${Date.now()}`,
@@ -1708,6 +1861,7 @@ export default function App() {
     if (collections.curationDecisions) setCurationDecisions(collections.curationDecisions);
     if (Array.isArray(collections.modelBatchEvaluations)) setModelBatchEvaluations(collections.modelBatchEvaluations);
     if (Array.isArray(collections.pairwiseReviews)) setPairwiseReviews(collections.pairwiseReviews);
+    if (isWorkspaceKey(collections.activeWorkspace)) setActiveWorkspace(collections.activeWorkspace);
     setApiNotice(`Restored ${backup.label}.`);
   }
 
@@ -2018,6 +2172,7 @@ export default function App() {
         modelBatchEvaluations,
         pairwiseReviews,
         backupSnapshots,
+        activeWorkspace,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -2080,6 +2235,10 @@ export default function App() {
         setBackupSnapshots((collections.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
         restored.push("backups");
       }
+      if (isWorkspaceKey(collections.activeWorkspace)) {
+        setActiveWorkspace(collections.activeWorkspace);
+        restored.push("workspace");
+      }
       setDbReady(true);
       setDbStatus("SQLite source of truth ready");
       setApiNotice(restored.length ? `Pulled ${restored.join(", ")} from API.` : "API is online but has no stored collections yet.");
@@ -2099,7 +2258,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -2166,6 +2325,10 @@ export default function App() {
         setBackupSnapshots((collections.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
         restored.push("backups");
       }
+      if (isWorkspaceKey(collections.activeWorkspace)) {
+        setActiveWorkspace(collections.activeWorkspace);
+        restored.push("workspace");
+      }
       if (parsed.scoring?.scoreWeights && typeof parsed.scoring.scoreWeights === "object") {
         setScoreWeights(parsed.scoring.scoreWeights);
         restored.push("weights");
@@ -2189,6 +2352,7 @@ export default function App() {
           modelBatchEvaluations: collections.modelBatchEvaluations ?? modelBatchEvaluations,
           pairwiseReviews: collections.pairwiseReviews ?? pairwiseReviews,
           backupSnapshots: collections.backupSnapshots ?? backupSnapshots,
+          activeWorkspace: isWorkspaceKey(collections.activeWorkspace) ? collections.activeWorkspace : activeWorkspace,
         });
       }
       setSnapshotImportText("");
@@ -2663,6 +2827,8 @@ export default function App() {
           ) : (
             <TrainView
               activeTrainStage={activeTrainStage}
+              activeWorkspace={activeWorkspace}
+              activeWorkspacePreset={activeWorkspacePreset}
               autoBattleResult={autoBattleResult}
               apiHealth={apiHealth}
               apiNotice={apiNotice}
@@ -2747,6 +2913,7 @@ export default function App() {
               onInstallSkill={installSkillFromApi}
               onLoadDemoMode={loadDemoMode}
               onModelEvaluate={runModelEvaluation}
+              onOneClickLearningLoop={runOneClickLearningLoop}
               onPullFromApi={pullFromApi}
               onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
               onRunAutonomousBattle={runAutonomousBattle}
@@ -2800,6 +2967,7 @@ export default function App() {
               setApiBaseDraft={setApiBaseDraft}
               setApiTokenDraft={setApiTokenDraft}
               setActiveTrainStage={setActiveTrainStage}
+              setActiveWorkspace={setActiveWorkspace}
               setCoachInput={setCoachInput}
               setCompilerInput={setCompilerInput}
               setDiffLeftId={setDiffLeftId}
@@ -2834,6 +3002,7 @@ export default function App() {
               wizardIdea={wizardIdea}
               driftReport={driftReport}
               winExplanation={winExplanation}
+              workspaceExamples={workspaceExamples}
             />
           )}
         </section>
@@ -3692,6 +3861,8 @@ function PromptHistoryPanel({
 
 function TrainView({
   activeTrainStage,
+  activeWorkspace,
+  activeWorkspacePreset,
   autoBattleResult,
   apiHealth,
   apiNotice,
@@ -3778,6 +3949,7 @@ function TrainView({
   onInstallSkill,
   onLoadDemoMode,
   onModelEvaluate,
+  onOneClickLearningLoop,
   onPullFromApi,
   onQueueBattle,
   onQuarantineWeakCorpus,
@@ -3831,6 +4003,7 @@ function TrainView({
   setApiBaseDraft,
   setApiTokenDraft,
   setActiveTrainStage,
+  setActiveWorkspace,
   setCoachInput,
   setCompilerInput,
   setDiffLeftId,
@@ -3863,8 +4036,11 @@ function TrainView({
   wizardCompiled,
   wizardIdea,
   winExplanation,
+  workspaceExamples,
 }: {
   activeTrainStage: string;
+  activeWorkspace: WorkspaceKey;
+  activeWorkspacePreset: (typeof workspacePresets)[number];
   autoBattleResult?: Record<string, unknown>;
   apiHealth?: ApiHealth;
   apiNotice: string;
@@ -3959,6 +4135,7 @@ function TrainView({
   onInstallSkill: () => void;
   onLoadDemoMode: () => void;
   onModelEvaluate: () => void;
+  onOneClickLearningLoop: () => void;
   onPullFromApi: () => void;
   onQueueBattle: () => void;
   onQuarantineWeakCorpus: () => void;
@@ -4012,6 +4189,7 @@ function TrainView({
   setApiBaseDraft: (value: string) => void;
   setApiTokenDraft: (value: string) => void;
   setActiveTrainStage: (stage: string) => void;
+  setActiveWorkspace: (workspace: WorkspaceKey) => void;
   setCoachInput: (value: string) => void;
   setCompilerInput: Dispatch<SetStateAction<PromptCompilerInput>>;
   setDiffLeftId: (id: string) => void;
@@ -4054,14 +4232,34 @@ function TrainView({
   wizardCompiled: CompiledPrompt;
   wizardIdea: string;
   winExplanation: PromptWinExplanationReport;
+  workspaceExamples: PromptExample[];
 }) {
+  const [sectionQuery, setSectionQuery] = useState("");
+  const trainSections = [
+    { id: "workflow", label: "Workflow" },
+    { id: "api", label: "API" },
+    { id: "workspace", label: "Workspaces" },
+    { id: "generate", label: "Generate" },
+    { id: "patterns", label: "Patterns" },
+    { id: "improve", label: "Improve" },
+    { id: "screenshots", label: "Screenshots" },
+    { id: "packs", label: "Packs" },
+    { id: "sync", label: "Sync" },
+    { id: "queue", label: "Queue" },
+    { id: "lineage", label: "Lineage" },
+  ].filter((item) => item.label.toLowerCase().includes(sectionQuery.trim().toLowerCase()));
+
+  function scrollToTrainSection(id: string) {
+    document.querySelector(`[data-train-section="${id}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function updateBrief<K extends keyof InterviewBrief>(key: K, value: InterviewBrief[K]) {
     setInterviewBrief((current) => ({ ...current, [key]: value }));
   }
 
   return (
     <div className="train-grid">
-      <section className="panel hero-panel train-hero">
+      <section className="panel hero-panel train-hero" data-train-section="workflow">
         <div>
           <p className="eyebrow">Outcome training</p>
           <h2>Closed-loop prompt learning command center.</h2>
@@ -4077,6 +4275,13 @@ function TrainView({
           <Metric value={formatNumber(outcomeSummary.counts.avoid)} label="Avoid" />
         </div>
       </section>
+
+      <TrainSectionNavigator
+        query={sectionQuery}
+        sections={trainSections}
+        setQuery={setSectionQuery}
+        onSelect={scrollToTrainSection}
+      />
 
       <TrainCommandCenter
         corpusCleaning={corpusCleaning}
@@ -4104,6 +4309,24 @@ function TrainView({
         queueJobs={queueJobs}
         setApiBaseDraft={setApiBaseDraft}
         setApiTokenDraft={setApiTokenDraft}
+      />
+
+      <HostedApiDeployPanel copied={copied} onCopy={onCopy} />
+
+      <ProjectWorkspacePanel
+        activeWorkspace={activeWorkspace}
+        activeWorkspacePreset={activeWorkspacePreset}
+        learningExamples={learningExamples}
+        setActiveWorkspace={setActiveWorkspace}
+        workspaceExamples={workspaceExamples}
+      />
+
+      <OneClickLearningLoopPanel
+        guidedWizard={guidedWizard}
+        onOneClickLearningLoop={onOneClickLearningLoop}
+        queueJobs={queueJobs}
+        resultScore={resultScore}
+        selectedPrompt={selectedPrompt}
       />
 
       <SecurityOpsPanel
@@ -4617,6 +4840,142 @@ function TrainView({
   );
 }
 
+function TrainSectionNavigator({
+  onSelect,
+  query,
+  sections,
+  setQuery,
+}: {
+  onSelect: (id: string) => void;
+  query: string;
+  sections: { id: string; label: string }[];
+  setQuery: (value: string) => void;
+}) {
+  return (
+    <section className="panel train-section-nav" aria-label="Train section navigator">
+      <label className="search-field">
+        <Search size={15} />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Jump to workflow, API, screenshots..." />
+      </label>
+      <div className="train-section-buttons">
+        {sections.map((section) => (
+          <button key={section.id} type="button" onClick={() => onSelect(section.id)}>
+            {section.label}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProjectWorkspacePanel({
+  activeWorkspace,
+  activeWorkspacePreset,
+  learningExamples,
+  setActiveWorkspace,
+  workspaceExamples,
+}: {
+  activeWorkspace: WorkspaceKey;
+  activeWorkspacePreset: (typeof workspacePresets)[number];
+  learningExamples: PromptExample[];
+  setActiveWorkspace: (workspace: WorkspaceKey) => void;
+  workspaceExamples: PromptExample[];
+}) {
+  return (
+    <section className="panel lab-panel" data-train-section="workspace">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Project workspaces</h2>
+        </div>
+        <div className="workspace-pill">{activeWorkspacePreset.label}</div>
+      </div>
+      <p className="selected-meta">
+        Separate training taste by project type. The active workspace feeds curation, pattern extraction, scoring, generator presets, and exports.
+      </p>
+      <div className="workspace-grid">
+        {workspacePresets.map((workspace) => (
+          <button
+            className={workspace.key === activeWorkspace ? "active" : ""}
+            key={workspace.key}
+            type="button"
+            onClick={() => setActiveWorkspace(workspace.key)}
+          >
+            <strong>{workspace.label}</strong>
+            <span>{workspace.description}</span>
+          </button>
+        ))}
+      </div>
+      <div className="source-safety-grid">
+        <article className="index-card">
+          <strong>{workspaceExamples.length}</strong>
+          <span>workspace prompts</span>
+        </article>
+        <article className="index-card">
+          <strong>{learningExamples.length}</strong>
+          <span>learning prompts</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Workspace query</h3>
+          <p>{activeWorkspacePreset.query.join(", ") || "No filter; full corpus."}</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function OneClickLearningLoopPanel({
+  guidedWizard,
+  onOneClickLearningLoop,
+  queueJobs,
+  resultScore,
+  selectedPrompt,
+}: {
+  guidedWizard: GuidedPromptWizardReport;
+  onOneClickLearningLoop: () => void;
+  queueJobs: BuildQueueJob[];
+  resultScore: ResultScore;
+  selectedPrompt?: PromptExample;
+}) {
+  const variant = guidedWizard.variants[0];
+  return (
+    <section className="panel lab-panel" data-train-section="generate">
+      <div className="output-header">
+        <div className="panel-header">
+          <Shuffle size={18} />
+          <h2>One-click generate, score, and label</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onOneClickLearningLoop} disabled={!variant}>
+          <Sparkles size={15} />
+          Run loop
+        </button>
+      </div>
+      <div className="command-center-grid">
+        <article className="command-center-card">
+          <strong>1. Generate</strong>
+          <span data-tone={variant ? "strong" : "weak"}>{variant ? variant.score : 0}</span>
+          <p>{variant?.title ?? "Complete the guided prompt workflow first."}</p>
+        </article>
+        <article className="command-center-card">
+          <strong>2. Queue</strong>
+          <span data-tone={queueJobs.length ? "strong" : "mixed"}>{queueJobs.length}</span>
+          <p>Creates a queued run job so the prompt can move to the runner.</p>
+        </article>
+        <article className="command-center-card">
+          <strong>3. Score</strong>
+          <span data-tone={scoreTone(resultScore.score)}>{resultScore.score}</span>
+          <p>Stores a local score row while waiting for visual proof.</p>
+        </article>
+        <article className="command-center-card">
+          <strong>4. Label</strong>
+          <span data-tone={selectedPrompt ? "mixed" : "weak"}>{selectedPrompt ? "ok" : "--"}</span>
+          <p>Labels generated prompts as good or experimental until screenshots prove gold.</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function GuidedPromptWizardPanel({
   copied,
   generatorInput,
@@ -4650,7 +5009,7 @@ function GuidedPromptWizardPanel({
   ];
 
   return (
-    <section className="panel lab-panel guided-wizard-panel" data-testid="guided-prompt-wizard">
+    <section className="panel lab-panel guided-wizard-panel" data-testid="guided-prompt-wizard" data-train-section="generate">
       <div className="output-header">
         <div className="panel-header">
           <Wand2 size={18} />
@@ -4730,7 +5089,7 @@ function PatternExtractionPanel({
     .map((block) => `## ${block.label}\nScore: ${block.score}\nCategory: ${block.category}\nPatch: ${block.promptPatch}\nEvidence: ${block.evidence.join(", ")}`)
     .join("\n\n");
   return (
-    <section className="panel lab-panel" data-testid="pattern-extraction-panel">
+    <section className="panel lab-panel" data-testid="pattern-extraction-panel" data-train-section="patterns">
       <div className="output-header">
         <div className="panel-header">
           <BookOpen size={18} />
@@ -4775,7 +5134,7 @@ function PromptImprovementStudioPanel({
   setCoachInput: (value: string) => void;
 }) {
   return (
-    <section className="panel lab-panel" data-testid="prompt-improvement-studio">
+    <section className="panel lab-panel" data-testid="prompt-improvement-studio" data-train-section="improve">
       <div className="output-header">
         <div className="panel-header">
           <Sparkles size={18} />
@@ -4860,7 +5219,7 @@ function ScreenshotScoringStudioPanel({
   }
 
   return (
-    <section className="panel lab-panel" data-testid="screenshot-scoring-studio">
+    <section className="panel lab-panel" data-testid="screenshot-scoring-studio" data-train-section="screenshots">
       <div className="output-header">
         <div className="panel-header">
           <FileText size={18} />
@@ -4920,9 +5279,29 @@ function ArchetypePromptPackPanel({
   onDownload: (filename: string, text: string, type?: string) => void;
   packs: PromptPack[];
 }) {
-  const bundle = packs.map((pack) => `# ${pack.title}\n\n${pack.description}\n\n${pack.prompts.join("\n\n---\n\n")}`).join("\n\n====\n\n");
+  const [target, setTarget] = useState("Codex");
+  const targetDirectives: Record<string, string> = {
+    Codex: "Use this prompt pack with Codex. Build the requested UI, verify desktop/mobile render, run lint/build, and report exact files changed.",
+    v0: "Use this prompt pack with v0. Keep the output as implementation-ready React components with explicit assets, responsive behavior, and no extra sections.",
+    Claude: "Use this prompt pack with Claude. Preserve exact implementation details, ask only blocking questions, and return a clean build prompt.",
+    Lovable: "Use this prompt pack with Lovable. Emphasize app structure, reusable components, Supabase only if explicitly requested, and visible first-screen quality.",
+    "Plain spec": "Use this as a platform-neutral implementation spec. Keep stack, assets, layout, motion, responsive, constraints, and QA sections intact.",
+  };
+  function formatPack(pack: PromptPack) {
+    return [
+      `# ${pack.title}`,
+      "",
+      `Target: ${target}`,
+      targetDirectives[target],
+      "",
+      pack.description,
+      "",
+      pack.prompts.join("\n\n---\n\n"),
+    ].join("\n");
+  }
+  const bundle = packs.map(formatPack).join("\n\n====\n\n");
   return (
-    <section className="panel lab-panel" data-testid="archetype-prompt-pack-panel">
+    <section className="panel lab-panel" data-testid="archetype-prompt-pack-panel" data-train-section="packs">
       <div className="output-header">
         <div className="panel-header">
           <PackageOpen size={18} />
@@ -4939,9 +5318,16 @@ function ArchetypePromptPackPanel({
           </button>
         </div>
       </div>
+      <div className="target-selector-row">
+        {Object.keys(targetDirectives).map((item) => (
+          <button className={target === item ? "active" : ""} key={item} type="button" onClick={() => setTarget(item)}>
+            {item}
+          </button>
+        ))}
+      </div>
       <div className="prompt-pack-export-grid">
         {packs.slice(0, 6).map((pack) => {
-          const text = `# ${pack.title}\n\n${pack.description}\n\n${pack.prompts.join("\n\n---\n\n")}`;
+          const text = formatPack(pack);
           return (
             <article className="prompt-pack-card" key={pack.id}>
               <div className="dna-v2-topline">
@@ -5327,7 +5713,7 @@ function PersistenceStatusPanel({
     { label: "API events", value: apiEvents.length },
   ];
   return (
-    <section className="panel lab-panel">
+    <section className="panel lab-panel" data-train-section="sync">
       <div className="output-header">
         <div className="panel-header">
           <Archive size={18} />
@@ -5478,7 +5864,7 @@ function BackendApiPanel({
   setApiTokenDraft: (value: string) => void;
 }) {
   return (
-    <section className="panel lab-panel backend-panel">
+    <section className="panel lab-panel backend-panel" data-train-section="api">
       <div className="output-header">
         <div className="panel-header">
           <Gauge size={18} />
@@ -5519,6 +5905,56 @@ function BackendApiPanel({
       <div className="command-box">
         <code>PROMPT_LAB_API_TOKEN=... npm run api</code>
       </div>
+    </section>
+  );
+}
+
+function HostedApiDeployPanel({
+  copied,
+  onCopy,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+}) {
+  const renderEnv = [
+    "PROMPT_LAB_API_HOST=0.0.0.0",
+    "PROMPT_LAB_API_TOKEN=<generated secret>",
+    "PROMPT_LAB_DATA_DIR=/var/data/prompt-atelier",
+    "PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io",
+    "PROMPT_LAB_RATE_LIMIT=240",
+  ].join("\n");
+  const setup = [
+    "1. Create a Render Blueprint from this repo.",
+    "2. Render uses render.yaml + Dockerfile.api.",
+    "3. Copy the generated PROMPT_LAB_API_TOKEN.",
+    "4. Paste the Render service URL and token into API base/token.",
+    "5. Check API, then Push API.",
+  ];
+  return (
+    <section className="panel lab-panel hosted-api-panel" data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Hosted API deploy option</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(renderEnv, "hosted-api-env")}>
+          {copied === "hosted-api-env" ? <Check size={15} /> : <Copy size={15} />}
+          Copy env
+        </button>
+      </div>
+      <p className="selected-meta">Use the included Render blueprint for token-protected cross-browser sync with persistent SQLite storage.</p>
+      <div className="hosted-api-grid">
+        <article className="index-card wide-index-card">
+          <h3>Files added</h3>
+          <p>render.yaml, Dockerfile.api, docs/hosted-api.md</p>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Health route</h3>
+          <p>/api/health</p>
+        </article>
+      </div>
+      <FeedbackList title="Deploy flow" items={setup} empty="No deploy steps." />
+      <pre className="prompt-patch-box">{renderEnv}</pre>
     </section>
   );
 }
@@ -7463,7 +7899,7 @@ function BuildQueuePanel({
   queueJobs: BuildQueueJob[];
 }) {
   return (
-    <section className="panel lab-panel">
+    <section className="panel lab-panel" data-train-section="queue">
       <div className="panel-header">
         <Hammer size={18} />
         <h2>Autonomous run queue</h2>
@@ -7510,7 +7946,7 @@ function BuildQueuePanel({
 
 function PromptLineagePanel({ lineage }: { lineage: PromptLineageNode[] }) {
   return (
-    <section className="panel lab-panel">
+    <section className="panel lab-panel" data-train-section="lineage">
       <div className="panel-header">
         <Archive size={18} />
         <h2>Prompt lineage tree</h2>
@@ -8223,7 +8659,32 @@ function ScreenshotPanel({
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
   const [rating, setRating] = useState<ScreenshotRecord["rating"]>("unrated");
+  const [dragActive, setDragActive] = useState(false);
   const visible = screenshots.filter((screenshot) => !selectedPrompt || screenshot.promptId === selectedPrompt.id).slice(0, 8);
+
+  function loadScreenshotFile(file: File | undefined) {
+    if (!file || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      if (typeof reader.result === "string") {
+        setUrl(reader.result);
+        setTitle((current) => current || file.name.replace(/\.[^.]+$/, ""));
+        setNotes((current) => current || `Uploaded screenshot file: ${file.name}`);
+      }
+    });
+    reader.readAsDataURL(file);
+  }
+
+  function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
+    loadScreenshotFile(event.target.files?.[0]);
+    event.target.value = "";
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    loadScreenshotFile(event.dataTransfer.files?.[0]);
+  }
 
   function add() {
     if (!selectedPrompt || !url.trim()) return;
@@ -8249,6 +8710,27 @@ function ScreenshotPanel({
       <Field label="Image URL or data URL">
         <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://... or data:image/..." />
       </Field>
+      <div
+        className="screenshot-dropzone"
+        data-active={dragActive}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setDragActive(true);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={() => setDragActive(false)}
+        onDrop={handleDrop}
+      >
+        <Upload size={18} />
+        <div>
+          <strong>Drop a screenshot here</strong>
+          <span>PNG, JPG, or WebP is converted into a local data URL.</span>
+        </div>
+        <label className="ghost-button compact-button">
+          Browse
+          <input accept="image/*" type="file" onChange={handleFileInput} />
+        </label>
+      </div>
       <div className="two-field-grid">
         <Field label="Title">
           <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Homepage desktop result" />

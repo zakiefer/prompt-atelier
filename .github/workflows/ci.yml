@@ -36,6 +36,24 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Visual QA
+        run: |
+          set -euo pipefail
+          npm run api > /tmp/prompt-atelier-api.log 2>&1 &
+          API_PID=$!
+          npm run preview -- --port 4173 > /tmp/prompt-atelier-preview.log 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill $API_PID $PREVIEW_PID 2>/dev/null || true' EXIT
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:8787/api/health >/dev/null && curl -fsS http://127.0.0.1:4173/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8787/api/health >/dev/null
+          curl -fsS http://127.0.0.1:4173/ >/dev/null
+          npm run visual:qa -- --url http://127.0.0.1:4173/ --out /tmp/prompt-atelier-ci-visual-qa
+
       - name: Script syntax checks
         run: |
           for file in scripts/*.mjs; do

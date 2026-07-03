@@ -14,7 +14,8 @@ export type CollectionKey =
   | "curationDecisions"
   | "modelBatchEvaluations"
   | "pairwiseReviews"
-  | "backupSnapshots";
+  | "backupSnapshots"
+  | "activeWorkspace";
 
 type StoredCollection<T> = {
   key: CollectionKey;

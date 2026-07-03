@@ -1,24 +1,24 @@
 services:
   - type: web
     name: prompt-atelier-api
-    env: docker
+    runtime: docker
     plan: starter
-    autoDeploy: true
+    dockerfilePath: ./Dockerfile.api
     healthCheckPath: /api/health
     disk:
       name: prompt-atelier-data
-      mountPath: /data
+      mountPath: /var/data
       sizeGB: 1
     envVars:
-      - key: PROMPT_LAB_API_PORT
-        value: 8787
-      - key: PROMPT_LAB_DATA_DIR
-        value: /data
+      - key: PROMPT_LAB_API_HOST
+        value: 0.0.0.0
       - key: PROMPT_LAB_ALLOWED_ORIGIN
         value: https://zakiefer.github.io
-      - key: PROMPT_LAB_RATE_LIMIT
-        value: 240
+      - key: PROMPT_LAB_DATA_DIR
+        value: /var/data/prompt-atelier
       - key: PROMPT_LAB_API_TOKEN
-        sync: false
+        generateValue: true
+      - key: PROMPT_LAB_RATE_LIMIT
+        value: "240"
       - key: ANTHROPIC_API_KEY
         sync: false

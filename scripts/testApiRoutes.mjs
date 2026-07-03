@@ -31,7 +31,8 @@ async function waitForHealth() {
 
 try {
   const health = await waitForHealth();
-  if (!health.ok || !health.collections.includes("datasetVersions") || !health.collections.includes("pairwiseReviews") || !health.collections.includes("backupSnapshots")) throw new Error("Health route missing expected collections.");
+  const expectedCollections = ["datasetVersions", "pairwiseReviews", "backupSnapshots", "activeWorkspace"];
+  if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
   if (!health.rateLimitPerMinute) throw new Error("Health route should expose rate limit metadata.");
 
@@ -41,7 +42,14 @@ try {
   const sync = await fetch(`${base}/api/collections`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
-    body: JSON.stringify({ collections: { datasetVersions: [{ id: "test", label: "test", createdAt: new Date().toISOString(), counts: {}, scores: {}, notes: [] }], pairwiseReviews: [{ id: "pairwise-test" }], backupSnapshots: [{ id: "backup-test", payload: {} }] } }),
+    body: JSON.stringify({
+      collections: {
+        datasetVersions: [{ id: "test", label: "test", createdAt: new Date().toISOString(), counts: {}, scores: {}, notes: [] }],
+        pairwiseReviews: [{ id: "pairwise-test" }],
+        backupSnapshots: [{ id: "backup-test", payload: {} }],
+        activeWorkspace: "hero",
+      },
+    }),
   });
   if (!sync.ok) throw new Error(`Collection sync failed: ${sync.status}`);
 
@@ -55,7 +63,13 @@ try {
 
   const authedSnapshot = await fetch(`${base}/api/snapshot`, { headers: { "x-prompt-lab-token": "test-token" } });
   const payload = await authedSnapshot.json();
-  if (!authedSnapshot.ok || !payload.collections?.datasetVersions?.length || !payload.collections?.pairwiseReviews?.length || !payload.collections?.backupSnapshots?.length) throw new Error("Snapshot route did not include synced collections.");
+  if (
+    !authedSnapshot.ok ||
+    !payload.collections?.datasetVersions?.length ||
+    !payload.collections?.pairwiseReviews?.length ||
+    !payload.collections?.backupSnapshots?.length ||
+    payload.collections?.activeWorkspace !== "hero"
+  ) throw new Error("Snapshot route did not include synced collections.");
 
   const events = await fetch(`${base}/api/events?limit=5`, { headers: { Authorization: "Bearer test-token" } });
   const eventPayload = await events.json();

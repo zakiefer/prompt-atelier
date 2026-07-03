@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 
 const PORT = Number(process.env.PORT || process.env.PROMPT_LAB_API_PORT || 8787);
+const HOST = process.env.HOST || process.env.PROMPT_LAB_API_HOST || "127.0.0.1";
 const ROOT = process.cwd();
 const DATA_DIR = resolve(process.env.PROMPT_LAB_DATA_DIR || join(ROOT, "data"));
 const DB_PATH = join(DATA_DIR, "prompt-atelier.sqlite");
@@ -25,6 +26,7 @@ const COLLECTION_KEYS = [
   "modelBatchEvaluations",
   "pairwiseReviews",
   "backupSnapshots",
+  "activeWorkspace",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -570,7 +572,7 @@ const server = createServer((request, response) => {
   void handle(request, response);
 });
 
-server.listen(PORT, "127.0.0.1", () => {
-  console.log(`Prompt Lab API listening on http://127.0.0.1:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Prompt Lab API listening on http://${HOST}:${PORT}`);
   console.log(`SQLite database: ${DB_PATH}`);
 });
