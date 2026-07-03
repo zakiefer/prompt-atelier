@@ -3,7 +3,7 @@
 Prompt Atelier is split into two deployment surfaces:
 
 1. Static frontend: deploys to GitHub Pages from `dist/`.
-2. Local API: runs on the developer machine for SQLite persistence, screenshot capture, queue execution, Codex skill install, and model evaluation.
+2. API/worker: runs locally or as a hosted Docker service for SQLite persistence, snapshot sync, and model evaluation. Heavy queue execution and screenshot capture are still best run on a trusted local worker.
 
 ## GitHub Pages
 
@@ -17,7 +17,7 @@ Repository settings:
 
 The Vite `base` path is controlled by `GITHUB_PAGES=true` in the workflow so local development still serves from `/`.
 
-## Local API
+## API
 
 Run the API beside the Vite app:
 
@@ -25,7 +25,7 @@ Run the API beside the Vite app:
 npm run api
 ```
 
-The API listens on `http://127.0.0.1:8787` and writes SQLite state to `data/prompt-atelier.sqlite`.
+The API listens on `http://127.0.0.1:8787` and writes SQLite state to `data/prompt-atelier.sqlite` by default.
 
 The hosted/static frontend can point at any compatible API by setting the API base in the Train tab. For rebuild-time defaults, set:
 
@@ -36,13 +36,33 @@ VITE_PROMPT_ATELIER_API_BASE=https://your-api.example.com npm run build
 Useful environment variables:
 
 ```bash
+PORT=8787 npm run api
+PROMPT_LAB_DATA_DIR=/data npm run api
+PROMPT_LAB_API_TOKEN=replace-me npm run api
+PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io npm run api
 ANTHROPIC_API_KEY=... npm run api
 PROMPT_LAB_MODEL_PROVIDER=anthropic npm run api
 PROMPT_LAB_AGENT_COMMAND="codex exec --full-auto --prompt-file codex-task.md" npm run api
 PROMPT_LAB_BUILD_COMMAND="npm run build" npm run api
+PROMPT_LAB_PREVIEW_PORT=4320 npm run run:queue -- --scaffold --install --capture
 ```
 
 Do not commit real API keys. `.env`, `.env.*`, and local data folders are ignored.
+
+## Render Docker API
+
+`render.yaml` provisions a Docker web service with a persistent `/data` disk. Set these secrets in Render:
+
+- `PROMPT_LAB_API_TOKEN`: shared bearer token used by the Train tab API token field.
+- `ANTHROPIC_API_KEY`: optional Claude evaluator key.
+
+The health route stays public so deployment monitors can reach `/api/health`. All other API routes require `Authorization: Bearer <token>` or `x-prompt-lab-token` when `PROMPT_LAB_API_TOKEN` is configured.
+
+Hosted services should not run arbitrary Codex agent commands unless the environment is intentionally sandboxed. For autonomous builds, export the queue from the Train tab and run a local trusted worker:
+
+```bash
+npm run run:queue -- --queue prompt-lab-queue.json --scaffold --install --capture --preview-port 4320
+```
 
 ## Verification
 

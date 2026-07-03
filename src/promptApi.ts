@@ -1,5 +1,6 @@
 const DEFAULT_API_BASE = "http://127.0.0.1:8787";
 const API_BASE_KEY = "prompt-atelier-api-base";
+const API_TOKEN_KEY = "prompt-atelier-api-token";
 
 export function getApiBase() {
   if (typeof window === "undefined") return import.meta.env.VITE_PROMPT_ATELIER_API_BASE || DEFAULT_API_BASE;
@@ -13,11 +14,25 @@ export function setApiBase(value: string) {
   else window.localStorage.removeItem(API_BASE_KEY);
 }
 
+export function getApiToken() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(API_TOKEN_KEY) || "";
+}
+
+export function setApiToken(value: string) {
+  if (typeof window === "undefined") return;
+  const normalized = value.trim();
+  if (normalized) window.localStorage.setItem(API_TOKEN_KEY, normalized);
+  else window.localStorage.removeItem(API_TOKEN_KEY);
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getApiToken();
   const response = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -33,6 +48,9 @@ export type ApiHealth = {
   ok: boolean;
   port: number;
   sqlitePath: string;
+  dataDir?: string;
+  authRequired?: boolean;
+  allowedOrigin?: string;
   skill: {
     installed: boolean;
     path: string;

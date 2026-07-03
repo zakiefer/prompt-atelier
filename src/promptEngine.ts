@@ -54,6 +54,16 @@ export type CorpusCurationReport = {
   notes: string[];
 };
 
+export type PairwiseReviewRecord = {
+  id: string;
+  leftId: string;
+  rightId: string;
+  winnerId: string;
+  loserId: string;
+  reason: string;
+  createdAt: string;
+};
+
 export type Evaluation = {
   score: number;
   categoryScores: Record<CategoryKey, number>;
@@ -617,6 +627,48 @@ export type ResultGalleryItem = {
 };
 
 export type ReusableMemoryPack = {
+  markdown: string;
+  json: string;
+  sections: {
+    title: string;
+    count: number;
+  }[];
+};
+
+export type PatternDashboardItem = {
+  label: string;
+  prompts: number;
+  gold: number;
+  avoid: number;
+  averagePromptScore: number;
+  averageResultScore: number;
+  winRate: number;
+  notes: string[];
+};
+
+export type PatternDashboardReport = {
+  items: PatternDashboardItem[];
+  summary: string[];
+};
+
+export type VisualRegressionReport = {
+  score: number;
+  checks: {
+    label: string;
+    passed: boolean;
+    detail: string;
+  }[];
+  notes: string[];
+};
+
+export type PromptCoachReport = {
+  score: number;
+  diagnosis: string[];
+  questions: string[];
+  rewrittenPrompt: string;
+};
+
+export type ProjectExportPack = {
   markdown: string;
   json: string;
   sections: {
@@ -3232,6 +3284,194 @@ ${promptMemory.markdown}
       { title: "Generator presets", count: generatorPresets.length },
       { title: "Failure categories", count: failureMemory.categories.length },
       { title: "Prompt memory sections", count: promptMemory.sections.length },
+    ],
+  };
+}
+
+export function buildPatternDashboard(
+  examples: PromptExample[],
+  outcomes: OutcomeRecord[] = [],
+  buildRuns: BuildRunRecord[] = [],
+): PatternDashboardReport {
+  const outcomeByPrompt = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const runsByPrompt = new Map<string, BuildRunRecord[]>();
+  for (const run of buildRuns) {
+    runsByPrompt.set(run.promptId, [...(runsByPrompt.get(run.promptId) || []), run]);
+  }
+  const rows = Object.entries(ARCHETYPES).map(([key, archetype]) => {
+    const matched = examples.filter((example) => analyzeArchetypeMatches(example.text).some((match) => match.key === key));
+    const promptScores = matched.map((example) => evaluatePrompt(example.text).score);
+    const resultScores = matched.flatMap((example) => (runsByPrompt.get(example.id) || []).map((run) => run.score || 0)).filter(Boolean);
+    const gold = matched.filter((example) => outcomeByPrompt.get(example.id)?.status === "gold" || outcomeByPrompt.get(example.id)?.rating === "great").length;
+    const avoid = matched.filter((example) => outcomeByPrompt.get(example.id)?.status === "avoid" || outcomeByPrompt.get(example.id)?.rating === "bad").length;
+    const prompts = matched.length;
+    return {
+      label: archetype.label,
+      prompts,
+      gold,
+      avoid,
+      averagePromptScore: prompts ? Math.round(promptScores.reduce((sum, value) => sum + value, 0) / prompts) : 0,
+      averageResultScore: resultScores.length ? Math.round(resultScores.reduce((sum, value) => sum + value, 0) / resultScores.length) : 0,
+      winRate: prompts ? Math.round((gold / prompts) * 100) : 0,
+      notes: [
+        prompts ? `${prompts} prompt(s) match this pattern.` : "No prompts match this pattern yet.",
+        gold ? `${gold} gold/great outcome(s).` : "Needs ground-truth wins.",
+        avoid ? `${avoid} avoid/bad outcome(s) to study.` : "No avoid labels yet.",
+      ],
+    } satisfies PatternDashboardItem;
+  });
+  const items = rows.filter((row) => row.prompts > 0).sort((a, b) => b.winRate - a.winRate || b.averagePromptScore - a.averagePromptScore);
+  return {
+    items,
+    summary: [
+      `${items.length} active pattern group(s).`,
+      items[0] ? `${items[0].label} is currently strongest at ${items[0].winRate}% win rate.` : "Add labels to reveal winning prompt patterns.",
+      "Use this report to decide which prompt structures should feed generator presets.",
+    ],
+  };
+}
+
+export function buildVisualRegressionReport(buildRuns: BuildRunRecord[] = [], screenshots: ScreenshotRecord[] = []): VisualRegressionReport {
+  const screenshotByPrompt = new Map<string, ScreenshotRecord[]>();
+  for (const screenshot of screenshots) screenshotByPrompt.set(screenshot.promptId, [...(screenshotByPrompt.get(screenshot.promptId) || []), screenshot]);
+  const completed = buildRuns.filter((run) => run.status === "passed" || run.status === "needs-review");
+  const failed = buildRuns.filter((run) => run.status === "failed");
+  const missingScreenshots = buildRuns.filter((run) => !run.screenshotUrl && !(screenshotByPrompt.get(run.promptId) || []).length);
+  const badScreenshots = screenshots.filter((screenshot) => screenshot.rating === "bad");
+  const greatScreenshots = screenshots.filter((screenshot) => screenshot.rating === "great");
+  const checks = [
+    {
+      label: "Run coverage",
+      passed: buildRuns.length > 0,
+      detail: buildRuns.length ? `${buildRuns.length} build run(s) recorded.` : "No build runs recorded yet.",
+    },
+    {
+      label: "Screenshot coverage",
+      passed: missingScreenshots.length === 0 && screenshots.length > 0,
+      detail: missingScreenshots.length ? `${missingScreenshots.length} run(s) missing screenshots.` : `${screenshots.length} screenshot(s) attached.`,
+    },
+    {
+      label: "Failure pressure",
+      passed: failed.length <= Math.max(1, Math.floor(buildRuns.length * 0.25)),
+      detail: `${failed.length} failed run(s), ${completed.length} completed/reviewable run(s).`,
+    },
+    {
+      label: "Visual rating",
+      passed: badScreenshots.length === 0 && greatScreenshots.length > 0,
+      detail: `${greatScreenshots.length} great screenshot(s), ${badScreenshots.length} bad screenshot(s).`,
+    },
+  ];
+  const score = Math.round((checks.filter((check) => check.passed).length / checks.length) * 100);
+  return {
+    score,
+    checks,
+    notes: [
+      score >= 75 ? "Visual regression posture is healthy." : "Add captures and mark screenshot ratings before trusting prompt winners.",
+      missingScreenshots.length ? "Capture missing runs before exporting a project pack." : "Screenshot evidence is linked for current runs.",
+      failed.length ? "Repair failed runs and feed their errors into failure memory." : "No failed runs recorded.",
+    ],
+  };
+}
+
+export function buildPromptCoachReport(text: string, profile: PromptProfile, outcomes: OutcomeRecord[] = []): PromptCoachReport {
+  const evaluation = evaluatePrompt(text);
+  const visual = auditVisualPrompt(text);
+  const weakCategories = Object.entries(evaluation.categoryScores)
+    .filter(([, value]) => value < 45)
+    .sort((a, b) => a[1] - b[1])
+    .map(([key]) => key)
+    .slice(0, 5);
+  const questions = [
+    weakCategories.includes("assets") ? "What exact video, image, logo, screenshot, or generated asset should define the first viewport?" : "",
+    weakCategories.includes("typography") ? "Which fonts, weights, sizes, line heights, and import URLs should the build use?" : "",
+    weakCategories.includes("layout") ? "How should the page be layered from background to navigation to content to proof surfaces?" : "",
+    weakCategories.includes("responsive") ? "What should change on mobile, tablet, desktop, and wide desktop?" : "",
+    weakCategories.includes("qa") ? "What screenshot, accessibility, and interaction checks prove the output worked?" : "",
+  ].filter(Boolean);
+  const outcomeRule = outcomes.filter((outcome) => outcome.rating === "great" || outcome.status === "gold")[0]?.notes || profile.learnedRules[0] || "Use exact implementation details and one memorable visual system.";
+  const rewrittenPrompt = improvePromptWithLearning(text, profile, outcomes, {
+    score: evaluation.score,
+    checks: visual.items,
+    failureCategories: [],
+    recommendations: [outcomeRule, "Run as coached prompt."],
+  });
+  return {
+    score: Math.round(evaluation.score * 0.7 + visual.score * 0.3),
+    diagnosis: [
+      `Static prompt score ${evaluation.score}; visual QA score ${visual.score}.`,
+      weakCategories.length ? `Weakest categories: ${weakCategories.join(", ")}.` : "Core categories are covered.",
+      `Best learned rule to apply: ${outcomeRule}`,
+    ],
+    questions: questions.length ? questions : ["What single output would prove this prompt is excellent?"],
+    rewrittenPrompt,
+  };
+}
+
+export function buildProjectExportPack({
+  curation,
+  modelEvaluations,
+  prompt,
+  promptMemory,
+  qualityGate,
+  visualRegression,
+}: {
+  curation: CorpusCurationReport;
+  modelEvaluations: unknown[];
+  prompt?: PromptExample;
+  promptMemory: PromptMemoryExport;
+  qualityGate: QualityGateReport;
+  visualRegression: VisualRegressionReport;
+}): ProjectExportPack {
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    prompt,
+    qualityGate,
+    visualRegression,
+    curation: {
+      counts: curation.counts,
+      notes: curation.notes,
+    },
+    modelEvaluations,
+    promptMemory: JSON.parse(promptMemory.json) as unknown,
+  };
+  const markdown = `# Prompt Atelier Project Export
+
+## Selected Prompt
+
+${prompt ? `Title: ${prompt.title}\n\n${prompt.text}` : "No prompt selected."}
+
+## Quality Gate
+
+Score: ${qualityGate.score}
+Ready: ${qualityGate.ready ? "yes" : "no"}
+
+${qualityGate.blocking.map((item) => `- ${item}`).join("\n") || "- No blockers."}
+
+## Visual Regression
+
+Score: ${visualRegression.score}
+
+${visualRegression.checks.map((check) => `- ${check.label}: ${check.passed ? "pass" : "needs work"} - ${check.detail}`).join("\n")}
+
+## Curation
+
+${curation.notes.map((note) => `- ${note}`).join("\n")}
+
+## Model Evaluation
+
+${modelEvaluations.slice(0, 12).map((item) => `- ${JSON.stringify(item)}`).join("\n")}
+
+${promptMemory.markdown}
+`;
+  return {
+    markdown,
+    json: JSON.stringify(payload, null, 2),
+    sections: [
+      { title: "Prompt", count: prompt ? 1 : 0 },
+      { title: "Quality gate", count: qualityGate.checks.length },
+      { title: "Visual regression", count: visualRegression.checks.length },
+      { title: "Model evaluations", count: modelEvaluations.length },
     ],
   };
 }

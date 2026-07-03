@@ -43,9 +43,13 @@ import {
   buildPromptBattle,
   buildGoldReviewReport,
   buildGeneratorPresets,
+  buildPatternDashboard,
+  buildProjectExportPack,
+  buildPromptCoachReport,
   buildQualityGateReport,
   buildResultGallery,
   buildReusableMemoryPack,
+  buildVisualRegressionReport,
   buildRecipePrompt,
   buildRubricNotes,
   buildPromptTournament,
@@ -114,6 +118,8 @@ import {
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
+  type PairwiseReviewRecord,
+  type PatternDashboardReport,
   type PromptPack,
   type PromptAnalysis,
   type PromptBattle,
@@ -144,13 +150,17 @@ import {
   type ScoreBreakdown,
   type SkillInstallPlan,
   type VectorSearchResult,
+  type VisualRegressionReport,
   type VisualQaReport,
+  type PromptCoachReport,
+  type ProjectExportPack,
 } from "./promptEngine";
 import {
   analyzeScreenshots,
   captureResult,
   evaluateWithModel,
   getApiBase,
+  getApiToken,
   getApiCollections,
   getApiHealth,
   getModelSettings,
@@ -159,6 +169,7 @@ import {
   installSkill,
   runQueue,
   setApiBase,
+  setApiToken,
   syncCollections,
   type ApiHealth,
 } from "./promptApi";
@@ -175,6 +186,7 @@ const LINEAGE_KEY = "prompt-atelier-lineage";
 const DATASET_VERSION_KEY = "prompt-atelier-dataset-versions";
 const CURATION_KEY = "prompt-atelier-curation-decisions";
 const MODEL_BATCH_KEY = "prompt-atelier-model-batch-evaluations";
+const PAIRWISE_REVIEW_KEY = "prompt-atelier-pairwise-reviews";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -374,6 +386,18 @@ function readStoredModelBatchEvaluations() {
   }
 }
 
+function readStoredPairwiseReviews() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PAIRWISE_REVIEW_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PairwiseReviewRecord[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.leftId && item?.rightId && item?.winnerId).slice(0, 200) : [];
+  } catch {
+    return [];
+  }
+}
+
 function downloadText(filename: string, text: string, type = "text/plain") {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement("a");
@@ -464,6 +488,7 @@ type StoredCollections = {
   datasetVersions: DatasetVersion[];
   curationDecisions: Record<string, CurationDecision>;
   modelBatchEvaluations: ModelBatchEvaluation[];
+  pairwiseReviews: PairwiseReviewRecord[];
 };
 
 export default function App() {
@@ -489,11 +514,13 @@ export default function App() {
   const [lineageNodes, setLineageNodes] = useState<PromptLineageNode[]>(() => readStoredLineage());
   const [curationDecisions, setCurationDecisions] = useState<Record<string, CurationDecision>>(() => readStoredCurationDecisions());
   const [modelBatchEvaluations, setModelBatchEvaluations] = useState<ModelBatchEvaluation[]>(() => readStoredModelBatchEvaluations());
+  const [pairwiseReviews, setPairwiseReviews] = useState<PairwiseReviewRecord[]>(() => readStoredPairwiseReviews());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
   const [apiNotice, setApiNotice] = useState("API not checked");
   const [apiBaseDraft, setApiBaseDraft] = useState(() => getApiBase());
+  const [apiTokenDraft, setApiTokenDraft] = useState(() => getApiToken());
   const [modelEvaluation, setModelEvaluation] = useState<Record<string, unknown> | undefined>();
   const [modelNotice, setModelNotice] = useState("Model endpoint not checked");
   const [modelSettings, setModelSettings] = useState({
@@ -530,6 +557,8 @@ export default function App() {
   const [mutationSource, setMutationSource] = useState("");
   const [improveText, setImproveText] = useState("");
   const [compilerInput, setCompilerInput] = useState<PromptCompilerInput>(defaultCompilerInput);
+  const [coachInput, setCoachInput] = useState("");
+  const [coachResult, setCoachResult] = useState<Record<string, unknown> | undefined>();
 
   const examples = useMemo(() => [...seedPrompts, ...attachmentExamples, ...userPrompts], [attachmentExamples, userPrompts]);
   const curationReport = useMemo(() => curatePromptCorpus(examples, curationDecisions), [curationDecisions, examples]);
@@ -751,6 +780,30 @@ export default function App() {
       }),
     [failureMemory, generatorPresets, goldenRecipes, promptMemory, qualityGate],
   );
+  const patternDashboard = useMemo(
+    () => buildPatternDashboard(learningExamples, outcomes, buildRuns),
+    [buildRuns, learningExamples, outcomes],
+  );
+  const visualRegression = useMemo(
+    () => buildVisualRegressionReport(buildRuns, screenshots),
+    [buildRuns, screenshots],
+  );
+  const promptCoach = useMemo(
+    () => buildPromptCoachReport(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes),
+    [coachInput, generatedPrompt, outcomes, profile, selectedPrompt],
+  );
+  const projectExportPack = useMemo(
+    () =>
+      buildProjectExportPack({
+        curation: curationReport,
+        modelEvaluations: modelBatchEvaluations,
+        prompt: selectedPrompt,
+        promptMemory,
+        qualityGate,
+        visualRegression,
+      }),
+    [curationReport, modelBatchEvaluations, promptMemory, qualityGate, selectedPrompt, visualRegression],
+  );
   const derivedLineage = useMemo(
     () => buildPromptLineage(selectedPrompt, history, buildRuns, outcomes, screenshots),
     [buildRuns, history, outcomes, screenshots, selectedPrompt],
@@ -776,6 +829,7 @@ export default function App() {
       datasetVersions,
       curationDecisions,
       modelBatchEvaluations,
+      pairwiseReviews,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -792,6 +846,7 @@ export default function App() {
         setCurationDecisions(stored.curationDecisions as Record<string, CurationDecision>);
       }
       if (Array.isArray(stored.modelBatchEvaluations)) setModelBatchEvaluations((stored.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
+      if (Array.isArray(stored.pairwiseReviews)) setPairwiseReviews((stored.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
     };
 
     async function hydrate() {
@@ -902,6 +957,12 @@ export default function App() {
   }, [dbReady, modelBatchEvaluations]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(PAIRWISE_REVIEW_KEY, JSON.stringify(pairwiseReviews));
+    void writeCollection("pairwiseReviews", pairwiseReviews);
+  }, [dbReady, pairwiseReviews]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -915,12 +976,13 @@ export default function App() {
         datasetVersions,
         curationDecisions,
         modelBatchEvaluations,
+        pairwiseReviews,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [apiHealth?.ok, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, queueJobs, screenshots, userPrompts]);
+  }, [apiHealth?.ok, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -1260,7 +1322,8 @@ export default function App() {
 
   function saveApiBase() {
     setApiBase(apiBaseDraft);
-    setApiNotice(`API base set to ${getApiBase()}.`);
+    setApiToken(apiTokenDraft);
+    setApiNotice(`API base set to ${getApiBase()}${apiTokenDraft.trim() ? " with bearer token." : "."}`);
   }
 
   async function runModelBatchCalibration() {
@@ -1315,6 +1378,135 @@ export default function App() {
     setModelBatchEvaluations((current) => [...results, ...current].slice(0, 200));
     const average = Math.round(results.reduce((sum, item) => sum + item.score, 0) / Math.max(1, results.length));
     setModelNotice(`Batch calibration complete: ${results.length} prompt(s), ${average} average model score.`);
+  }
+
+  function addPairwiseReview(left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) {
+    if (!left || !right || !winnerId) return;
+    const winner = winnerId === left.id ? left : right;
+    const loser = winnerId === left.id ? right : left;
+    const now = new Date().toISOString();
+    const review: PairwiseReviewRecord = {
+      id: `pairwise-${Date.now()}`,
+      leftId: left.id,
+      rightId: right.id,
+      winnerId: winner.id,
+      loserId: loser.id,
+      reason,
+      createdAt: now,
+    };
+    setPairwiseReviews((current) => [review, ...current].slice(0, 200));
+    updateOutcome(winner, {
+      rating: "great",
+      status: "gold",
+      notes: `Pairwise winner over ${loser.title}. ${reason}`,
+    });
+    updateOutcome(loser, {
+      rating: "bad",
+      status: "avoid",
+      notes: `Pairwise loser against ${winner.title}. ${reason}`,
+    });
+    setApiNotice(`Recorded pairwise winner: ${winner.title}.`);
+  }
+
+  async function runPromptCoach() {
+    const source = coachInput.trim() || selectedPrompt?.text || generatedPrompt;
+    try {
+      const result = await evaluateWithModel({
+        prompt: source,
+        memory: promptMemory.markdown,
+        context: {
+          task: "Coach this website prompt. Return JSON with score, diagnosis, questions, and rewrittenPrompt.",
+          localCoach: promptCoach,
+        },
+        settings: {
+          provider: modelSettings.provider,
+          endpoint: modelSettings.endpoint,
+          apiKey: modelSettings.apiKey,
+          model: modelSettings.model,
+          temperature: modelSettings.temperature,
+        },
+      });
+      setCoachResult(result);
+      setModelNotice(`Prompt coach complete: ${String(result.mode || "local")}.`);
+    } catch (error) {
+      setCoachResult({ ...promptCoach, mode: "local-coach", error: error instanceof Error ? error.message : String(error) });
+      setModelNotice("Prompt coach used local fallback.");
+    }
+  }
+
+  function exportProjectPack() {
+    downloadText(`prompt-atelier-project-pack-${Date.now()}.md`, projectExportPack.markdown, "text/markdown");
+    downloadText(`prompt-atelier-project-pack-${Date.now()}.json`, projectExportPack.json, "application/json");
+    setApiNotice("Exported project pack as markdown and JSON.");
+  }
+
+  function loadDemoMode() {
+    const demoPrompts = learningExamples.slice(0, 5);
+    const now = new Date().toISOString();
+    const demoOutcomes = demoPrompts.map((prompt, index) => ({
+      promptId: prompt.id,
+      title: prompt.title,
+      rating: index < 3 ? "great" : "okay",
+      status: index < 3 ? "gold" : "good",
+      notes: index < 3 ? "Demo gold label: strong exact website prompt." : "Demo good label: useful but needs result proof.",
+      createdAt: now,
+      updatedAt: now,
+    })) satisfies OutcomeRecord[];
+    const demoRuns = demoPrompts.slice(0, 3).map((prompt, index) => {
+      const run: BuildRunRecord = {
+        id: `demo-run-${prompt.id}`,
+        promptId: prompt.id,
+        promptTitle: prompt.title,
+        promptText: prompt.text,
+        status: "passed",
+        resultUrl: "https://zakiefer.github.io/prompt-atelier/",
+        folderPath: "demo",
+        screenshotUrl: "",
+        filesChanged: "demo",
+        errors: "",
+        notes: "Demo proof row for public hosted mode.",
+        score: 82 + index * 4,
+        failureCategories: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      return run;
+    });
+    const demoScreenshots = demoPrompts.slice(0, 3).map((prompt, index) => ({
+      id: `demo-shot-${prompt.id}`,
+      promptId: prompt.id,
+      title: `${prompt.title} demo screenshot`,
+      url: `demo://screenshot-${index + 1}`,
+      notes: "Demo screenshot placeholder for public mode.",
+      rating: "great",
+      createdAt: now,
+    })) satisfies ScreenshotRecord[];
+    setOutcomes((current) => [...demoOutcomes, ...current.filter((item) => !demoOutcomes.some((demo) => demo.promptId === item.promptId))].slice(0, 120));
+    setBuildRuns((current) => [...demoRuns, ...current.filter((item) => !demoRuns.some((demo) => demo.id === item.id))].slice(0, 120));
+    setScreenshots((current) => [...demoScreenshots, ...current.filter((item) => !demoScreenshots.some((demo) => demo.id === item.id))].slice(0, 120));
+    setModelBatchEvaluations((current) => [
+      ...demoPrompts.slice(0, 5).map((prompt, index) => ({
+        id: `demo-model-${prompt.id}`,
+        promptId: prompt.id,
+        title: prompt.title,
+        score: 76 + index * 3,
+        readiness: index < 3 ? "excellent" : "ready",
+        mode: "demo",
+        findings: ["Demo calibration row for public mode."],
+        createdAt: now,
+      })),
+      ...current,
+    ].slice(0, 200));
+    const demoVersion = createDatasetVersionSnapshot({
+      buildRuns: [...demoRuns, ...buildRuns],
+      examples: learningExamples,
+      label: `demo-${datasetVersions.length + 1}`,
+      outcomes: [...demoOutcomes, ...outcomes],
+      score: scoreBreakdown,
+      screenshots: [...demoScreenshots, ...screenshots],
+    });
+    setDatasetVersions((current) => [demoVersion, ...current].slice(0, 20));
+    setApiNotice("Loaded demo labels, runs, screenshots, and model rows for public mode.");
   }
 
   function applyGoldReview() {
@@ -1498,6 +1690,7 @@ export default function App() {
         datasetVersions,
         curationDecisions,
         modelBatchEvaluations,
+        pairwiseReviews,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -1517,7 +1710,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -1576,6 +1769,10 @@ export default function App() {
         setModelBatchEvaluations((collections.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
         restored.push("model batch history");
       }
+      if (Array.isArray(collections.pairwiseReviews)) {
+        setPairwiseReviews((collections.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
+        restored.push("pairwise labels");
+      }
       if (parsed.scoring?.scoreWeights && typeof parsed.scoring.scoreWeights === "object") {
         setScoreWeights(parsed.scoring.scoreWeights);
         restored.push("weights");
@@ -1597,6 +1794,7 @@ export default function App() {
           datasetVersions: collections.datasetVersions ?? datasetVersions,
           curationDecisions: collections.curationDecisions ?? curationDecisions,
           modelBatchEvaluations: collections.modelBatchEvaluations ?? modelBatchEvaluations,
+          pairwiseReviews: collections.pairwiseReviews ?? pairwiseReviews,
         });
       }
       setSnapshotImportText("");
@@ -2021,8 +2219,11 @@ export default function App() {
               apiHealth={apiHealth}
               apiNotice={apiNotice}
               apiBaseDraft={apiBaseDraft}
+              apiTokenDraft={apiTokenDraft}
               buildRuns={buildRuns}
               codexSkill={codexSkill}
+              coachInput={coachInput}
+              coachResult={coachResult}
               compiledPrompt={compiledPrompt}
               compilerInput={compilerInput}
               copied={copied}
@@ -2056,6 +2257,7 @@ export default function App() {
               mutationSource={mutationSource}
               mutations={promptMutations}
               onAddBuildRun={addBuildRun}
+              onAddPairwiseReview={addPairwiseReview}
               onAddScreenshot={addScreenshot}
               onApplyCurationRecommendations={applyCurationRecommendations}
               onCaptureSelectedResult={captureSelectedResult}
@@ -2068,14 +2270,17 @@ export default function App() {
               onDownload={downloadText}
               onExportQueue={exportQueue}
               onExportMemoryPack={exportReusableMemoryPack}
+              onExportProjectPack={exportProjectPack}
               onExportTrainingSnapshot={exportTrainingSnapshot}
               onImportTrainingSnapshot={importTrainingSnapshotText}
               onImportResultJson={importResultJson}
               onInstallSkill={installSkillFromApi}
+              onLoadDemoMode={loadDemoMode}
               onModelEvaluate={runModelEvaluation}
               onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
               onRunAutonomousBattle={runAutonomousBattle}
               onRunModelBatchCalibration={runModelBatchCalibration}
+              onRunPromptCoach={runPromptCoach}
               onQueueTournament={queueTournamentFinalists}
               onQueueWizard={() => queueBattleVariants(wizardBattle, "one-click wizard")}
               onRemoveBuildRun={removeBuildRun}
@@ -2090,9 +2295,13 @@ export default function App() {
               onUpdateOutcome={updateOutcome}
               outcomeSummary={outcomeSummary}
               outcomes={outcomes}
+              pairwiseReviews={pairwiseReviews}
+              patternDashboard={patternDashboard}
               promptBattle={promptBattle}
+              promptCoach={promptCoach}
               promptMemory={promptMemory}
               promptDiff={promptDiff}
+              projectExportPack={projectExportPack}
               qualityGate={qualityGate}
               qaText={qaText}
               queueExport={queueExport}
@@ -2110,7 +2319,9 @@ export default function App() {
               selectedLineage={selectedLineage}
               semanticQuery={semanticQuery}
               setApiBaseDraft={setApiBaseDraft}
+              setApiTokenDraft={setApiTokenDraft}
               setActiveTrainStage={setActiveTrainStage}
+              setCoachInput={setCoachInput}
               setCompilerInput={setCompilerInput}
               setDiffLeftId={setDiffLeftId}
               setDiffRightId={setDiffRightId}
@@ -2129,6 +2340,7 @@ export default function App() {
               vectorQuery={vectorQuery}
               vectorResults={vectorResults}
               visualQa={visualQa}
+              visualRegression={visualRegression}
               visualAnalysisResult={visualAnalysisResult}
               onAnalyzeSelectedVisuals={analyzeSelectedVisuals}
               repairedPrompt={repairedPrompt}
@@ -2981,8 +3193,11 @@ function TrainView({
   apiHealth,
   apiNotice,
   apiBaseDraft,
+  apiTokenDraft,
   buildRuns,
   codexSkill,
+  coachInput,
+  coachResult,
   compiledPrompt,
   compilerInput,
   copied,
@@ -3017,6 +3232,7 @@ function TrainView({
   mutationSource,
   mutations,
   onAddBuildRun,
+  onAddPairwiseReview,
   onAddScreenshot,
   onApplyCurationRecommendations,
   onApplyGeneratorPreset,
@@ -3029,15 +3245,18 @@ function TrainView({
   onCopy,
   onDownload,
   onExportMemoryPack,
+  onExportProjectPack,
   onExportQueue,
   onExportTrainingSnapshot,
   onImportTrainingSnapshot,
   onImportResultJson,
   onInstallSkill,
+  onLoadDemoMode,
   onModelEvaluate,
   onQueueBattle,
   onRunAutonomousBattle,
   onRunModelBatchCalibration,
+  onRunPromptCoach,
   onQueueTournament,
   onQueueWizard,
   onRemoveBuildRun,
@@ -3052,9 +3271,13 @@ function TrainView({
   onUpdateOutcome,
   outcomeSummary,
   outcomes,
+  pairwiseReviews,
+  patternDashboard,
   promptBattle,
+  promptCoach,
   promptMemory,
   promptDiff,
+  projectExportPack,
   qualityGate,
   qaText,
   queueExport,
@@ -3072,7 +3295,9 @@ function TrainView({
   selectedLineage,
   semanticQuery,
   setApiBaseDraft,
+  setApiTokenDraft,
   setActiveTrainStage,
+  setCoachInput,
   setCompilerInput,
   setDiffLeftId,
   setDiffRightId,
@@ -3091,6 +3316,7 @@ function TrainView({
   vectorQuery,
   vectorResults,
   visualQa,
+  visualRegression,
   visualAnalysisResult,
   repairedPrompt,
   resultGallery,
@@ -3106,8 +3332,11 @@ function TrainView({
   apiHealth?: ApiHealth;
   apiNotice: string;
   apiBaseDraft: string;
+  apiTokenDraft: string;
   buildRuns: BuildRunRecord[];
   codexSkill: string;
+  coachInput: string;
+  coachResult?: Record<string, unknown>;
   compiledPrompt: CompiledPrompt;
   compilerInput: PromptCompilerInput;
   copied: string;
@@ -3150,6 +3379,7 @@ function TrainView({
   mutationSource: string;
   mutations: PromptMutation[];
   onAddBuildRun: (prompt: PromptExample, fields: Omit<BuildRunRecord, "id" | "promptId" | "promptTitle" | "promptText" | "score" | "failureCategories" | "createdAt" | "updatedAt">) => void;
+  onAddPairwiseReview: (left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) => void;
   onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
   onApplyCurationRecommendations: () => void;
   onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
@@ -3162,15 +3392,18 @@ function TrainView({
   onCopy: (value: string, key: string) => void;
   onDownload: (filename: string, text: string, type?: string) => void;
   onExportMemoryPack: () => void;
+  onExportProjectPack: () => void;
   onExportQueue: () => void;
   onExportTrainingSnapshot: () => void;
   onImportTrainingSnapshot: () => void;
   onImportResultJson: () => void;
   onInstallSkill: () => void;
+  onLoadDemoMode: () => void;
   onModelEvaluate: () => void;
   onQueueBattle: () => void;
   onRunAutonomousBattle: () => void;
   onRunModelBatchCalibration: () => void;
+  onRunPromptCoach: () => void;
   onQueueTournament: () => void;
   onQueueWizard: () => void;
   onRemoveBuildRun: (id: string) => void;
@@ -3185,9 +3418,13 @@ function TrainView({
   onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
   outcomeSummary: OutcomeSummary;
   outcomes: OutcomeRecord[];
+  pairwiseReviews: PairwiseReviewRecord[];
+  patternDashboard: PatternDashboardReport;
   promptBattle: PromptBattle;
+  promptCoach: PromptCoachReport;
   promptMemory: PromptMemoryExport;
   promptDiff?: PromptDiff;
+  projectExportPack: ProjectExportPack;
   qualityGate: QualityGateReport;
   qaText: string;
   queueExport: string;
@@ -3205,7 +3442,9 @@ function TrainView({
   selectedLineage: PromptLineageNode[];
   semanticQuery: string;
   setApiBaseDraft: (value: string) => void;
+  setApiTokenDraft: (value: string) => void;
   setActiveTrainStage: (stage: string) => void;
+  setCoachInput: (value: string) => void;
   setCompilerInput: Dispatch<SetStateAction<PromptCompilerInput>>;
   setDiffLeftId: (id: string) => void;
   setDiffRightId: (id: string) => void;
@@ -3234,6 +3473,7 @@ function TrainView({
   vectorQuery: string;
   vectorResults: VectorSearchResult[];
   visualQa: VisualQaReport;
+  visualRegression: VisualRegressionReport;
   visualAnalysisResult?: Record<string, unknown>;
   repairedPrompt: string;
   resultGallery: ResultGalleryItem[];
@@ -3283,6 +3523,7 @@ function TrainView({
         apiBaseDraft={apiBaseDraft}
         apiHealth={apiHealth}
         apiNotice={apiNotice}
+        apiTokenDraft={apiTokenDraft}
         onCaptureSelectedResult={onCaptureSelectedResult}
         onCheckApi={onCheckApi}
         onInstallSkill={onInstallSkill}
@@ -3291,6 +3532,7 @@ function TrainView({
         onSyncToApi={onSyncToApi}
         queueJobs={queueJobs}
         setApiBaseDraft={setApiBaseDraft}
+        setApiTokenDraft={setApiTokenDraft}
       />
 
       <StageNavPanel activeStage={activeTrainStage} setActiveStage={setActiveTrainStage} />
@@ -3304,6 +3546,7 @@ function TrainView({
         onApplyCurationRecommendations={onApplyCurationRecommendations}
         onCreateDatasetVersion={onCreateDatasetVersion}
         onExportMemoryPack={onExportMemoryPack}
+        onLoadDemoMode={onLoadDemoMode}
         onRunModelBatchCalibration={onRunModelBatchCalibration}
       />
 
@@ -3321,10 +3564,34 @@ function TrainView({
         />
       </section>
 
-      <VisualEvidenceDashboardPanel
-        buildRuns={buildRuns}
-        screenshots={screenshots}
-        visualAnalysisResult={visualAnalysisResult}
+      <section className="train-columns">
+        <PairwiseLabelingPanel
+          examples={learningExamples}
+          onAddPairwiseReview={onAddPairwiseReview}
+          pairwiseReviews={pairwiseReviews}
+        />
+        <PatternDashboardPanel patternDashboard={patternDashboard} />
+      </section>
+
+      <section className="train-columns">
+        <VisualEvidenceDashboardPanel
+          buildRuns={buildRuns}
+          screenshots={screenshots}
+          visualAnalysisResult={visualAnalysisResult}
+          visualRegression={visualRegression}
+        />
+        <ProjectExportPackPanel
+          onExportProjectPack={onExportProjectPack}
+          projectExportPack={projectExportPack}
+        />
+      </section>
+
+      <PromptCoachPanel
+        coachInput={coachInput}
+        coachResult={coachResult}
+        onRunPromptCoach={onRunPromptCoach}
+        promptCoach={promptCoach}
+        setCoachInput={setCoachInput}
       />
 
       <section className="train-columns">
@@ -3690,6 +3957,7 @@ function BackendApiPanel({
   apiBaseDraft,
   apiHealth,
   apiNotice,
+  apiTokenDraft,
   onCheckApi,
   onCaptureSelectedResult,
   onInstallSkill,
@@ -3698,10 +3966,12 @@ function BackendApiPanel({
   onSyncToApi,
   queueJobs,
   setApiBaseDraft,
+  setApiTokenDraft,
 }: {
   apiBaseDraft: string;
   apiHealth?: ApiHealth;
   apiNotice: string;
+  apiTokenDraft: string;
   onCheckApi: () => void;
   onCaptureSelectedResult: () => void;
   onInstallSkill: () => void;
@@ -3710,6 +3980,7 @@ function BackendApiPanel({
   onSyncToApi: () => void;
   queueJobs: BuildQueueJob[];
   setApiBaseDraft: (value: string) => void;
+  setApiTokenDraft: (value: string) => void;
 }) {
   return (
     <section className="panel lab-panel backend-panel">
@@ -3732,8 +4003,8 @@ function BackendApiPanel({
           <span>API status</span>
         </article>
         <article className="index-card">
-          <strong>{apiHealth?.skill.installed ? "Installed" : "Missing"}</strong>
-          <span>Codex skill</span>
+          <strong>{apiHealth?.authRequired ? "Token" : "Open"}</strong>
+          <span>Auth mode</span>
         </article>
         <article className="index-card wide-index-card">
           <h3>SQLite</h3>
@@ -3745,10 +4016,13 @@ function BackendApiPanel({
         <Field label="API base">
           <input value={apiBaseDraft} onChange={(event) => setApiBaseDraft(event.target.value)} placeholder="http://127.0.0.1:8787 or hosted API URL" />
         </Field>
+        <Field label="API token">
+          <input type="password" value={apiTokenDraft} onChange={(event) => setApiTokenDraft(event.target.value)} placeholder="Optional hosted API token" />
+        </Field>
         <button className="ghost-button compact-button" type="button" onClick={onSaveApiBase}>Save API base</button>
       </div>
       <div className="command-box">
-        <code>npm run api</code>
+        <code>PROMPT_LAB_API_TOKEN=... npm run api</code>
       </div>
     </section>
   );
@@ -4064,6 +4338,7 @@ function FirstRunWizardPanel({
   onApplyCurationRecommendations,
   onCreateDatasetVersion,
   onExportMemoryPack,
+  onLoadDemoMode,
   onRunModelBatchCalibration,
 }: {
   apiHealth?: ApiHealth;
@@ -4074,6 +4349,7 @@ function FirstRunWizardPanel({
   onApplyCurationRecommendations: () => void;
   onCreateDatasetVersion: () => void;
   onExportMemoryPack: () => void;
+  onLoadDemoMode: () => void;
   onRunModelBatchCalibration: () => void;
 }) {
   const steps = [
@@ -4094,6 +4370,7 @@ function FirstRunWizardPanel({
         <div className="button-row">
           <button className="ghost-button compact-button" type="button" onClick={onApplyCurationRecommendations}>Curate</button>
           <button className="ghost-button compact-button" type="button" onClick={onCreateDatasetVersion}>Version</button>
+          <button className="ghost-button compact-button" type="button" onClick={onLoadDemoMode}>Demo</button>
           <button className="ghost-button compact-button" type="button" onClick={onRunModelBatchCalibration}>Calibrate</button>
           <button className="primary-button compact-button" type="button" onClick={onExportMemoryPack}>Export memory</button>
         </div>
@@ -4217,14 +4494,103 @@ function ModelBatchCalibrationPanel({
   );
 }
 
+function PairwiseLabelingPanel({
+  examples,
+  onAddPairwiseReview,
+  pairwiseReviews,
+}: {
+  examples: PromptExample[];
+  onAddPairwiseReview: (left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) => void;
+  pairwiseReviews: PairwiseReviewRecord[];
+}) {
+  const [leftId, setLeftId] = useState(examples[0]?.id ?? "");
+  const [rightId, setRightId] = useState(examples[1]?.id ?? examples[0]?.id ?? "");
+  const [reason, setReason] = useState("More exact visual direction, assets, responsive rules, and verification detail.");
+  const left = examples.find((example) => example.id === leftId) ?? examples[0];
+  const right = examples.find((example) => example.id === rightId) ?? examples.find((example) => example.id !== left?.id);
+  const latest = pairwiseReviews.slice(0, 8);
+
+  useEffect(() => {
+    if (!leftId && examples[0]) setLeftId(examples[0].id);
+    if (!rightId && examples[1]) setRightId(examples[1].id);
+  }, [examples, leftId, rightId]);
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Trophy size={18} />
+        <h2>Ground-truth pairwise labels</h2>
+      </div>
+      <div className="two-field-grid">
+        <Field label="Left prompt">
+          <select value={left?.id ?? ""} onChange={(event) => setLeftId(event.target.value)}>
+            {examples.map((example) => <option key={example.id} value={example.id}>{example.title}</option>)}
+          </select>
+        </Field>
+        <Field label="Right prompt">
+          <select value={right?.id ?? ""} onChange={(event) => setRightId(event.target.value)}>
+            {examples.map((example) => <option key={example.id} value={example.id}>{example.title}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Field label="Why it won">
+        <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+      </Field>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" disabled={!left || !right || left.id === right.id} onClick={() => onAddPairwiseReview(left, right, left?.id ?? "", reason)}>
+          Left wins
+        </button>
+        <button className="ghost-button compact-button" type="button" disabled={!left || !right || left.id === right.id} onClick={() => onAddPairwiseReview(left, right, right?.id ?? "", reason)}>
+          Right wins
+        </button>
+      </div>
+      <div className="version-list compact-list">
+        {latest.length ? latest.map((review) => (
+          <article className="version-card" key={review.id}>
+            <strong>{review.winnerId}</strong>
+            <span>beat {review.loserId}</span>
+            <p>{review.reason}</p>
+          </article>
+        )) : <p className="selected-meta">Compare two prompts to create gold and avoid labels automatically.</p>}
+      </div>
+    </section>
+  );
+}
+
+function PatternDashboardPanel({ patternDashboard }: { patternDashboard: PatternDashboardReport }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <BarChart3 size={18} />
+        <h2>Prompt pattern dashboard</h2>
+      </div>
+      <FeedbackList title="Pattern summary" items={patternDashboard.summary} empty="Add labels to reveal winning patterns." />
+      <div className="version-list compact-list">
+        {patternDashboard.items.slice(0, 8).map((item) => (
+          <article className="version-card" key={item.label}>
+            <div className="dna-v2-topline">
+              <strong>{item.label}</strong>
+              <span data-tone={scoreTone(item.winRate)}>{item.winRate}%</span>
+            </div>
+            <p>{item.prompts} prompts / {item.gold} gold / {item.avoid} avoid</p>
+            <small>Prompt {item.averagePromptScore} / result {item.averageResultScore || "pending"}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function VisualEvidenceDashboardPanel({
   buildRuns,
   screenshots,
   visualAnalysisResult,
+  visualRegression,
 }: {
   buildRuns: BuildRunRecord[];
   screenshots: ScreenshotRecord[];
   visualAnalysisResult?: Record<string, unknown>;
+  visualRegression: VisualRegressionReport;
 }) {
   const missingScreenshots = buildRuns.filter((run) => !run.screenshotUrl).length;
   const failedRuns = buildRuns.filter((run) => run.status === "failed").length;
@@ -4235,6 +4601,13 @@ function VisualEvidenceDashboardPanel({
       <div className="panel-header">
         <Gauge size={18} />
         <h2>Visual QA dashboard</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={visualRegression.score} label="Regression" />
+        <div>
+          <strong>Evidence health</strong>
+          <p className="selected-meta">{visualRegression.notes[0]}</p>
+        </div>
       </div>
       <div className="qa-grid">
         <article className="qa-card">
@@ -4253,7 +4626,92 @@ function VisualEvidenceDashboardPanel({
           <p>Failures that should feed repair memory.</p>
         </article>
       </div>
+      <div className="gate-check-grid">
+        {visualRegression.checks.map((check) => (
+          <article className="gate-check-card" data-pass={check.passed} key={check.label}>
+            <strong>{check.label}</strong>
+            <p>{check.detail}</p>
+          </article>
+        ))}
+      </div>
       <textarea className="generated-output mini-output" readOnly value={analysisSummary} />
+    </section>
+  );
+}
+
+function ProjectExportPackPanel({
+  onExportProjectPack,
+  projectExportPack,
+}: {
+  onExportProjectPack: () => void;
+  projectExportPack: ProjectExportPack;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Project export pack</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onExportProjectPack}>
+          <Download size={15} />
+          Export pack
+        </button>
+      </div>
+      <div className="memory-pack-grid">
+        {projectExportPack.sections.map((section) => (
+          <article className="index-card" key={section.title}>
+            <strong>{section.count}</strong>
+            <span>{section.title}</span>
+          </article>
+        ))}
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={projectExportPack.markdown} />
+    </section>
+  );
+}
+
+function PromptCoachPanel({
+  coachInput,
+  coachResult,
+  onRunPromptCoach,
+  promptCoach,
+  setCoachInput,
+}: {
+  coachInput: string;
+  coachResult?: Record<string, unknown>;
+  onRunPromptCoach: () => void;
+  promptCoach: PromptCoachReport;
+  setCoachInput: (value: string) => void;
+}) {
+  const output = coachResult ? JSON.stringify(coachResult, null, 2) : promptCoach.rewrittenPrompt;
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Claude prompt coach</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunPromptCoach}>
+          <Sparkles size={15} />
+          Coach prompt
+        </button>
+      </div>
+      <div className="coach-output-grid">
+        <div>
+          <Field label="Prompt to coach">
+            <textarea value={coachInput} onChange={(event) => setCoachInput(event.target.value)} placeholder="Paste a website prompt, or leave empty to coach the selected/generated prompt." />
+          </Field>
+          <FeedbackList title="Coach diagnosis" items={promptCoach.diagnosis} empty="No diagnosis yet." />
+          <FeedbackList title="Follow-up questions" items={promptCoach.questions} empty="No questions yet." />
+        </div>
+        <div>
+          <div className="qa-score-row">
+            <ScoreRing score={promptCoach.score} label="Coach" />
+          </div>
+          <textarea className="generated-output style-guide-output" readOnly value={output} />
+        </div>
+      </div>
     </section>
   );
 }

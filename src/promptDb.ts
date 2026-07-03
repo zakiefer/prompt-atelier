@@ -12,7 +12,8 @@ export type CollectionKey =
   | "lineage"
   | "datasetVersions"
   | "curationDecisions"
-  | "modelBatchEvaluations";
+  | "modelBatchEvaluations"
+  | "pairwiseReviews";
 
 type StoredCollection<T> = {
   key: CollectionKey;

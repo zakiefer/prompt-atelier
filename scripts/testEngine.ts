@@ -4,8 +4,12 @@ import {
   analyzeCorpus,
   analyzeArchetypeClusters,
   buildGeneratorPresets,
+  buildPatternDashboard,
+  buildProjectExportPack,
+  buildPromptCoachReport,
   buildQualityGateReport,
   buildReusableMemoryPack,
+  buildVisualRegressionReport,
   createDatasetVersionSnapshot,
   curatePromptCorpus,
   evaluatePrompt,
@@ -19,6 +23,7 @@ const corpusPayload = JSON.parse(readFileSync("public/attachment-prompts.json", 
 
 const exactPrompt = `Build a fullscreen hero section in React + TypeScript + Vite + Tailwind CSS.
 Use this exact background video URL: https://example.com/hero.mp4.
+The video must be cinematic, autoplay, loop, muted, and playsInline.
 Specify fonts, colors, responsive mobile behavior, accessible buttons, hover states, and a Playwright screenshot verification checklist.
 No decorative blobs, no unlisted UI libraries, and keep the first viewport focused on the product.`;
 
@@ -95,6 +100,28 @@ const presets = buildGeneratorPresets(profile, clusters, outcomes);
 assert.ok(presets.length > 0, "Generator presets should be created from corpus signals.");
 assert.ok(presets[0].prompt.includes("React"), "Generator preset prompt should include implementation stack guidance.");
 
+const dashboardExamples: PromptExample[] = [
+  {
+    id: "dashboard-cinematic-hero",
+    title: "Dashboard cinematic hero",
+    text: exactPrompt,
+    source: "user",
+    createdAt: new Date().toISOString(),
+  },
+  ...examples,
+];
+const patternDashboard = buildPatternDashboard(dashboardExamples, outcomes, buildRuns);
+assert.ok(patternDashboard.summary.length >= 2, "Pattern dashboard should produce summary guidance.");
+assert.ok(patternDashboard.items.length > 0, "Pattern dashboard should identify active website prompt patterns.");
+
+const visualRegression = buildVisualRegressionReport(buildRuns, screenshots);
+assert.ok(visualRegression.score >= 75, "Visual regression should score healthy evidence as ready.");
+assert.ok(visualRegression.checks.every((check) => check.detail), "Visual regression checks should include details.");
+
+const coach = buildPromptCoachReport(exactPrompt, profile, outcomes);
+assert.ok(coach.score > 0, "Prompt coach should return a score.");
+assert.ok(coach.rewrittenPrompt.includes("Build"), "Prompt coach should return a rewritten prompt.");
+
 const pack = buildReusableMemoryPack({
   failureMemory: {
     categories: [],
@@ -113,4 +140,19 @@ const pack = buildReusableMemoryPack({
 assert.ok(pack.markdown.includes("Website Prompt Memory Pack"), "Reusable memory pack should be markdown-exportable.");
 assert.ok(JSON.parse(pack.json), "Reusable memory pack JSON should parse.");
 
-console.log(JSON.stringify({ ok: true, assertions: 12, score: score.score, snapshot: snapshot.label }, null, 2));
+const projectPack = buildProjectExportPack({
+  curation,
+  modelEvaluations: [{ score: 91, mode: "test" }],
+  prompt: examples[0],
+  promptMemory: {
+    markdown: "# Memory\n- exact assets win",
+    json: "{}",
+    sections: [],
+  },
+  qualityGate,
+  visualRegression,
+});
+assert.ok(projectPack.markdown.includes("Prompt Atelier Project Export"), "Project pack should be markdown-exportable.");
+assert.ok(JSON.parse(projectPack.json), "Project pack JSON should parse.");
+
+console.log(JSON.stringify({ ok: true, assertions: 22, score: score.score, snapshot: snapshot.label }, null, 2));

@@ -5,10 +5,12 @@ import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 
-const PORT = Number(process.env.PROMPT_LAB_API_PORT || 8787);
+const PORT = Number(process.env.PORT || process.env.PROMPT_LAB_API_PORT || 8787);
 const ROOT = process.cwd();
-const DATA_DIR = join(ROOT, "data");
+const DATA_DIR = resolve(process.env.PROMPT_LAB_DATA_DIR || join(ROOT, "data"));
 const DB_PATH = join(DATA_DIR, "prompt-atelier.sqlite");
+const API_TOKEN = process.env.PROMPT_LAB_API_TOKEN || "";
+const ALLOWED_ORIGIN = process.env.PROMPT_LAB_ALLOWED_ORIGIN || "*";
 const COLLECTION_KEYS = [
   "userPrompts",
   "history",
@@ -20,6 +22,7 @@ const COLLECTION_KEYS = [
   "datasetVersions",
   "curationDecisions",
   "modelBatchEvaluations",
+  "pairwiseReviews",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -58,12 +61,19 @@ function logEvent(kind, detail) {
 
 function jsonResponse(response, status, payload) {
   response.writeHead(status, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "content-type",
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+    "Access-Control-Allow-Headers": "content-type, authorization, x-prompt-lab-token",
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Content-Type": "application/json",
   });
   response.end(JSON.stringify(payload, null, 2));
+}
+
+function requestIsAuthorized(request) {
+  if (!API_TOKEN) return true;
+  const bearer = request.headers.authorization?.replace(/^Bearer\s+/i, "");
+  const token = request.headers["x-prompt-lab-token"];
+  return bearer === API_TOKEN || token === API_TOKEN;
 }
 
 function readBody(request) {
@@ -324,8 +334,22 @@ async function handle(request, response) {
   const url = new URL(request.url || "/", `http://127.0.0.1:${PORT}`);
 
   try {
+    if (!requestIsAuthorized(request) && url.pathname !== "/api/health") {
+      jsonResponse(response, 401, { ok: false, error: "Unauthorized. Set Authorization: Bearer <token> or x-prompt-lab-token." });
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/api/health") {
-      jsonResponse(response, 200, { ok: true, port: PORT, sqlitePath: DB_PATH, skill: skillStatus(), collections: COLLECTION_KEYS });
+      jsonResponse(response, 200, {
+        ok: true,
+        port: PORT,
+        sqlitePath: DB_PATH,
+        dataDir: DATA_DIR,
+        authRequired: Boolean(API_TOKEN),
+        allowedOrigin: ALLOWED_ORIGIN,
+        skill: skillStatus(),
+        collections: COLLECTION_KEYS,
+      });
       return;
     }
 
