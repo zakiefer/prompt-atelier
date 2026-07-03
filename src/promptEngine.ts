@@ -35,6 +35,25 @@ export type PromptProfile = {
   signaturePhrases: Feature[];
 };
 
+export type CorpusCurationCategory = "website-prompt" | "repo-task" | "code-review" | "raw-html" | "unknown";
+
+export type CorpusCurationItem = {
+  promptId: string;
+  title: string;
+  category: CorpusCurationCategory;
+  confidence: number;
+  recommendation: "learn" | "quarantine" | "review";
+  reasons: string[];
+};
+
+export type CorpusCurationReport = {
+  items: CorpusCurationItem[];
+  counts: Record<CorpusCurationCategory | "learn" | "quarantine" | "review", number>;
+  learnIds: string[];
+  quarantineIds: string[];
+  notes: string[];
+};
+
 export type Evaluation = {
   score: number;
   categoryScores: Record<CategoryKey, number>;
@@ -1045,6 +1064,119 @@ function scoreCategory(text: string, key: CategoryKey) {
   const urlBonus = key === "assets" ? Math.min(extractUrls(text).length, 8) : 0;
   const colorBonus = key === "color" ? Math.min(extractHexColors(text).length, 8) : 0;
   return Math.min(100, Math.round((matchCount + denseBonus + urlBonus + colorBonus) * 8));
+}
+
+export function classifyPromptForCuration(example: PromptExample): CorpusCurationItem {
+  const text = `${example.title}\n${example.text}`.toLowerCase();
+  const websiteSignals = [
+    "landing page",
+    "hero section",
+    "navbar",
+    "tailwind",
+    "react",
+    "vite",
+    "css",
+    "video background",
+    "font",
+    "responsive",
+    "lucide",
+    "framer",
+    "motion",
+    "single-page",
+    "fullscreen",
+  ].filter((signal) => text.includes(signal));
+  const repoSignals = [
+    "kapital-next",
+    "hotfix",
+    "pull request",
+    "git ",
+    "merge",
+    "branch",
+    "repo",
+    "ci ",
+    "commit",
+    "staged",
+    "smoke",
+    "worktree",
+  ].filter((signal) => text.includes(signal));
+  const reviewSignals = ["code review", "reviewer", "findings", "regression", "bug risk"].filter((signal) => text.includes(signal));
+  const htmlSignals = ["<!doctype html", "<html", "<head", "<style"].filter((signal) => text.includes(signal));
+
+  let category: CorpusCurationCategory = "unknown";
+  let recommendation: CorpusCurationItem["recommendation"] = "review";
+  const reasons: string[] = [];
+  let confidence = 42;
+
+  if (repoSignals.length >= 2 && websiteSignals.length < 5) {
+    category = "repo-task";
+    recommendation = "quarantine";
+    confidence = Math.min(98, 60 + repoSignals.length * 7);
+    reasons.push(`Repo workflow signals: ${repoSignals.slice(0, 5).join(", ")}`);
+  } else if (reviewSignals.length >= 2 && websiteSignals.length < 5) {
+    category = "code-review";
+    recommendation = "quarantine";
+    confidence = Math.min(92, 58 + reviewSignals.length * 8);
+    reasons.push(`Review workflow signals: ${reviewSignals.join(", ")}`);
+  } else if (websiteSignals.length >= 4 || (htmlSignals.length && websiteSignals.length >= 2)) {
+    category = htmlSignals.length ? "raw-html" : "website-prompt";
+    recommendation = "learn";
+    confidence = Math.min(98, 55 + websiteSignals.length * 5 + htmlSignals.length * 4);
+    reasons.push(`Website build signals: ${websiteSignals.slice(0, 7).join(", ")}`);
+  } else if (repoSignals.length) {
+    category = "repo-task";
+    recommendation = "review";
+    confidence = Math.min(82, 45 + repoSignals.length * 6);
+    reasons.push(`Possible repo task: ${repoSignals.slice(0, 4).join(", ")}`);
+  } else {
+    reasons.push("Not enough implementation or website-design signals.");
+  }
+
+  return {
+    promptId: example.id,
+    title: example.title,
+    category,
+    confidence,
+    recommendation,
+    reasons,
+  };
+}
+
+export function curatePromptCorpus(
+  examples: PromptExample[],
+  decisions: Record<string, "learn" | "quarantine" | "review"> = {},
+): CorpusCurationReport {
+  const items = examples.map((example) => {
+    const classified = classifyPromptForCuration(example);
+    const override = decisions[example.id];
+    return override ? { ...classified, recommendation: override, reasons: [`Manual override: ${override}`, ...classified.reasons] } : classified;
+  });
+  const counts = {
+    "website-prompt": 0,
+    "repo-task": 0,
+    "code-review": 0,
+    "raw-html": 0,
+    unknown: 0,
+    learn: 0,
+    quarantine: 0,
+    review: 0,
+  } satisfies CorpusCurationReport["counts"];
+
+  for (const item of items) {
+    counts[item.category] += 1;
+    counts[item.recommendation] += 1;
+  }
+
+  return {
+    items,
+    counts,
+    learnIds: items.filter((item) => item.recommendation === "learn").map((item) => item.promptId),
+    quarantineIds: items.filter((item) => item.recommendation === "quarantine").map((item) => item.promptId),
+    notes: [
+      `${counts.learn} prompt(s) are active learning material.`,
+      `${counts.quarantine} prompt(s) are quarantined from recipe/memory generation.`,
+      counts.review ? `${counts.review} prompt(s) need manual review.` : "No manual-review prompts detected.",
+    ],
+  };
 }
 
 export function analyzeCorpus(examples: PromptExample[]): PromptProfile {

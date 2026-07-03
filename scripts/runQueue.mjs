@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 function argValue(name, fallback = "") {
@@ -211,7 +211,7 @@ Agent-ready prompt lab run folder.
   const screenshotDir = join(runDir, "screenshots");
   let captureResult = { skipped: true, status: 0, stdout: "", stderr: "" };
   if (capture && job.resultUrl) {
-    captureResult = run(`npm run capture:result -- --url ${job.resultUrl} --out ${screenshotDir}`, dirname(queuePath));
+    captureResult = run(`npm run capture:result -- --url ${job.resultUrl} --out ${screenshotDir}`, process.cwd());
   }
 
   const status = agentResult.status === 0 && installResult.status === 0 && buildResult.status === 0 && captureResult.status === 0 ? "completed" : "failed";

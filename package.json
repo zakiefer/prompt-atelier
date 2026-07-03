@@ -14,7 +14,10 @@
     "run:queue": "node scripts/runQueue.mjs",
     "capture:result": "node scripts/captureResult.mjs",
     "analyze:screenshots": "node scripts/analyzeScreenshots.mjs",
-    "install:skill": "node scripts/installCodexSkill.mjs"
+    "install:skill": "node scripts/installCodexSkill.mjs",
+    "export:prompts": "node scripts/exportPromptMarkdown.mjs",
+    "test:engine": "tsx scripts/testEngine.ts",
+    "test:api": "node scripts/testApiRoutes.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.7.0",
@@ -25,9 +28,11 @@
     "vite": "^7.0.2"
   },
   "devDependencies": {
+    "@types/node": "^26.1.0",
     "@types/react": "^18.3.27",
     "@types/react-dom": "^18.3.7",
     "eslint": "^9.30.1",
+    "tsx": "^4.23.0",
     "typescript-eslint": "^8.35.1"
   }
 }
