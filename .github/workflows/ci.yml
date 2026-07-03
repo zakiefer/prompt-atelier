@@ -27,6 +27,9 @@ jobs:
       - name: Engine tests
         run: npm run test:engine
 
+      - name: API route tests
+        run: npm run test:api
+
       - name: Build
         run: npm run build
 

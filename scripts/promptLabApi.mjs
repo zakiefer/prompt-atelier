@@ -9,7 +9,18 @@ const PORT = Number(process.env.PROMPT_LAB_API_PORT || 8787);
 const ROOT = process.cwd();
 const DATA_DIR = join(ROOT, "data");
 const DB_PATH = join(DATA_DIR, "prompt-atelier.sqlite");
-const COLLECTION_KEYS = ["userPrompts", "history", "outcomes", "screenshots", "buildRuns", "queueJobs", "lineage", "datasetVersions"];
+const COLLECTION_KEYS = [
+  "userPrompts",
+  "history",
+  "outcomes",
+  "screenshots",
+  "buildRuns",
+  "queueJobs",
+  "lineage",
+  "datasetVersions",
+  "curationDecisions",
+  "modelBatchEvaluations",
+];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
 mkdirSync(DATA_DIR, { recursive: true });

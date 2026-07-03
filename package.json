@@ -16,7 +16,8 @@
     "analyze:screenshots": "node scripts/analyzeScreenshots.mjs",
     "install:skill": "node scripts/installCodexSkill.mjs",
     "export:prompts": "node scripts/exportPromptMarkdown.mjs",
-    "test:engine": "tsx scripts/testEngine.ts"
+    "test:engine": "tsx scripts/testEngine.ts",
+    "test:api": "node scripts/testApiRoutes.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.7.0",

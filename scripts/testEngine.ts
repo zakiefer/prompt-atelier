@@ -7,6 +7,7 @@ import {
   buildQualityGateReport,
   buildReusableMemoryPack,
   createDatasetVersionSnapshot,
+  curatePromptCorpus,
   evaluatePrompt,
   type BuildRunRecord,
   type OutcomeRecord,
@@ -28,6 +29,9 @@ assert.ok(score.upgrades.some((item) => /asset|responsive|visual/i.test(item)), 
 
 const promptScore = evaluatePrompt(examples[0].text);
 assert.ok(promptScore.score >= 70, `Expected a gold corpus prompt score >= 70, received ${promptScore.score}`);
+const curation = curatePromptCorpus(examples);
+assert.ok(curation.counts.learn > 0, "Curation should keep website prompts in the learning set.");
+assert.ok(curation.items.every((item) => item.promptId && item.reasons.length), "Curation items should include prompt ids and reasons.");
 const qualityGate = buildQualityGateReport(examples[0], promptScore, undefined);
 assert.ok(qualityGate.checks.length >= 5, "Quality gate should produce multiple readiness checks.");
 assert.equal(typeof qualityGate.ready, "boolean", "Quality gate readiness should be boolean.");

@@ -27,6 +27,12 @@ npm run api
 
 The API listens on `http://127.0.0.1:8787` and writes SQLite state to `data/prompt-atelier.sqlite`.
 
+The hosted/static frontend can point at any compatible API by setting the API base in the Train tab. For rebuild-time defaults, set:
+
+```bash
+VITE_PROMPT_ATELIER_API_BASE=https://your-api.example.com npm run build
+```
+
 Useful environment variables:
 
 ```bash
@@ -45,6 +51,7 @@ Before merging:
 ```bash
 npm run lint
 npm run test:engine
+npm run test:api
 npm run build
 for file in scripts/*.mjs; do node --check "$file"; done
 ```

@@ -55,6 +55,7 @@ import {
   buildPromptTemplates,
   calibrateDnaScores,
   categoryLabels,
+  curatePromptCorpus,
   compareDatasetVersions,
   compilePromptFromBrief,
   composeInterviewPrompt,
@@ -99,6 +100,7 @@ import {
   type ComposeOptions,
   type CorpusHealth,
   type CorpusCleaningReport,
+  type CorpusCurationReport,
   type DatasetVersion,
   type DatasetVersionComparison,
   type DnaCalibrationReport,
@@ -148,6 +150,7 @@ import {
   analyzeScreenshots,
   captureResult,
   evaluateWithModel,
+  getApiBase,
   getApiCollections,
   getApiHealth,
   getModelSettings,
@@ -155,6 +158,7 @@ import {
   importResult,
   installSkill,
   runQueue,
+  setApiBase,
   syncCollections,
   type ApiHealth,
 } from "./promptApi";
@@ -169,6 +173,8 @@ const BUILD_RUN_KEY = "prompt-atelier-build-runs";
 const QUEUE_KEY = "prompt-atelier-queue-jobs";
 const LINEAGE_KEY = "prompt-atelier-lineage";
 const DATASET_VERSION_KEY = "prompt-atelier-dataset-versions";
+const CURATION_KEY = "prompt-atelier-curation-decisions";
+const MODEL_BATCH_KEY = "prompt-atelier-model-batch-evaluations";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -344,6 +350,30 @@ function readStoredDatasetVersions() {
   }
 }
 
+function readStoredCurationDecisions(): Record<string, CurationDecision> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(CURATION_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, CurationDecision>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStoredModelBatchEvaluations() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MODEL_BATCH_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ModelBatchEvaluation[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.promptId && item?.title).slice(0, 200) : [];
+  } catch {
+    return [];
+  }
+}
+
 function downloadText(filename: string, text: string, type = "text/plain") {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const link = document.createElement("a");
@@ -410,6 +440,18 @@ type PromptVersion = {
 };
 
 type ScoreWeights = Record<string, number>;
+type CurationDecision = "learn" | "quarantine" | "review";
+
+type ModelBatchEvaluation = {
+  id: string;
+  promptId: string;
+  title: string;
+  score: number;
+  readiness: string;
+  mode: string;
+  findings: string[];
+  createdAt: string;
+};
 
 type StoredCollections = {
   userPrompts: PromptExample[];
@@ -420,6 +462,8 @@ type StoredCollections = {
   queueJobs: BuildQueueJob[];
   lineage: PromptLineageNode[];
   datasetVersions: DatasetVersion[];
+  curationDecisions: Record<string, CurationDecision>;
+  modelBatchEvaluations: ModelBatchEvaluation[];
 };
 
 export default function App() {
@@ -443,10 +487,13 @@ export default function App() {
   const [buildRuns, setBuildRuns] = useState<BuildRunRecord[]>(() => readStoredBuildRuns());
   const [queueJobs, setQueueJobs] = useState<BuildQueueJob[]>(() => readStoredQueueJobs());
   const [lineageNodes, setLineageNodes] = useState<PromptLineageNode[]>(() => readStoredLineage());
+  const [curationDecisions, setCurationDecisions] = useState<Record<string, CurationDecision>>(() => readStoredCurationDecisions());
+  const [modelBatchEvaluations, setModelBatchEvaluations] = useState<ModelBatchEvaluation[]>(() => readStoredModelBatchEvaluations());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
   const [apiNotice, setApiNotice] = useState("API not checked");
+  const [apiBaseDraft, setApiBaseDraft] = useState(() => getApiBase());
   const [modelEvaluation, setModelEvaluation] = useState<Record<string, unknown> | undefined>();
   const [modelNotice, setModelNotice] = useState("Model endpoint not checked");
   const [modelSettings, setModelSettings] = useState({
@@ -485,10 +532,16 @@ export default function App() {
   const [compilerInput, setCompilerInput] = useState<PromptCompilerInput>(defaultCompilerInput);
 
   const examples = useMemo(() => [...seedPrompts, ...attachmentExamples, ...userPrompts], [attachmentExamples, userPrompts]);
-  const profile = useMemo(() => analyzeCorpus(examples), [examples]);
+  const curationReport = useMemo(() => curatePromptCorpus(examples, curationDecisions), [curationDecisions, examples]);
+  const learningExamples = useMemo(() => {
+    const learnSet = new Set(curationReport.learnIds);
+    const filtered = examples.filter((example) => learnSet.has(example.id));
+    return filtered.length ? filtered : examples;
+  }, [curationReport.learnIds, examples]);
+  const profile = useMemo(() => analyzeCorpus(learningExamples), [learningExamples]);
   const dnaScore = normalizeDnaScore(profile.detailScore);
-  const clusters = useMemo(() => analyzeArchetypeClusters(examples), [examples]);
-  const health = useMemo(() => analyzeCorpusHealth(examples, clusters, profile), [clusters, examples, profile]);
+  const clusters = useMemo(() => analyzeArchetypeClusters(learningExamples), [learningExamples]);
+  const health = useMemo(() => analyzeCorpusHealth(learningExamples, clusters, profile), [clusters, learningExamples, profile]);
   const outcomeSummary = useMemo(() => buildOutcomeSummary(outcomes, examples), [examples, outcomes]);
   const templates = useMemo(() => buildPromptTemplates(profile), [profile]);
   const promptPacks = useMemo(() => buildPromptPacks(profile, clusters), [clusters, profile]);
@@ -533,8 +586,8 @@ export default function App() {
     [examples, selectedPrompt],
   );
   const generatedPrompt = useMemo(
-    () => composeOutcomeAwarePrompt(profile, composeOptions, outcomes, examples),
-    [composeOptions, examples, outcomes, profile],
+    () => composeOutcomeAwarePrompt(profile, composeOptions, outcomes, learningExamples),
+    [composeOptions, learningExamples, outcomes, profile],
   );
   const evaluationSource = evaluationText.trim() || generatedPrompt;
   const evaluation = useMemo(() => evaluatePrompt(evaluationSource), [evaluationSource]);
@@ -542,7 +595,7 @@ export default function App() {
   const mixedPrompt = useMemo(() => mixArchetypes(profile, clusters, mixOptions, rubric), [clusters, mixOptions, profile, rubric]);
   const recipePrompt = useMemo(() => buildRecipePrompt(profile, recipeOptions, rubric), [profile, recipeOptions, rubric]);
   const rubricNotes = useMemo(() => buildRubricNotes(rubric), [rubric]);
-  const semanticResults = useMemo(() => searchSimilarPrompts(semanticQuery, examples, outcomes), [examples, outcomes, semanticQuery]);
+  const semanticResults = useMemo(() => searchSimilarPrompts(semanticQuery, learningExamples, outcomes), [learningExamples, outcomes, semanticQuery]);
   const diffLeft = examples.find((example) => example.id === diffLeftId) ?? examples[0];
   const diffRight = examples.find((example) => example.id === diffRightId) ?? examples[1] ?? examples[0];
   const promptDiff = useMemo(
@@ -581,12 +634,12 @@ export default function App() {
     [selectedBuildRun, selectedPrompt, selectedScreenshots],
   );
   const dnaCalibration = useMemo(
-    () => calibrateDnaScores(examples, outcomes, buildRuns, screenshots),
-    [buildRuns, examples, outcomes, screenshots],
+    () => calibrateDnaScores(learningExamples, outcomes, buildRuns, screenshots),
+    [buildRuns, learningExamples, outcomes, screenshots],
   );
   const corpusCleaning = useMemo(
-    () => buildCorpusCleaningReport(examples, outcomes),
-    [examples, outcomes],
+    () => buildCorpusCleaningReport(learningExamples, outcomes),
+    [learningExamples, outcomes],
   );
   const failureMemory = useMemo(
     () => buildFailureMemory(outcomes, buildRuns, screenshots),
@@ -609,16 +662,16 @@ export default function App() {
     () => buildPromptTournament(mutationSourceText, profile, outcomes, resultScore),
     [mutationSourceText, outcomes, profile, resultScore],
   );
-  const leaderboard = useMemo(() => rankPromptExamples(examples, outcomes), [examples, outcomes]);
-  const localIndex = useMemo(() => buildLocalEmbeddingIndex(examples, outcomes), [examples, outcomes]);
-  const vectorResults = useMemo(() => searchVectorPrompts(vectorQuery, examples, outcomes), [examples, outcomes, vectorQuery]);
+  const leaderboard = useMemo(() => rankPromptExamples(learningExamples, outcomes), [learningExamples, outcomes]);
+  const localIndex = useMemo(() => buildLocalEmbeddingIndex(learningExamples, outcomes), [learningExamples, outcomes]);
+  const vectorResults = useMemo(() => searchVectorPrompts(vectorQuery, learningExamples, outcomes), [learningExamples, outcomes, vectorQuery]);
   const skillInstallPlan = useMemo(() => buildSkillInstallPlan(codexSkill), [codexSkill]);
   const scoreBreakdown = useMemo(
     () => scorePromptModel(selectedPrompt, resultScore, screenshotQa, dnaCalibration, failureMemory, scoreWeights),
     [dnaCalibration, failureMemory, resultScore, screenshotQa, scoreWeights, selectedPrompt],
   );
   const dnaV2 = useMemo(() => scorePromptDnaV2(selectedPrompt, resultScore, screenshotQa), [resultScore, screenshotQa, selectedPrompt]);
-  const goldenRecipes = useMemo(() => distillGoldenRecipes(examples, outcomes, clusters), [clusters, examples, outcomes]);
+  const goldenRecipes = useMemo(() => distillGoldenRecipes(learningExamples, outcomes, clusters), [clusters, learningExamples, outcomes]);
   const promptBattle = useMemo(
     () => buildPromptBattle(mutationSourceText, profile, outcomes, resultScore),
     [mutationSourceText, outcomes, profile, resultScore],
@@ -648,7 +701,7 @@ export default function App() {
     () =>
       buildPromptMemoryExport({
         clusters,
-        examples,
+        examples: learningExamples,
         failureMemory,
         health,
         index: localIndex,
@@ -656,7 +709,7 @@ export default function App() {
         profile,
         scoreWeights,
       }),
-    [clusters, examples, failureMemory, health, localIndex, outcomes, profile, scoreWeights],
+    [clusters, failureMemory, health, learningExamples, localIndex, outcomes, profile, scoreWeights],
   );
   const goldReview = useMemo(
     () =>
@@ -721,6 +774,8 @@ export default function App() {
       queueJobs,
       lineage: lineageNodes,
       datasetVersions,
+      curationDecisions,
+      modelBatchEvaluations,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -733,6 +788,10 @@ export default function App() {
       if (Array.isArray(stored.queueJobs)) setQueueJobs(stored.queueJobs as BuildQueueJob[]);
       if (Array.isArray(stored.lineage)) setLineageNodes(stored.lineage as PromptLineageNode[]);
       if (Array.isArray(stored.datasetVersions)) setDatasetVersions((stored.datasetVersions as DatasetVersion[]).slice(0, 20));
+      if (stored.curationDecisions && typeof stored.curationDecisions === "object" && !Array.isArray(stored.curationDecisions)) {
+        setCurationDecisions(stored.curationDecisions as Record<string, CurationDecision>);
+      }
+      if (Array.isArray(stored.modelBatchEvaluations)) setModelBatchEvaluations((stored.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
     };
 
     async function hydrate() {
@@ -831,6 +890,18 @@ export default function App() {
   }, [datasetVersions, dbReady]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(CURATION_KEY, JSON.stringify(curationDecisions));
+    void writeCollection("curationDecisions", curationDecisions);
+  }, [curationDecisions, dbReady]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(MODEL_BATCH_KEY, JSON.stringify(modelBatchEvaluations));
+    void writeCollection("modelBatchEvaluations", modelBatchEvaluations);
+  }, [dbReady, modelBatchEvaluations]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -842,12 +913,14 @@ export default function App() {
         queueJobs,
         lineage: lineageNodes,
         datasetVersions,
+        curationDecisions,
+        modelBatchEvaluations,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [apiHealth?.ok, buildRuns, datasetVersions, dbReady, history, lineageNodes, outcomes, queueJobs, screenshots, userPrompts]);
+  }, [apiHealth?.ok, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, queueJobs, screenshots, userPrompts]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -1161,7 +1234,7 @@ export default function App() {
   function createDatasetVersion() {
     const version = createDatasetVersionSnapshot({
       buildRuns,
-      examples,
+      examples: learningExamples,
       label: `v${datasetVersions.length + 1}`,
       outcomes,
       score: scoreBreakdown,
@@ -1169,6 +1242,79 @@ export default function App() {
     });
     setDatasetVersions((current) => [version, ...current].slice(0, 20));
     setApiNotice(`Created dataset version ${version.label}.`);
+  }
+
+  function applyCurationRecommendations() {
+    const next = Object.fromEntries(
+      curationReport.items
+        .filter((item) => item.recommendation !== "learn")
+        .map((item) => [item.promptId, item.recommendation]),
+    ) as Record<string, CurationDecision>;
+    setCurationDecisions((current) => ({ ...current, ...next }));
+    setApiNotice(`Applied ${Object.keys(next).length} curation recommendation(s).`);
+  }
+
+  function setPromptCurationDecision(promptId: string, decision: CurationDecision) {
+    setCurationDecisions((current) => ({ ...current, [promptId]: decision }));
+  }
+
+  function saveApiBase() {
+    setApiBase(apiBaseDraft);
+    setApiNotice(`API base set to ${getApiBase()}.`);
+  }
+
+  async function runModelBatchCalibration() {
+    const batch = learningExamples.slice(0, 24);
+    if (!batch.length) {
+      setModelNotice("No curated website prompts are available for batch evaluation.");
+      return;
+    }
+    setModelNotice(`Running model calibration for ${batch.length} prompt(s)...`);
+    const results: ModelBatchEvaluation[] = [];
+    for (const prompt of batch) {
+      try {
+        const result = await evaluateWithModel({
+          prompt: prompt.text,
+          memory: promptMemory.markdown,
+          context: {
+            selectedTitle: prompt.title,
+            internalScore: evaluatePrompt(prompt.text).score,
+            curation: curationReport.items.find((item) => item.promptId === prompt.id),
+          },
+          settings: {
+            provider: modelSettings.provider,
+            endpoint: modelSettings.endpoint,
+            apiKey: modelSettings.apiKey,
+            model: modelSettings.model,
+            temperature: modelSettings.temperature,
+          },
+        });
+        results.push({
+          id: `model-batch-${prompt.id}-${Date.now()}`,
+          promptId: prompt.id,
+          title: prompt.title,
+          score: Number(result.score || 0),
+          readiness: String(result.readiness || "needs-review"),
+          mode: String(result.mode || "local"),
+          findings: Array.isArray(result.findings) ? result.findings.map(String).slice(0, 4) : [],
+          createdAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        results.push({
+          id: `model-batch-${prompt.id}-${Date.now()}`,
+          promptId: prompt.id,
+          title: prompt.title,
+          score: 0,
+          readiness: "error",
+          mode: modelSettings.provider || "external",
+          findings: [error instanceof Error ? error.message : String(error)],
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+    setModelBatchEvaluations((current) => [...results, ...current].slice(0, 200));
+    const average = Math.round(results.reduce((sum, item) => sum + item.score, 0) / Math.max(1, results.length));
+    setModelNotice(`Batch calibration complete: ${results.length} prompt(s), ${average} average model score.`);
   }
 
   function applyGoldReview() {
@@ -1350,6 +1496,8 @@ export default function App() {
         queueJobs,
         lineage: lineageNodes,
         datasetVersions,
+        curationDecisions,
+        modelBatchEvaluations,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -1369,7 +1517,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -1420,6 +1568,14 @@ export default function App() {
         setDatasetVersions((collections.datasetVersions as DatasetVersion[]).slice(0, 20));
         restored.push("dataset versions");
       }
+      if (collections.curationDecisions && typeof collections.curationDecisions === "object" && !Array.isArray(collections.curationDecisions)) {
+        setCurationDecisions(collections.curationDecisions as Record<string, CurationDecision>);
+        restored.push("curation");
+      }
+      if (Array.isArray(collections.modelBatchEvaluations)) {
+        setModelBatchEvaluations((collections.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
+        restored.push("model batch history");
+      }
       if (parsed.scoring?.scoreWeights && typeof parsed.scoring.scoreWeights === "object") {
         setScoreWeights(parsed.scoring.scoreWeights);
         restored.push("weights");
@@ -1439,6 +1595,8 @@ export default function App() {
           queueJobs: collections.queueJobs ?? queueJobs,
           lineage: collections.lineage ?? lineageNodes,
           datasetVersions: collections.datasetVersions ?? datasetVersions,
+          curationDecisions: collections.curationDecisions ?? curationDecisions,
+          modelBatchEvaluations: collections.modelBatchEvaluations ?? modelBatchEvaluations,
         });
       }
       setSnapshotImportText("");
@@ -1862,12 +2020,15 @@ export default function App() {
               autoBattleResult={autoBattleResult}
               apiHealth={apiHealth}
               apiNotice={apiNotice}
+              apiBaseDraft={apiBaseDraft}
               buildRuns={buildRuns}
               codexSkill={codexSkill}
               compiledPrompt={compiledPrompt}
               compilerInput={compilerInput}
               copied={copied}
               corpusCleaning={corpusCleaning}
+              curationDecisions={curationDecisions}
+              curationReport={curationReport}
               dbStatus={dbStatus}
               dnaCalibration={dnaCalibration}
               datasetVersions={datasetVersions}
@@ -1885,7 +2046,9 @@ export default function App() {
               goldReview={goldReview}
               generatorPresets={generatorPresets}
               leaderboard={leaderboard}
+              learningExamples={learningExamples}
               localIndex={localIndex}
+              modelBatchEvaluations={modelBatchEvaluations}
               modelEvaluation={modelEvaluation}
               modelEnvStatus={modelEnvStatus}
               modelNotice={modelNotice}
@@ -1894,6 +2057,7 @@ export default function App() {
               mutations={promptMutations}
               onAddBuildRun={addBuildRun}
               onAddScreenshot={addScreenshot}
+              onApplyCurationRecommendations={applyCurationRecommendations}
               onCaptureSelectedResult={captureSelectedResult}
               onCheckApi={checkApi}
               onCreateDatasetVersion={createDatasetVersion}
@@ -1911,6 +2075,7 @@ export default function App() {
               onModelEvaluate={runModelEvaluation}
               onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
               onRunAutonomousBattle={runAutonomousBattle}
+              onRunModelBatchCalibration={runModelBatchCalibration}
               onQueueTournament={queueTournamentFinalists}
               onQueueWizard={() => queueBattleVariants(wizardBattle, "one-click wizard")}
               onRemoveBuildRun={removeBuildRun}
@@ -1918,7 +2083,9 @@ export default function App() {
               onRemoveScreenshot={removeScreenshot}
               onRunQueueViaApi={runQueueViaApi}
               onSave={saveVersion}
+              onSaveApiBase={saveApiBase}
               onSelectPrompt={setSelectedId}
+              onSetPromptCurationDecision={setPromptCurationDecision}
               onSyncToApi={syncToApi}
               onUpdateOutcome={updateOutcome}
               outcomeSummary={outcomeSummary}
@@ -1942,6 +2109,7 @@ export default function App() {
               selectedPrompt={selectedPrompt}
               selectedLineage={selectedLineage}
               semanticQuery={semanticQuery}
+              setApiBaseDraft={setApiBaseDraft}
               setActiveTrainStage={setActiveTrainStage}
               setCompilerInput={setCompilerInput}
               setDiffLeftId={setDiffLeftId}
@@ -2812,12 +2980,15 @@ function TrainView({
   autoBattleResult,
   apiHealth,
   apiNotice,
+  apiBaseDraft,
   buildRuns,
   codexSkill,
   compiledPrompt,
   compilerInput,
   copied,
   corpusCleaning,
+  curationDecisions,
+  curationReport,
   dbStatus,
   dnaCalibration,
   datasetVersions,
@@ -2836,7 +3007,9 @@ function TrainView({
   goldReview,
   generatorPresets,
   leaderboard,
+  learningExamples,
   localIndex,
+  modelBatchEvaluations,
   modelEvaluation,
   modelEnvStatus,
   modelNotice,
@@ -2845,6 +3018,7 @@ function TrainView({
   mutations,
   onAddBuildRun,
   onAddScreenshot,
+  onApplyCurationRecommendations,
   onApplyGeneratorPreset,
   onApplyGoldReview,
   onApplyProviderPreset,
@@ -2863,6 +3037,7 @@ function TrainView({
   onModelEvaluate,
   onQueueBattle,
   onRunAutonomousBattle,
+  onRunModelBatchCalibration,
   onQueueTournament,
   onQueueWizard,
   onRemoveBuildRun,
@@ -2870,7 +3045,9 @@ function TrainView({
   onRemoveScreenshot,
   onRunQueueViaApi,
   onSave,
+  onSaveApiBase,
   onSelectPrompt,
+  onSetPromptCurationDecision,
   onSyncToApi,
   onUpdateOutcome,
   outcomeSummary,
@@ -2894,6 +3071,7 @@ function TrainView({
   selectedPrompt,
   selectedLineage,
   semanticQuery,
+  setApiBaseDraft,
   setActiveTrainStage,
   setCompilerInput,
   setDiffLeftId,
@@ -2927,12 +3105,15 @@ function TrainView({
   autoBattleResult?: Record<string, unknown>;
   apiHealth?: ApiHealth;
   apiNotice: string;
+  apiBaseDraft: string;
   buildRuns: BuildRunRecord[];
   codexSkill: string;
   compiledPrompt: CompiledPrompt;
   compilerInput: PromptCompilerInput;
   copied: string;
   corpusCleaning: CorpusCleaningReport;
+  curationDecisions: Record<string, CurationDecision>;
+  curationReport: CorpusCurationReport;
   dbStatus: string;
   dnaCalibration: DnaCalibrationReport;
   datasetVersions: DatasetVersion[];
@@ -2951,7 +3132,9 @@ function TrainView({
   goldReview: GoldReviewReport;
   generatorPresets: GeneratorPreset[];
   leaderboard: PromptRank[];
+  learningExamples: PromptExample[];
   localIndex: LocalEmbeddingIndex;
+  modelBatchEvaluations: ModelBatchEvaluation[];
   modelEvaluation?: Record<string, unknown>;
   modelEnvStatus?: Record<string, boolean>;
   modelNotice: string;
@@ -2968,6 +3151,7 @@ function TrainView({
   mutations: PromptMutation[];
   onAddBuildRun: (prompt: PromptExample, fields: Omit<BuildRunRecord, "id" | "promptId" | "promptTitle" | "promptText" | "score" | "failureCategories" | "createdAt" | "updatedAt">) => void;
   onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
+  onApplyCurationRecommendations: () => void;
   onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
   onApplyGoldReview: () => void;
   onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
@@ -2986,6 +3170,7 @@ function TrainView({
   onModelEvaluate: () => void;
   onQueueBattle: () => void;
   onRunAutonomousBattle: () => void;
+  onRunModelBatchCalibration: () => void;
   onQueueTournament: () => void;
   onQueueWizard: () => void;
   onRemoveBuildRun: (id: string) => void;
@@ -2993,7 +3178,9 @@ function TrainView({
   onRemoveScreenshot: (id: string) => void;
   onRunQueueViaApi: () => void;
   onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  onSaveApiBase: () => void;
   onSelectPrompt: (id: string) => void;
+  onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
   onSyncToApi: () => void;
   onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
   outcomeSummary: OutcomeSummary;
@@ -3017,6 +3204,7 @@ function TrainView({
   selectedPrompt?: PromptExample;
   selectedLineage: PromptLineageNode[];
   semanticQuery: string;
+  setApiBaseDraft: (value: string) => void;
   setActiveTrainStage: (stage: string) => void;
   setCompilerInput: Dispatch<SetStateAction<PromptCompilerInput>>;
   setDiffLeftId: (id: string) => void;
@@ -3081,6 +3269,7 @@ function TrainView({
 
       <TrainCommandCenter
         corpusCleaning={corpusCleaning}
+        curationReport={curationReport}
         dbStatus={dbStatus}
         dnaCalibration={dnaCalibration}
         failureMemory={failureMemory}
@@ -3091,17 +3280,52 @@ function TrainView({
       />
 
       <BackendApiPanel
+        apiBaseDraft={apiBaseDraft}
         apiHealth={apiHealth}
         apiNotice={apiNotice}
         onCaptureSelectedResult={onCaptureSelectedResult}
         onCheckApi={onCheckApi}
         onInstallSkill={onInstallSkill}
         onRunQueueViaApi={onRunQueueViaApi}
+        onSaveApiBase={onSaveApiBase}
         onSyncToApi={onSyncToApi}
         queueJobs={queueJobs}
+        setApiBaseDraft={setApiBaseDraft}
       />
 
       <StageNavPanel activeStage={activeTrainStage} setActiveStage={setActiveTrainStage} />
+
+      <FirstRunWizardPanel
+        apiHealth={apiHealth}
+        curationReport={curationReport}
+        datasetVersions={datasetVersions}
+        learningExamples={learningExamples}
+        modelEnvStatus={modelEnvStatus}
+        onApplyCurationRecommendations={onApplyCurationRecommendations}
+        onCreateDatasetVersion={onCreateDatasetVersion}
+        onExportMemoryPack={onExportMemoryPack}
+        onRunModelBatchCalibration={onRunModelBatchCalibration}
+      />
+
+      <section className="train-columns">
+        <CorpusCurationPanel
+          curationDecisions={curationDecisions}
+          curationReport={curationReport}
+          onApplyCurationRecommendations={onApplyCurationRecommendations}
+          onSetPromptCurationDecision={onSetPromptCurationDecision}
+        />
+        <ModelBatchCalibrationPanel
+          evaluations={modelBatchEvaluations}
+          modelNotice={modelNotice}
+          onRunModelBatchCalibration={onRunModelBatchCalibration}
+        />
+      </section>
+
+      <VisualEvidenceDashboardPanel
+        buildRuns={buildRuns}
+        screenshots={screenshots}
+        visualAnalysisResult={visualAnalysisResult}
+      />
 
       <section className="train-columns">
         <QualityGatePanel copied={copied} onCopy={onCopy} qualityGate={qualityGate} />
@@ -3395,6 +3619,7 @@ function TrainView({
 
 function TrainCommandCenter({
   corpusCleaning,
+  curationReport,
   dbStatus,
   dnaCalibration,
   failureMemory,
@@ -3404,6 +3629,7 @@ function TrainCommandCenter({
   scoreBreakdown,
 }: {
   corpusCleaning: CorpusCleaningReport;
+  curationReport: CorpusCurationReport;
   dbStatus: string;
   dnaCalibration: DnaCalibrationReport;
   failureMemory: FailureMemoryReport;
@@ -3430,8 +3656,8 @@ function TrainCommandCenter({
     },
     {
       title: "4. Clean",
-      value: Math.max(0, 100 - corpusCleaning.weakPrompts.length * 4 - corpusCleaning.nearDuplicates.length * 3),
-      detail: "Merge duplicates, quarantine weak prompts, and preserve the gold set.",
+      value: Math.max(0, Math.round((curationReport.counts.learn / Math.max(1, curationReport.items.length)) * 100) - corpusCleaning.nearDuplicates.length * 2),
+      detail: `${curationReport.counts.learn} learning prompt(s), ${curationReport.counts.quarantine} quarantined.`,
     },
   ];
 
@@ -3454,30 +3680,36 @@ function TrainCommandCenter({
         <span>{dbStatus}</span>
         <span>{failureMemory.categories.length || 0} remembered failure types</span>
         <span>{dnaCalibration.rows.length} rated calibration rows</span>
-        <span>{corpusCleaning.exactDuplicates.length + corpusCleaning.nearDuplicates.length} duplicate groups</span>
+        <span>{curationReport.counts.review} curation review item(s)</span>
       </div>
     </section>
   );
 }
 
 function BackendApiPanel({
+  apiBaseDraft,
   apiHealth,
   apiNotice,
   onCheckApi,
   onCaptureSelectedResult,
   onInstallSkill,
   onRunQueueViaApi,
+  onSaveApiBase,
   onSyncToApi,
   queueJobs,
+  setApiBaseDraft,
 }: {
+  apiBaseDraft: string;
   apiHealth?: ApiHealth;
   apiNotice: string;
   onCheckApi: () => void;
   onCaptureSelectedResult: () => void;
   onInstallSkill: () => void;
   onRunQueueViaApi: () => void;
+  onSaveApiBase: () => void;
   onSyncToApi: () => void;
   queueJobs: BuildQueueJob[];
+  setApiBaseDraft: (value: string) => void;
 }) {
   return (
     <section className="panel lab-panel backend-panel">
@@ -3509,6 +3741,12 @@ function BackendApiPanel({
         </article>
       </div>
       <p className="selected-meta">{apiNotice}</p>
+      <div className="api-base-row">
+        <Field label="API base">
+          <input value={apiBaseDraft} onChange={(event) => setApiBaseDraft(event.target.value)} placeholder="http://127.0.0.1:8787 or hosted API URL" />
+        </Field>
+        <button className="ghost-button compact-button" type="button" onClick={onSaveApiBase}>Save API base</button>
+      </div>
       <div className="command-box">
         <code>npm run api</code>
       </div>
@@ -3813,6 +4051,209 @@ function ReusableMemoryPackPanel({
         ))}
       </div>
       <textarea className="generated-output mini-output" readOnly value={reusableMemoryPack.markdown} />
+    </section>
+  );
+}
+
+function FirstRunWizardPanel({
+  apiHealth,
+  curationReport,
+  datasetVersions,
+  learningExamples,
+  modelEnvStatus,
+  onApplyCurationRecommendations,
+  onCreateDatasetVersion,
+  onExportMemoryPack,
+  onRunModelBatchCalibration,
+}: {
+  apiHealth?: ApiHealth;
+  curationReport: CorpusCurationReport;
+  datasetVersions: DatasetVersion[];
+  learningExamples: PromptExample[];
+  modelEnvStatus?: Record<string, boolean>;
+  onApplyCurationRecommendations: () => void;
+  onCreateDatasetVersion: () => void;
+  onExportMemoryPack: () => void;
+  onRunModelBatchCalibration: () => void;
+}) {
+  const steps = [
+    { label: "Corpus loaded", ready: learningExamples.length > 0, action: `${learningExamples.length} learning prompts` },
+    { label: "Curated", ready: curationReport.counts.quarantine > 0 || curationReport.counts.review === 0, action: `${curationReport.counts.review} review` },
+    { label: "Versioned", ready: datasetVersions.length > 0, action: datasetVersions[0]?.label ?? "none" },
+    { label: "API online", ready: Boolean(apiHealth?.ok), action: apiHealth?.ok ? "connected" : "local fallback" },
+    { label: "Model ready", ready: Boolean(modelEnvStatus?.anthropicApiKeyConfigured || modelEnvStatus?.apiKeyConfigured), action: modelEnvStatus?.anthropicApiKeyConfigured ? "Claude" : "optional" },
+  ];
+
+  return (
+    <section className="panel lab-panel wizard-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>First-run launch checklist</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onApplyCurationRecommendations}>Curate</button>
+          <button className="ghost-button compact-button" type="button" onClick={onCreateDatasetVersion}>Version</button>
+          <button className="ghost-button compact-button" type="button" onClick={onRunModelBatchCalibration}>Calibrate</button>
+          <button className="primary-button compact-button" type="button" onClick={onExportMemoryPack}>Export memory</button>
+        </div>
+      </div>
+      <div className="wizard-meta-grid">
+        {steps.map((step) => (
+          <article className="index-card" key={step.label}>
+            <strong>{step.ready ? "Ready" : "Todo"}</strong>
+            <span>{step.label}</span>
+            <p>{step.action}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CorpusCurationPanel({
+  curationDecisions,
+  curationReport,
+  onApplyCurationRecommendations,
+  onSetPromptCurationDecision,
+}: {
+  curationDecisions: Record<string, CurationDecision>;
+  curationReport: CorpusCurationReport;
+  onApplyCurationRecommendations: () => void;
+  onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
+}) {
+  const reviewItems = curationReport.items
+    .filter((item) => item.recommendation !== "learn" || item.category !== "website-prompt")
+    .slice(0, 12);
+
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Corpus curation</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onApplyCurationRecommendations}>
+          <Check size={15} />
+          Apply recommendations
+        </button>
+      </div>
+      <div className="env-status-grid">
+        <span data-ready>{curationReport.counts.learn} learn</span>
+        <span data-ready={curationReport.counts.quarantine === 0}>{curationReport.counts.quarantine} quarantine</span>
+        <span data-ready={curationReport.counts.review === 0}>{curationReport.counts.review} review</span>
+        <span>{curationReport.counts["repo-task"]} repo-task</span>
+      </div>
+      <div className="version-list compact-list">
+        {reviewItems.map((item) => (
+          <article className="version-card" key={item.promptId}>
+            <strong>{item.title}</strong>
+            <span>{item.category} / {item.confidence}% confidence</span>
+            <p>{item.reasons[0]}</p>
+            <select
+              value={curationDecisions[item.promptId] || item.recommendation}
+              onChange={(event) => onSetPromptCurationDecision(item.promptId, event.target.value as CurationDecision)}
+            >
+              <option value="learn">learn</option>
+              <option value="review">review</option>
+              <option value="quarantine">quarantine</option>
+            </select>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Curation notes" items={curationReport.notes} empty="Corpus looks clean." />
+    </section>
+  );
+}
+
+function ModelBatchCalibrationPanel({
+  evaluations,
+  modelNotice,
+  onRunModelBatchCalibration,
+}: {
+  evaluations: ModelBatchEvaluation[];
+  modelNotice: string;
+  onRunModelBatchCalibration: () => void;
+}) {
+  const latest = evaluations.slice(0, 12);
+  const average = latest.length ? Math.round(latest.reduce((sum, item) => sum + item.score, 0) / latest.length) : 0;
+
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Claude batch calibration</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunModelBatchCalibration}>
+          <Sparkles size={15} />
+          Run batch
+        </button>
+      </div>
+      <div className="backend-grid">
+        <article className="index-card">
+          <strong>{latest.length}</strong>
+          <span>latest rows</span>
+        </article>
+        <article className="index-card">
+          <strong>{average}</strong>
+          <span>avg model score</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Status</h3>
+          <p>{modelNotice}</p>
+        </article>
+      </div>
+      <div className="version-list compact-list">
+        {latest.map((item) => (
+          <article className="version-card" key={item.id}>
+            <strong>{item.title}</strong>
+            <span>{item.mode} / {item.score} / {item.readiness}</span>
+            <p>{item.findings[0] || "No findings returned."}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function VisualEvidenceDashboardPanel({
+  buildRuns,
+  screenshots,
+  visualAnalysisResult,
+}: {
+  buildRuns: BuildRunRecord[];
+  screenshots: ScreenshotRecord[];
+  visualAnalysisResult?: Record<string, unknown>;
+}) {
+  const missingScreenshots = buildRuns.filter((run) => !run.screenshotUrl).length;
+  const failedRuns = buildRuns.filter((run) => run.status === "failed").length;
+  const analysisSummary = visualAnalysisResult ? JSON.stringify(visualAnalysisResult, null, 2).slice(0, 800) : "Run pixel visual analyzer to populate screenshot diagnostics.";
+
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Visual QA dashboard</h2>
+      </div>
+      <div className="qa-grid">
+        <article className="qa-card">
+          <strong>{screenshots.length}</strong>
+          <span>screenshots</span>
+          <p>Desktop/mobile evidence imported or captured.</p>
+        </article>
+        <article className="qa-card">
+          <strong>{missingScreenshots}</strong>
+          <span>missing screenshots</span>
+          <p>Runs that need a capture before being trusted.</p>
+        </article>
+        <article className="qa-card">
+          <strong>{failedRuns}</strong>
+          <span>failed runs</span>
+          <p>Failures that should feed repair memory.</p>
+        </article>
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={analysisSummary} />
     </section>
   );
 }

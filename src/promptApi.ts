@@ -1,7 +1,20 @@
-const API_BASE = "http://127.0.0.1:8787";
+const DEFAULT_API_BASE = "http://127.0.0.1:8787";
+const API_BASE_KEY = "prompt-atelier-api-base";
+
+export function getApiBase() {
+  if (typeof window === "undefined") return import.meta.env.VITE_PROMPT_ATELIER_API_BASE || DEFAULT_API_BASE;
+  return window.localStorage.getItem(API_BASE_KEY) || import.meta.env.VITE_PROMPT_ATELIER_API_BASE || DEFAULT_API_BASE;
+}
+
+export function setApiBase(value: string) {
+  if (typeof window === "undefined") return;
+  const normalized = value.trim().replace(/\/+$/, "");
+  if (normalized) window.localStorage.setItem(API_BASE_KEY, normalized);
+  else window.localStorage.removeItem(API_BASE_KEY);
+}
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",

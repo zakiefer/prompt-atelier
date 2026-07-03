@@ -1424,6 +1424,14 @@ button:disabled {
   color: var(--teal-dark);
 }
 
+.api-base-row {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 12px;
+}
+
 .dna-v2-list,
 .recipe-list,
 .battle-list,
@@ -1444,6 +1452,22 @@ button:disabled {
   gap: 8px;
   min-width: 0;
   padding: 12px;
+}
+
+.compact-list {
+  max-height: 420px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.version-card select {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  min-height: 34px;
+  padding: 6px 8px;
+  width: fit-content;
 }
 
 .dna-v2-topline {

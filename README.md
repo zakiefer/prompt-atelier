@@ -15,6 +15,9 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Dataset version snapshots and comparisons
 - Training snapshot export and restore
 - Claude-native or custom external model evaluation through the local API
+- Corpus curation so repo-task prompts can be quarantined from website-prompt learning
+- Batch model calibration across curated prompts
+- Configurable API base for local or hosted backend usage
 - Codex skill and reusable memory pack exports
 
 ## Development
@@ -41,6 +44,7 @@ Useful checks:
 ```bash
 npm run lint
 npm run test:engine
+npm run test:api
 npm run build
 node --check scripts/promptLabApi.mjs
 node --check scripts/runQueue.mjs
@@ -55,6 +59,18 @@ The app runs at `http://127.0.0.1:5173` and the API runs at `http://127.0.0.1:87
 - `npm run api` promotes collections into `data/prompt-atelier.sqlite`.
 - Training snapshots can be exported and restored from the Train tab.
 - Dataset versions are persisted as a first-class collection.
+- Curation decisions and model batch evaluations are persisted as first-class collections.
+
+## Learning Loop
+
+The Train tab now starts with:
+
+1. A first-run checklist for curation, versioning, API connection, calibration, and memory export.
+2. Corpus curation that classifies website prompts, raw HTML prompts, repo tasks, and review tasks.
+3. Claude/local batch calibration for comparing external model judgment against internal DNA scores.
+4. A visual QA dashboard for screenshot coverage, failed runs, and pixel-analysis summaries.
+
+The raw corpus remains visible, but recipe, memory, search, and generator learning use curated website prompts by default.
 
 ## Prompt Corpus
 
@@ -70,7 +86,7 @@ Generated markdown lands in `prompts/`. The raw attachment markdown under `src/p
 
 GitHub Actions includes:
 
-- `CI`: lint, engine tests, build, and script syntax checks.
+- `CI`: lint, engine tests, API route tests, build, and script syntax checks.
 - `Deploy Pages`: builds the static workbench for GitHub Pages on `main`.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for setup notes.

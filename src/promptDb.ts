@@ -10,7 +10,9 @@ export type CollectionKey =
   | "buildRuns"
   | "queueJobs"
   | "lineage"
-  | "datasetVersions";
+  | "datasetVersions"
+  | "curationDecisions"
+  | "modelBatchEvaluations";
 
 type StoredCollection<T> = {
   key: CollectionKey;
