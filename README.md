@@ -22,6 +22,8 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Pairwise ground-truth labeling, pattern dashboards, prompt coaching, visual regression scoring, and project export packs
 - Queue runner scaffolding that can install, build, preview, and capture screenshots for generated Vite apps
 - Guided onboarding, learned prompt generator variants, experiment leaderboards, restore-point backups, Codex build packs, and API ops event history
+- Automated visual QA for desktop/mobile screenshots, console errors, media readiness, text fit, overlap, and horizontal overflow
+- Export presets for Codex, v0, Claude artifacts, Lovable, and raw implementation specs
 - Codex skill and reusable memory pack exports
 
 ## Development
@@ -59,6 +61,14 @@ Queue worker smoke for scaffolded builds:
 npm run run:queue -- --queue prompt-lab-queue.json --scaffold --install --capture --preview-port 4320
 ```
 
+Automated visual QA against any running result:
+
+```bash
+npm run visual:qa -- --url http://127.0.0.1:5173 --out output/visual-qa/latest
+# with a token-protected API running:
+PROMPT_LAB_API_TOKEN=replace-me npm run visual:qa -- --url http://127.0.0.1:5173 --out output/visual-qa/latest --api-token replace-me
+```
+
 Useful checks:
 
 ```bash
@@ -69,6 +79,7 @@ npm run build
 node --check scripts/promptLabApi.mjs
 node --check scripts/runQueue.mjs
 node --check scripts/analyzeScreenshots.mjs
+node --check scripts/visualQa.mjs
 ```
 
 The app runs at `http://127.0.0.1:5173` and the API runs at `http://127.0.0.1:8787`.
@@ -93,6 +104,7 @@ The Train tab now starts with:
 5. Pattern and visual regression dashboards for spotting which prompt structures are actually winning.
 6. A Claude/local prompt coach and project export pack for turning the current state into a reusable handoff.
 7. Guided generator, leaderboard, backup, Codex build-pack, and security/ops panels for running the loop as a product.
+8. Import audits, evaluation history, export presets, and automated visual QA so prompt quality is judged against real build evidence.
 
 The raw corpus remains visible, but recipe, memory, search, and generator learning use curated website prompts by default.
 

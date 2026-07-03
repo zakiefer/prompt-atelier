@@ -31,9 +31,12 @@ import {
   analyzeCorpus,
   analyzeCorpusHealth,
   analyzePrompt,
+  auditPromptImportBatch,
   auditVisualPrompt,
   buildCodexSkill,
   buildCorpusCleaningReport,
+  buildEvaluationHistoryReport,
+  buildExportPresets,
   buildFailureMemory,
   buildLocalEmbeddingIndex,
   buildOutcomeSummary,
@@ -114,6 +117,8 @@ import {
   type DnaKey,
   type DriftReport,
   type Evaluation,
+  type EvaluationHistoryReport,
+  type ExportPreset,
   type ExperimentLeaderboardReport,
   type FailureMemoryReport,
   type Feature,
@@ -133,6 +138,7 @@ import {
   type PromptDnaV2,
   type PromptExample,
   type PromptCompilerInput,
+  type PromptImportAudit,
   type PromptMutation,
   type PromptMemoryExport,
   type PromptLineageNode,
@@ -176,6 +182,7 @@ import {
   importResult,
   installSkill,
   runQueue,
+  runVisualQa,
   setApiBase,
   setApiToken,
   syncCollections,
@@ -276,11 +283,15 @@ const defaultCompilerInput: PromptCompilerInput = {
 const defaultGeneratorInput: LearnedGeneratorInput = {
   brandName: "Northstar",
   industry: "AI design platform",
+  audience: "founders, designers, and coding agents evaluating premium website prompts",
+  goal: "generate a prompt that reliably builds into an inspectable, high-fidelity first viewport",
   stack: "React + TypeScript + Vite + Tailwind CSS + lucide-react",
   siteType: "single-page landing hero",
+  vibe: "cinematic, exact, polished, restrained, product-specific",
   visualStyle: "cinematic video background, exact typography, product proof surface, restrained glass controls",
   assets: "exact CloudFront video URL, logo SVG, and desktop/mobile screenshot verification",
   constraints: "no decorative blobs, no placeholder assets, no unlisted UI libraries, no text overlap",
+  outputTarget: "Codex build prompt",
   strictness: 9,
 };
 
@@ -663,6 +674,10 @@ export default function App() {
     () => (draftPrompt.trim() ? parsePromptBatch(draftPrompt, "draft paste").slice(0, 24) : []),
     [draftPrompt],
   );
+  const draftImportAudit = useMemo(
+    () => auditPromptImportBatch(draftBatchCandidates, examples),
+    [draftBatchCandidates, examples],
+  );
   const selectedPrompt = examples.find((example) => example.id === selectedId) ?? examples[0];
   const selectedAnalysis = useMemo(
     () => (selectedPrompt ? analyzePrompt(selectedPrompt.text, examples.filter((item) => item.id !== selectedPrompt.id)) : undefined),
@@ -886,6 +901,14 @@ export default function App() {
         visualRegression,
       }),
     [promptMemory, qualityGate, queueExport, selectedPrompt, visualRegression],
+  );
+  const exportPresets = useMemo(
+    () => buildExportPresets({ codexBuildPack, prompt: selectedPrompt, promptMemory, qualityGate, visualRegression }),
+    [codexBuildPack, promptMemory, qualityGate, selectedPrompt, visualRegression],
+  );
+  const evaluationHistory = useMemo(
+    () => buildEvaluationHistoryReport({ buildRuns, modelEvaluations: modelBatchEvaluations, outcomes, pairwiseReviews, screenshots }),
+    [buildRuns, modelBatchEvaluations, outcomes, pairwiseReviews, screenshots],
   );
 
   useEffect(() => {
@@ -1157,6 +1180,21 @@ export default function App() {
   function addDraftPromptBatch() {
     if (!draftBatchCandidates.length) return;
     addPromptCandidates(draftBatchCandidates, "draft batch");
+    setDraftPrompt("");
+  }
+
+  function addCuratedDraftBatch() {
+    const safeIds = new Set(
+      draftImportAudit.items
+        .filter((item) => item.duplicate.kind !== "exact" && (item.decision === "gold" || item.decision === "learn"))
+        .map((item) => item.candidate.id),
+    );
+    const candidates = draftBatchCandidates.filter((candidate) => safeIds.has(candidate.id));
+    if (!candidates.length) {
+      setImportNotice("No curated import candidates are ready. Review duplicates or add more exact build details first.");
+      return;
+    }
+    addPromptCandidates(candidates, "curated draft batch");
     setDraftPrompt("");
   }
 
@@ -1530,6 +1568,11 @@ export default function App() {
     downloadText(`codex-build-pack-${Date.now()}.md`, codexBuildPack.markdown, "text/markdown");
     downloadText(`codex-build-pack-${Date.now()}.json`, codexBuildPack.json, "application/json");
     setApiNotice("Exported Codex build pack with task, queue, prompt, memory, and QA gates.");
+  }
+
+  function exportPreset(preset: ExportPreset) {
+    downloadText(preset.filename, preset.content, "text/markdown");
+    setApiNotice(`Exported ${preset.title} for ${preset.target}.`);
   }
 
   function applyGeneratorVariant(variant: LearnedGeneratorVariant) {
@@ -2097,6 +2140,51 @@ export default function App() {
     }
   }
 
+  async function runAutomatedVisualQa() {
+    if (!selectedPrompt) return;
+    const url = selectedBuildRun?.resultUrl || "http://127.0.0.1:5173";
+    const out = selectedBuildRun?.folderPath ? `${selectedBuildRun.folderPath}/visual-qa` : "output/visual-qa/selected";
+    try {
+      const result = await runVisualQa(url, out);
+      const parsed = result.parsed as
+        | {
+            ok?: boolean;
+            score?: number;
+            status?: string;
+            outDir?: string;
+            failedChecks?: string[];
+            notes?: string[];
+            results?: { label?: string; screenshotPath?: string; score?: number }[];
+          }
+        | null;
+      setVisualAnalysisResult((parsed as Record<string, unknown>) ?? { stdout: result.stdout });
+      const score = Number(parsed?.score || 0);
+      const notes = parsed?.notes?.join(" ") || parsed?.failedChecks?.join(" ") || "Automated visual QA completed.";
+      addBuildRun(selectedPrompt, {
+        status: parsed?.ok ? "passed" : "needs-review",
+        resultUrl: url,
+        folderPath: parsed?.outDir || out,
+        screenshotUrl: parsed?.results?.find((item) => item.label === "desktop")?.screenshotPath || "",
+        filesChanged: "Automated visual QA evidence",
+        errors: parsed?.failedChecks?.join("\n") || "",
+        notes: `${notes} Score ${score}.`,
+      });
+      for (const item of parsed?.results || []) {
+        if (!item.screenshotPath) continue;
+        addScreenshot({
+          promptId: selectedPrompt.id,
+          title: `${selectedPrompt.title} ${item.label || "visual"} QA`,
+          url: item.screenshotPath,
+          notes: `Automated visual QA ${item.label || "viewport"} score ${item.score ?? "n/a"}. ${notes}`,
+          rating: score >= 78 ? "great" : score >= 52 ? "okay" : "bad",
+        });
+      }
+      setApiNotice(result.ok ? `Automated visual QA complete for ${url}.` : result.stderr || "Automated visual QA failed.");
+    } catch (error) {
+      setApiNotice(`Automated visual QA failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async function importResultJson() {
     try {
       const parsed = JSON.parse(resultImportText) as unknown;
@@ -2220,7 +2308,7 @@ export default function App() {
               placeholder="Paste another excellent website prompt here..."
             />
             {draftAnalysis ? <SmartIngestion analysis={draftAnalysis} /> : null}
-            {draftBatchCandidates.length > 1 ? <BatchIngestionPreview candidates={draftBatchCandidates} /> : null}
+            {draftBatchCandidates.length > 1 ? <BatchIngestionPreview audit={draftImportAudit} candidates={draftBatchCandidates} /> : null}
             <div className="import-actions">
               <label className="file-button">
                 <Upload size={15} />
@@ -2264,6 +2352,15 @@ export default function App() {
               >
                 <PackageOpen size={15} />
                 Add batch
+              </button>
+              <button
+                className="ghost-button"
+                type="button"
+                onClick={addCuratedDraftBatch}
+                disabled={draftImportAudit.importable < 1}
+              >
+                <Check size={15} />
+                Add curated
               </button>
             </div>
             <div className="output-actions">
@@ -2453,6 +2550,8 @@ export default function App() {
               diffLeftId={diffLeftId}
               diffRightId={diffRightId}
               examples={examples}
+              evaluationHistory={evaluationHistory}
+              exportPresets={exportPresets}
               failureMemory={failureMemory}
               improvedPrompt={improvedPrompt}
               improveText={improveText}
@@ -2492,6 +2591,7 @@ export default function App() {
               onDownload={downloadText}
               onExportBackupSnapshot={exportBackupSnapshot}
               onExportCodexBuildPack={exportCodexBuildPack}
+              onExportPreset={exportPreset}
               onExportQueue={exportQueue}
               onExportMemoryPack={exportReusableMemoryPack}
               onExportProjectPack={exportProjectPack}
@@ -2503,6 +2603,7 @@ export default function App() {
               onModelEvaluate={runModelEvaluation}
               onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
               onRunAutonomousBattle={runAutonomousBattle}
+              onRunAutomatedVisualQa={runAutomatedVisualQa}
               onRunModelBatchCalibration={runModelBatchCalibration}
               onRunPromptCoach={runPromptCoach}
               onQueueTournament={queueTournamentFinalists}
@@ -2668,19 +2769,25 @@ function SmartIngestion({ analysis }: { analysis: PromptAnalysis }) {
   );
 }
 
-function BatchIngestionPreview({ candidates }: { candidates: ReturnType<typeof parsePromptBatch> }) {
-  const averageScore = Math.round(candidates.reduce((sum, candidate) => sum + candidate.score, 0) / Math.max(1, candidates.length));
+function BatchIngestionPreview({ audit, candidates }: { audit: PromptImportAudit; candidates: ReturnType<typeof parsePromptBatch> }) {
   return (
     <div className="analysis-card batch-preview">
       <div>
         <strong>{candidates.length} prompt candidates detected</strong>
-        <span>Average score {averageScore} / imports exact stack, assets, sections, constraints, and QA signals</span>
+        <span>
+          Average score {audit.averageScore} / {audit.importable} importable / {audit.goldCandidates} gold / {audit.nearDuplicates} near duplicate(s)
+        </span>
+      </div>
+      <div className="mini-stat-row">
+        {audit.topClusters.slice(0, 3).map((cluster) => (
+          <span key={cluster.label}>{cluster.label}: {cluster.count}</span>
+        ))}
       </div>
       <div className="batch-candidate-list">
-        {candidates.slice(0, 5).map((candidate) => (
-          <article key={candidate.id}>
-            <strong>{candidate.title}</strong>
-            <span>{candidate.score} score / {candidate.summary.join(" / ")}</span>
+        {audit.items.slice(0, 5).map((item) => (
+          <article data-decision={item.decision} key={item.candidate.id}>
+            <strong>{item.candidate.title}</strong>
+            <span>{item.decision} / {item.candidate.score} score / {item.reasons.slice(0, 4).join(" / ")}</span>
           </article>
         ))}
       </div>
@@ -3445,6 +3552,8 @@ function TrainView({
   diffRightId,
   driftReport,
   examples,
+  evaluationHistory,
+  exportPresets,
   failureMemory,
   improvedPrompt,
   improveText,
@@ -3485,6 +3594,7 @@ function TrainView({
   onDownload,
   onExportBackupSnapshot,
   onExportCodexBuildPack,
+  onExportPreset,
   onExportMemoryPack,
   onExportProjectPack,
   onExportQueue,
@@ -3498,6 +3608,7 @@ function TrainView({
   onQuarantineWeakCorpus,
   onRefreshApiEvents,
   onRunAutonomousBattle,
+  onRunAutomatedVisualQa,
   onRunModelBatchCalibration,
   onRunPromptCoach,
   onQueueTournament,
@@ -3601,6 +3712,8 @@ function TrainView({
   diffRightId: string;
   driftReport: DriftReport;
   examples: PromptExample[];
+  evaluationHistory: EvaluationHistoryReport;
+  exportPresets: ExportPreset[];
   failureMemory: FailureMemoryReport;
   improvedPrompt: string;
   improveText: string;
@@ -3649,6 +3762,7 @@ function TrainView({
   onDownload: (filename: string, text: string, type?: string) => void;
   onExportBackupSnapshot: (id?: string) => void;
   onExportCodexBuildPack: () => void;
+  onExportPreset: (preset: ExportPreset) => void;
   onExportMemoryPack: () => void;
   onExportProjectPack: () => void;
   onExportQueue: () => void;
@@ -3662,6 +3776,7 @@ function TrainView({
   onQuarantineWeakCorpus: () => void;
   onRefreshApiEvents: () => void;
   onRunAutonomousBattle: () => void;
+  onRunAutomatedVisualQa: () => void;
   onRunModelBatchCalibration: () => void;
   onRunPromptCoach: () => void;
   onQueueTournament: () => void;
@@ -3858,9 +3973,23 @@ function TrainView({
           visualAnalysisResult={visualAnalysisResult}
           visualRegression={visualRegression}
         />
+        <AutomatedVisualQaPanel
+          onRunAutomatedVisualQa={onRunAutomatedVisualQa}
+          selectedPrompt={selectedPrompt}
+          visualAnalysisResult={visualAnalysisResult}
+          visualRegression={visualRegression}
+        />
+      </section>
+
+      <section className="train-columns">
         <ProjectExportPackPanel
           onExportProjectPack={onExportProjectPack}
           projectExportPack={projectExportPack}
+        />
+        <ExportPresetPanel
+          exportPresets={exportPresets}
+          onCopy={onCopy}
+          onExportPreset={onExportPreset}
         />
       </section>
 
@@ -3899,6 +4028,8 @@ function TrainView({
         onBulkPromoteLeaderboard={onBulkPromoteLeaderboard}
         onSelectPrompt={onSelectPrompt}
       />
+
+      <EvaluationHistoryPanel evaluationHistory={evaluationHistory} />
 
       <LearnedGeneratorWorkspacePanel
         generatorInput={generatorInput}
@@ -4549,6 +4680,45 @@ function ExperimentLeaderboardPanel({
   );
 }
 
+function EvaluationHistoryPanel({ evaluationHistory }: { evaluationHistory: EvaluationHistoryReport }) {
+  const trendCards = [
+    { label: "Gold rate", value: `${evaluationHistory.trends.goldRate}%` },
+    { label: "Build pass", value: `${evaluationHistory.trends.passRate}%` },
+    { label: "Avg build", value: String(evaluationHistory.trends.averageBuildScore) },
+    { label: "Avg model", value: String(evaluationHistory.trends.averageModelScore) },
+    { label: "Visual great", value: `${evaluationHistory.trends.visualGreatRate}%` },
+  ];
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <BarChart3 size={18} />
+        <h2>Evaluation history</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={evaluationHistory.score} label="History" />
+        <FeedbackList title="Trend summary" items={evaluationHistory.summary} empty="No evaluation history yet." />
+      </div>
+      <div className="env-status-grid">
+        {trendCards.map((card) => (
+          <span data-ready={card.value !== "0" && card.value !== "0%"} key={card.label}>{card.label}: {card.value}</span>
+        ))}
+      </div>
+      <div className="version-list compact-list">
+        {evaluationHistory.items.slice(0, 12).map((item) => (
+          <article className="version-card" key={item.id}>
+            <div className="dna-v2-topline">
+              <strong>{item.title}</strong>
+              <span data-tone={scoreTone(item.score)}>{item.score}</span>
+            </div>
+            <span>{item.kind} / {item.status} / {new Date(item.createdAt).toLocaleDateString()}</span>
+            <p>{item.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function LearnedGeneratorWorkspacePanel({
   generatorInput,
   onApplyGeneratorVariant,
@@ -4590,6 +4760,26 @@ function LearnedGeneratorWorkspacePanel({
           <input value={generatorInput.siteType} onChange={(event) => update("siteType", event.target.value)} />
         </Field>
       </div>
+      <div className="two-field-grid">
+        <Field label="Audience">
+          <input value={generatorInput.audience || ""} onChange={(event) => update("audience", event.target.value)} />
+        </Field>
+        <Field label="Output target">
+          <select value={generatorInput.outputTarget || "Codex build prompt"} onChange={(event) => update("outputTarget", event.target.value)}>
+            <option>Codex build prompt</option>
+            <option>v0 prompt</option>
+            <option>Claude artifact prompt</option>
+            <option>Lovable prompt</option>
+            <option>Raw implementation spec</option>
+          </select>
+        </Field>
+      </div>
+      <Field label="Conversion goal">
+        <textarea value={generatorInput.goal || ""} onChange={(event) => update("goal", event.target.value)} />
+      </Field>
+      <Field label="Vibe">
+        <input value={generatorInput.vibe || ""} onChange={(event) => update("vibe", event.target.value)} />
+      </Field>
       <Field label="Visual style">
         <textarea value={generatorInput.visualStyle} onChange={(event) => update("visualStyle", event.target.value)} />
       </Field>
@@ -5274,6 +5464,45 @@ function VisualEvidenceDashboardPanel({
   );
 }
 
+function AutomatedVisualQaPanel({
+  onRunAutomatedVisualQa,
+  selectedPrompt,
+  visualAnalysisResult,
+  visualRegression,
+}: {
+  onRunAutomatedVisualQa: () => void;
+  selectedPrompt?: PromptExample;
+  visualAnalysisResult?: Record<string, unknown>;
+  visualRegression: VisualRegressionReport;
+}) {
+  const latestScore = typeof visualAnalysisResult?.score === "number" ? Number(visualAnalysisResult.score) : visualRegression.score;
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Automated visual QA</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunAutomatedVisualQa} disabled={!selectedPrompt}>
+          Run QA
+        </button>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={latestScore} label="Auto QA" />
+        <div>
+          <strong>{selectedPrompt?.title || "No prompt selected"}</strong>
+          <p className="selected-meta">Checks desktop/mobile screenshots, blank render, console errors, failed requests, media readiness, text clipping, overlap, and horizontal overflow.</p>
+        </div>
+      </div>
+      <FeedbackList
+        title="Automation notes"
+        items={Array.isArray(visualAnalysisResult?.notes) ? visualAnalysisResult.notes.map(String) : visualRegression.notes}
+        empty="Run automated visual QA against the selected result URL."
+      />
+    </section>
+  );
+}
+
 function ProjectExportPackPanel({
   onExportProjectPack,
   projectExportPack,
@@ -5302,6 +5531,38 @@ function ProjectExportPackPanel({
         ))}
       </div>
       <textarea className="generated-output mini-output" readOnly value={projectExportPack.markdown} />
+    </section>
+  );
+}
+
+function ExportPresetPanel({
+  exportPresets,
+  onCopy,
+  onExportPreset,
+}: {
+  exportPresets: ExportPreset[];
+  onCopy: (value: string, key: string) => void;
+  onExportPreset: (preset: ExportPreset) => void;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <Download size={18} />
+        <h2>Export presets</h2>
+      </div>
+      <div className="version-list compact-list">
+        {exportPresets.map((preset) => (
+          <article className="version-card" key={preset.id}>
+            <strong>{preset.title}</strong>
+            <span>{preset.target} / {preset.filename}</span>
+            <p>{preset.summary}</p>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(preset.content, `export-${preset.id}`)}>Copy</button>
+              <button className="primary-button compact-button" type="button" onClick={() => onExportPreset(preset)}>Export</button>
+            </div>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }

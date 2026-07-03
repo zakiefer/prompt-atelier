@@ -61,6 +61,13 @@ try {
   const eventPayload = await events.json();
   if (!events.ok || !Array.isArray(eventPayload.events)) throw new Error("Events route did not return API events.");
 
+  const missingVisualQaUrl = await fetch(`${base}/api/visual/qa`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({}),
+  });
+  if (missingVisualQaUrl.status !== 400) throw new Error(`Expected visual QA route to validate URL, received ${missingVisualQaUrl.status}.`);
+
   console.log(JSON.stringify({ ok: true, port, collections: health.collections.length, modelMode: evaluation.mode }, null, 2));
 } finally {
   child.kill("SIGTERM");

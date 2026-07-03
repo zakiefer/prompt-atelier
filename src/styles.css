@@ -197,8 +197,9 @@ button:disabled {
 .output-actions {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  justify-content: space-between;
+  justify-content: flex-start;
   margin-top: 8px;
 }
 
@@ -216,6 +217,22 @@ button:disabled {
   display: block;
   font-size: 0.82rem;
   line-height: 1.25;
+}
+
+.mini-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mini-stat-row span {
+  background: rgba(31, 122, 104, 0.08);
+  border: 1px solid rgba(31, 122, 104, 0.18);
+  border-radius: 999px;
+  color: var(--teal);
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 4px 7px;
 }
 
 .analysis-card span,
@@ -267,6 +284,14 @@ button:disabled {
   display: grid;
   gap: 3px;
   padding: 8px;
+}
+
+.batch-candidate-list article[data-decision="gold"] {
+  border-color: rgba(31, 122, 104, 0.38);
+}
+
+.batch-candidate-list article[data-decision="quarantine"] {
+  opacity: 0.62;
 }
 
 .batch-candidate-list strong {

@@ -135,6 +135,13 @@ export function analyzeScreenshots(files: string[]) {
   });
 }
 
+export function runVisualQa(url: string, out?: string) {
+  return requestJson<{ ok: boolean; parsed: unknown; stdout: string; stderr: string }>("/api/visual/qa", {
+    method: "POST",
+    body: JSON.stringify({ url, out }),
+  });
+}
+
 export function importResult<TBuildRun, TScreenshot, TLineage>(result: unknown) {
   return requestJson<ApiResultImport<TBuildRun, TScreenshot, TLineage>>("/api/result/import", {
     method: "POST",
