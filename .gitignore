@@ -4,7 +4,6 @@ output/
 data/
 .playwright-cli/
 qa-artifacts/
-src/prompts/*.md
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
