@@ -1611,6 +1611,20 @@ button:disabled {
   padding: 12px;
 }
 
+button.preset-card {
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+
+.preset-card[data-active="true"] {
+  background: rgba(31, 122, 104, 0.08);
+  border-color: rgba(31, 122, 104, 0.28);
+  box-shadow: 0 16px 40px rgba(31, 122, 104, 0.1);
+}
+
 .gate-check-card[data-pass="true"],
 .review-card[data-winner="true"],
 .signal-card[data-side="shared"] {

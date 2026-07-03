@@ -4,6 +4,9 @@ import {
   analyzeCorpus,
   analyzeArchetypeClusters,
   buildGeneratorPresets,
+  buildCodexBuildPack,
+  buildExperimentLeaderboard,
+  buildLearnedGeneratorVariants,
   buildPatternDashboard,
   buildProjectExportPack,
   buildPromptCoachReport,
@@ -14,6 +17,7 @@ import {
   curatePromptCorpus,
   evaluatePrompt,
   type BuildRunRecord,
+  type PairwiseReviewRecord,
   type OutcomeRecord,
   type PromptExample,
   type ScreenshotRecord,
@@ -82,6 +86,17 @@ const buildRuns: BuildRunRecord[] = [
     updatedAt: new Date().toISOString(),
   },
 ];
+const pairwiseReviews: PairwiseReviewRecord[] = [
+  {
+    id: "pairwise-1",
+    leftId: examples[0].id,
+    rightId: examples[1].id,
+    winnerId: examples[0].id,
+    loserId: examples[1].id,
+    reason: "More exact assets and verification.",
+    createdAt: new Date().toISOString(),
+  },
+];
 
 const snapshot = createDatasetVersionSnapshot({
   buildRuns,
@@ -122,6 +137,27 @@ const coach = buildPromptCoachReport(exactPrompt, profile, outcomes);
 assert.ok(coach.score > 0, "Prompt coach should return a score.");
 assert.ok(coach.rewrittenPrompt.includes("Build"), "Prompt coach should return a rewritten prompt.");
 
+const experimentLeaderboard = buildExperimentLeaderboard(examples, outcomes, buildRuns, pairwiseReviews);
+assert.equal(experimentLeaderboard.items[0].promptId, examples[0].id, "Pairwise winner should lead the experiment leaderboard.");
+
+const learnedVariants = buildLearnedGeneratorVariants(
+  {
+    brandName: "Atlas",
+    industry: "AI research",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    siteType: "single-page hero",
+    visualStyle: "cinematic video hero with exact typography",
+    assets: "exact video URL and logo SVG",
+    constraints: "no vague placeholders",
+    strictness: 9,
+  },
+  profile,
+  presets,
+  outcomes,
+);
+assert.equal(learnedVariants.length, 3, "Learned generator should create three variants.");
+assert.ok(learnedVariants[0].prompt.includes("PROJECT-SPECIFIC REQUIREMENTS"), "Generator variant should include project requirements.");
+
 const pack = buildReusableMemoryPack({
   failureMemory: {
     categories: [],
@@ -155,4 +191,18 @@ const projectPack = buildProjectExportPack({
 assert.ok(projectPack.markdown.includes("Prompt Atelier Project Export"), "Project pack should be markdown-exportable.");
 assert.ok(JSON.parse(projectPack.json), "Project pack JSON should parse.");
 
-console.log(JSON.stringify({ ok: true, assertions: 22, score: score.score, snapshot: snapshot.label }, null, 2));
+const codexBuildPack = buildCodexBuildPack({
+  prompt: examples[0],
+  promptMemory: {
+    markdown: "# Memory\n- exact assets win",
+    json: "{}",
+    sections: [],
+  },
+  qualityGate,
+  queueExport: "{}",
+  visualRegression,
+});
+assert.ok(codexBuildPack.files.some((file) => file.path === "codex-task.md"), "Codex build pack should include a task file.");
+assert.ok(codexBuildPack.markdown.includes("Acceptance Gates"), "Codex build pack should include gates.");
+
+console.log(JSON.stringify({ ok: true, assertions: 30, score: score.score, snapshot: snapshot.label }, null, 2));

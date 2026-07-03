@@ -40,6 +40,7 @@ PORT=8787 npm run api
 PROMPT_LAB_DATA_DIR=/data npm run api
 PROMPT_LAB_API_TOKEN=replace-me npm run api
 PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io npm run api
+PROMPT_LAB_RATE_LIMIT=240 npm run api
 ANTHROPIC_API_KEY=... npm run api
 PROMPT_LAB_MODEL_PROVIDER=anthropic npm run api
 PROMPT_LAB_AGENT_COMMAND="codex exec --full-auto --prompt-file codex-task.md" npm run api
@@ -63,6 +64,14 @@ Hosted services should not run arbitrary Codex agent commands unless the environ
 ```bash
 npm run run:queue -- --queue prompt-lab-queue.json --scaffold --install --capture --preview-port 4320
 ```
+
+Blueprint deeplink after this file is merged to `main`:
+
+```text
+https://dashboard.render.com/blueprint/new?repo=https://github.com/zakiefer/prompt-atelier
+```
+
+This machine does not currently have the Render CLI installed or a Render MCP connection available, so final service creation requires applying the Blueprint in the Render Dashboard and filling the two secret values above.
 
 ## Verification
 
