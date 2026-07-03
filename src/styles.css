@@ -1426,6 +1426,173 @@ button:disabled {
   margin-top: 12px;
 }
 
+.wizard-form-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.guided-wizard-panel textarea {
+  min-height: 74px;
+}
+
+.wizard-question-grid,
+.pattern-block-grid,
+.sync-check-grid,
+.prompt-pack-export-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-top: 12px;
+}
+
+.wizard-question-card,
+.pattern-block-card,
+.sync-check-card,
+.prompt-pack-card,
+.learner-answer-box {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.wizard-question-card[data-ready="true"],
+.sync-check-card[data-ready="true"] {
+  background: rgba(31, 122, 104, 0.08);
+  border-color: rgba(31, 122, 104, 0.22);
+}
+
+.wizard-question-card strong,
+.sync-check-card strong {
+  color: var(--teal-dark);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.wizard-question-card:not([data-ready="true"]) strong,
+.sync-check-card:not([data-ready="true"]) strong {
+  color: var(--amber);
+}
+
+.wizard-question-card span,
+.sync-check-card span,
+.pattern-block-card span {
+  color: var(--ink);
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.wizard-question-card p,
+.pattern-block-card p,
+.sync-check-card p,
+.prompt-pack-card p,
+.learner-answer-box p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.pattern-block-card small {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.score-delta {
+  align-items: center;
+  background: rgba(164, 72, 63, 0.08);
+  border: 1px solid rgba(164, 72, 63, 0.18);
+  border-radius: 999px;
+  color: var(--danger);
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  font-weight: 800;
+  gap: 8px;
+  justify-content: center;
+  padding: 8px 11px;
+}
+
+.score-delta[data-positive="true"] {
+  background: rgba(31, 122, 104, 0.1);
+  border-color: rgba(31, 122, 104, 0.24);
+  color: var(--teal-dark);
+}
+
+.score-delta strong {
+  font-size: 0.9rem;
+}
+
+.issue-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.issue-chip-grid button {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.issue-chip-grid button.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.prompt-patch-box {
+  background: #fff;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  color: #2e3a35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  margin: 10px 0 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.prompt-pack-card .dna-v2-topline span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  height: auto;
+  min-width: auto;
+  padding: 0;
+  text-transform: uppercase;
+  width: auto;
+}
+
+.learner-answer-box strong {
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.sync-summary {
+  margin-top: 14px;
+}
+
 .stage-panel {
   display: grid;
   gap: 10px;

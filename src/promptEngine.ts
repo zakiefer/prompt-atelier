@@ -740,6 +740,57 @@ export type LearnedGeneratorVariant = {
   prompt: string;
 };
 
+export type GuidedPromptWizardReport = {
+  readiness: number;
+  questions: { key: keyof LearnedGeneratorInput; label: string; answered: boolean; hint: string }[];
+  variants: LearnedGeneratorVariant[];
+  nextActions: string[];
+};
+
+export type ExtractedPatternBlock = {
+  id: string;
+  category: CategoryKey | "archetype";
+  label: string;
+  score: number;
+  evidence: string[];
+  promptPatch: string;
+};
+
+export type PatternExtractionReport = {
+  sourceCount: number;
+  summary: string[];
+  blocks: ExtractedPatternBlock[];
+};
+
+export type PromptImprovementComparison = {
+  originalScore: number;
+  improvedScore: number;
+  delta: number;
+  changes: string[];
+  missingBefore: string[];
+  improvedPrompt: string;
+};
+
+export type ScreenshotScoringReport = {
+  score: number;
+  issueTags: FailureCategory[];
+  summary: string[];
+  promptPatch: string;
+};
+
+export type HostedSyncReport = {
+  score: number;
+  mode: "hosted" | "local-api" | "browser-only";
+  summary: string[];
+  checks: { label: string; ready: boolean; detail: string }[];
+};
+
+export type LearnerAnswerReport = {
+  answer: string;
+  evidence: string[];
+  suggestedPromptPatch: string;
+};
+
 export type CodexBuildPack = {
   markdown: string;
   json: string;
@@ -3886,6 +3937,232 @@ export function buildLearnedGeneratorVariants(
       prompt: `${fullPrompt}${goals}`,
     };
   });
+}
+
+export function buildGuidedPromptWizardReport(
+  input: LearnedGeneratorInput,
+  profile: PromptProfile,
+  presets: GeneratorPreset[] = [],
+  outcomes: OutcomeRecord[] = [],
+): GuidedPromptWizardReport {
+  const questions: GuidedPromptWizardReport["questions"] = [
+    { key: "brandName", label: "Brand or product", answered: Boolean(input.brandName.trim()), hint: "Name the product so the headline and visual system are specific." },
+    { key: "siteType", label: "Website type", answered: Boolean(input.siteType.trim()), hint: "Hero, landing page, dashboard, signup flow, feature section, or portfolio." },
+    { key: "audience", label: "Audience", answered: Boolean(input.audience?.trim()), hint: "Who should feel this was designed for?" },
+    { key: "goal", label: "Conversion goal", answered: Boolean(input.goal?.trim()), hint: "What should the first viewport persuade the visitor to do?" },
+    { key: "stack", label: "Stack", answered: Boolean(input.stack.trim()), hint: "Framework, language, styling, icon, animation, and forbidden libraries." },
+    { key: "visualStyle", label: "Signature mechanic", answered: Boolean(input.visualStyle.trim()), hint: "Video, glass UI, cursor spotlight, marquee, 3D, dashboard proof, or another memorable mechanic." },
+    { key: "assets", label: "Assets", answered: Boolean(input.assets.trim()), hint: "Exact URLs, logo path, generated asset slots, object-fit, focal point, and fallback rules." },
+    { key: "constraints", label: "No-go rules", answered: Boolean(input.constraints.trim()), hint: "No generic stock, no blobs, no extra libraries, no overlays, no text overlap." },
+  ];
+  const answered = questions.filter((question) => question.answered).length;
+  const readiness = Math.round((answered / questions.length) * 100);
+  const variants = buildLearnedGeneratorVariants(input, profile, presets, outcomes).slice(0, 3);
+  return {
+    readiness,
+    questions,
+    variants,
+    nextActions: [
+      readiness < 100 ? `Answer ${questions.length - answered} remaining wizard question(s) for sharper variants.` : "Wizard brief is complete enough to generate battle-ready prompts.",
+      "Save the strongest variant, queue all three, and compare desktop/mobile screenshots.",
+      "After a visual winner emerges, mark it gold so pattern extraction learns from the result.",
+    ],
+  };
+}
+
+function outcomeGoldSet(outcomes: OutcomeRecord[]) {
+  return new Set(outcomes.filter((outcome) => outcome.status === "gold" || outcome.rating === "great").map((outcome) => outcome.promptId));
+}
+
+export function extractReusablePatterns(
+  examples: PromptExample[],
+  outcomes: OutcomeRecord[] = [],
+  clusters: ArchetypeCluster[] = [],
+): PatternExtractionReport {
+  const goldIds = outcomeGoldSet(outcomes);
+  const source = examples.filter((example) => goldIds.has(example.id));
+  const patternSource = source.length >= 3 ? source : examples;
+  const profile = analyzeCorpus(patternSource);
+  const blocks: ExtractedPatternBlock[] = [];
+  for (const key of Object.keys(CATEGORY_LABELS) as CategoryKey[]) {
+    for (const feature of profile.features[key].slice(0, 3)) {
+      blocks.push({
+        id: `pattern-${key}-${slugify(feature.label)}`,
+        category: key,
+        label: feature.label,
+        score: Math.min(100, 55 + feature.count * 9),
+        evidence: feature.examples.slice(0, 4),
+        promptPatch: `Add ${CATEGORY_LABELS[key]} rules for "${feature.label}": use exact implementation values, name where it appears, and verify it on desktop and mobile.`,
+      });
+    }
+  }
+  for (const cluster of clusters.slice(0, 5)) {
+    blocks.push({
+      id: `pattern-archetype-${cluster.key}`,
+      category: "archetype",
+      label: cluster.label,
+      score: Math.min(100, 58 + cluster.count * 7 + Math.round(cluster.score * 0.12)),
+      evidence: cluster.examples.slice(0, 4),
+      promptPatch: `Use the ${cluster.label} archetype: signature signals ${cluster.signals.slice(0, 5).join(", ")}. Keep the mechanic explicit and buildable.`,
+    });
+  }
+  const sorted = blocks.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label)).slice(0, 24);
+  return {
+    sourceCount: patternSource.length,
+    blocks: sorted,
+    summary: [
+      `${patternSource.length} ${source.length >= 3 ? "gold/result-backed" : "curated"} prompt(s) were mined for reusable blocks.`,
+      `${sorted.length} pattern block(s) are ready to inject into generated prompts.`,
+      source.length < 3 ? "Add more gold labels to make pattern extraction more outcome-driven." : "Gold labels are driving the pattern library.",
+    ],
+  };
+}
+
+export function comparePromptImprovement(
+  source: string,
+  profile: PromptProfile,
+  outcomes: OutcomeRecord[] = [],
+  result?: ResultScore,
+): PromptImprovementComparison {
+  const original = source.trim();
+  const improvedPrompt = improvePromptWithLearning(original, profile, outcomes, result);
+  const originalEvaluation = evaluatePrompt(original);
+  const improvedEvaluation = evaluatePrompt(improvedPrompt);
+  const changes = (Object.keys(CATEGORY_LABELS) as CategoryKey[])
+    .map((key) => {
+      const before = originalEvaluation.categoryScores[key];
+      const after = improvedEvaluation.categoryScores[key];
+      return after > before ? `${CATEGORY_LABELS[key]} +${after - before}` : "";
+    })
+    .filter(Boolean)
+    .slice(0, 8);
+  return {
+    originalScore: originalEvaluation.score,
+    improvedScore: improvedEvaluation.score,
+    delta: improvedEvaluation.score - originalEvaluation.score,
+    changes: changes.length ? changes : ["No large category delta; rewrite mostly preserves an already-detailed prompt."],
+    missingBefore: originalEvaluation.upgrades,
+    improvedPrompt,
+  };
+}
+
+export function scoreScreenshotIssues(
+  prompt: PromptExample | undefined,
+  issueNotes: string,
+  rating: OutcomeRating = "unrated",
+): ScreenshotScoringReport {
+  const failures = classifyBuildFailures(issueNotes);
+  const base = rating === "great" ? 88 : rating === "okay" ? 64 : rating === "bad" ? 28 : 52;
+  const score = Math.max(0, Math.min(100, base - failures.length * 9 + (issueNotes.trim() ? 8 : 0)));
+  const fixes = failures.map((failure) => FAILURE_FIXES[failure]);
+  return {
+    score,
+    issueTags: failures,
+    summary: [
+      `${prompt?.title ?? "Selected prompt"} screenshot feedback scores ${score}/100.`,
+      failures.length ? `Detected issue tags: ${failures.join(", ")}.` : "No failure tags detected from notes.",
+      rating === "great" ? "Rating can feed gold learning once desktop and mobile proof are captured." : "Use this as repair signal before promoting the prompt.",
+    ],
+    promptPatch: fixes.length
+      ? `Add these repair constraints before the next run:\n- ${fixes.join("\n- ")}`
+      : "Preserve the visual direction and add desktop/mobile screenshot proof before promotion.",
+  };
+}
+
+export function buildHostedSyncReport({
+  apiOnline,
+  authRequired,
+  apiBase,
+  counts,
+}: {
+  apiOnline: boolean;
+  authRequired?: boolean;
+  apiBase?: string;
+  counts: { prompts: number; labels: number; runs: number; screenshots: number; events: number };
+}): HostedSyncReport {
+  const hosted = Boolean(apiBase && !/127\.0\.0\.1|localhost|::1/.test(apiBase));
+  const checks = [
+    { label: "API reachable", ready: apiOnline, detail: apiOnline ? "Health route is online." : "Run npm run api or configure a hosted API base." },
+    { label: "Hosted base", ready: hosted, detail: hosted ? String(apiBase) : "Local/browser mode; set a deployed API URL for cross-machine sync." },
+    { label: "Auth posture", ready: Boolean(authRequired || hosted), detail: authRequired ? "Token-protected." : hosted ? "Hosted URL should require a token." : "Local open API is acceptable for development." },
+    { label: "Corpus synced", ready: counts.prompts > 0, detail: `${counts.prompts} prompt(s), ${counts.labels} label(s), ${counts.runs} run(s), ${counts.screenshots} screenshot(s).` },
+    { label: "Event trail", ready: counts.events > 0, detail: `${counts.events} API event(s) visible.` },
+  ];
+  const score = Math.round((checks.filter((check) => check.ready).length / checks.length) * 100);
+  return {
+    score,
+    mode: hosted ? "hosted" : apiOnline ? "local-api" : "browser-only",
+    checks,
+    summary: [
+      hosted ? "Hosted sync is configured." : apiOnline ? "Local SQLite sync is online." : "Browser storage is active; API sync is offline.",
+      `Persistence readiness ${score}/100.`,
+      "Use Push API to upload local state and Pull API to hydrate another browser from the same backend.",
+    ],
+  };
+}
+
+export function buildArchetypePromptPacks(
+  examples: PromptExample[],
+  outcomes: OutcomeRecord[] = [],
+  clusters: ArchetypeCluster[] = [],
+): PromptPack[] {
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const byArchetype = new Map<string, PromptExample[]>();
+  for (const example of examples) {
+    const label = analyzePrompt(example.text).archetypes[0]?.label ?? "General high-fidelity prompt";
+    const outcome = outcomeMap.get(example.id);
+    const weighted = outcome?.status === "avoid" || outcome?.rating === "bad" ? [] : [example];
+    byArchetype.set(label, [...(byArchetype.get(label) ?? []), ...weighted]);
+  }
+  return Array.from(byArchetype.entries())
+    .map(([label, group]) => {
+      const cluster = clusters.find((item) => item.label === label);
+      const selected = group
+        .map((example) => ({ example, score: evaluatePrompt(example.text).score + (outcomeMap.get(example.id)?.status === "gold" ? 12 : 0) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+        .map((item) => item.example);
+      return {
+        id: `archetype-pack-${slugify(label)}`,
+        title: `${label} prompt pack`,
+        description: `${selected.length} curated prompt(s). Signals: ${cluster?.signals.slice(0, 5).join(", ") || "exact stack, assets, layout, motion, responsive rules"}.`,
+        prompts: selected.map((example) => `# ${example.title}\n\n${example.text}`),
+      };
+    })
+    .filter((pack) => pack.prompts.length)
+    .sort((a, b) => b.prompts.length - a.prompts.length || a.title.localeCompare(b.title))
+    .slice(0, 10);
+}
+
+export function answerLearnerQuestion(
+  question: string,
+  profile: PromptProfile,
+  patterns: PatternExtractionReport,
+  packs: PromptPack[] = [],
+): LearnerAnswerReport {
+  const normalized = question.trim() || "What makes my best website prompts work?";
+  const queryTokens = tokenSet(normalized);
+  const matchingPatterns = patterns.blocks
+    .map((block) => ({
+      block,
+      score: Array.from(queryTokens).filter((token) => `${block.label} ${block.category} ${block.promptPatch}`.toLowerCase().includes(token)).length + block.score / 100,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((item) => item.block);
+  const evidence = [
+    ...matchingPatterns.map((block) => `${block.label}: ${block.evidence.slice(0, 2).join(", ") || block.category}`),
+    ...profile.learnedRules.slice(0, 3),
+    packs[0] ? `Top pack: ${packs[0].title}` : "",
+  ].filter(Boolean).slice(0, 8);
+  const patch = matchingPatterns.length
+    ? matchingPatterns.map((block) => `- ${block.promptPatch}`).join("\n")
+    : "- Start with exact stack, visual signature, assets, layout, motion, responsive rules, constraints, and QA.";
+  return {
+    answer: `For "${normalized}", the learner would bias toward ${matchingPatterns.slice(0, 3).map((block) => block.label).join(", ") || "exact implementation detail, strong first-viewport anatomy, and QA-backed constraints"}. The strongest move is to turn those signals into explicit build instructions rather than style adjectives.`,
+    evidence,
+    suggestedPromptPatch: patch,
+  };
 }
 
 export function buildCodexBuildPack({

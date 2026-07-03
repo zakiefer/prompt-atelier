@@ -10,6 +10,9 @@ import {
   buildExperimentLeaderboard,
   buildExportPresets,
   buildBuildFeedbackReport,
+  buildArchetypePromptPacks,
+  buildGuidedPromptWizardReport,
+  buildHostedSyncReport,
   buildLearnedGeneratorVariants,
   buildLeakageGuardReport,
   buildPatternDashboard,
@@ -19,13 +22,17 @@ import {
   buildReusableMemoryPack,
   buildSourceSafetyReport,
   buildVisualRegressionReport,
+  answerLearnerQuestion,
+  comparePromptImprovement,
   createDatasetVersionSnapshot,
   curatePromptCorpus,
   evaluatePrompt,
+  extractReusablePatterns,
   explainDnaScore,
   auditPromptImportBatch,
   parsePromptBatch,
   scoreResultArtifact,
+  scoreScreenshotIssues,
   scoreScreenshotSet,
   slugify,
   titleFromPrompt,
@@ -210,6 +217,57 @@ const learnedVariants = buildLearnedGeneratorVariants(
 assert.equal(learnedVariants.length, 5, "Learned generator should create five variants.");
 assert.ok(learnedVariants[0].prompt.includes("PROJECT-SPECIFIC REQUIREMENTS"), "Generator variant should include project requirements.");
 
+const guidedWizard = buildGuidedPromptWizardReport(
+  {
+    brandName: "Atlas",
+    industry: "AI research",
+    audience: "research founders",
+    goal: "prove the product is serious in the first viewport",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    siteType: "single-page hero",
+    vibe: "cinematic and exact",
+    visualStyle: "cinematic video hero with exact typography",
+    assets: "exact video URL and logo SVG",
+    constraints: "no vague placeholders",
+    outputTarget: "Codex build prompt",
+    strictness: 9,
+  },
+  profile,
+  presets,
+  outcomes,
+);
+assert.equal(guidedWizard.readiness, 100, "Completed wizard input should score fully ready.");
+assert.equal(guidedWizard.variants.length, 3, "Guided wizard should expose the top three variants.");
+
+const patternExtraction = extractReusablePatterns(examples, outcomes, clusters);
+assert.ok(patternExtraction.blocks.length > 0, "Pattern extraction should produce reusable blocks.");
+assert.ok(patternExtraction.summary.some((item) => /pattern/i.test(item)), "Pattern extraction should summarize learned blocks.");
+
+const rewriteComparison = comparePromptImprovement("Make a cool website.", profile, outcomes, resultArtifact);
+assert.ok(rewriteComparison.improvedScore > rewriteComparison.originalScore, "Prompt improvement should raise a vague prompt score.");
+assert.ok(rewriteComparison.improvedPrompt.includes("LEARNED OUTCOME RULES"), "Prompt improvement should include learned outcome rules.");
+
+const screenshotScoring = scoreScreenshotIssues(examples[0], "mobile text-overlap and missing-assets in first viewport", "bad");
+assert.ok(screenshotScoring.score < 40, "Screenshot scoring should penalize bad visual issues.");
+assert.ok(screenshotScoring.promptPatch.includes("repair constraints"), "Screenshot scoring should produce repair constraints.");
+
+const hostedSync = buildHostedSyncReport({
+  apiOnline: true,
+  authRequired: true,
+  apiBase: "https://api.example.com",
+  counts: { prompts: examples.length, labels: outcomes.length, runs: buildRuns.length, screenshots: screenshots.length, events: 3 },
+});
+assert.equal(hostedSync.mode, "hosted", "Hosted sync should detect remote API mode.");
+assert.ok(hostedSync.score >= 80, "Hosted sync should score a configured backend as ready.");
+
+const archetypePacks = buildArchetypePromptPacks(examples, outcomes, clusters);
+assert.ok(archetypePacks.length > 0, "Archetype prompt packs should be exportable.");
+assert.ok(archetypePacks[0].prompts[0].includes("#"), "Prompt pack entries should include titled prompt markdown.");
+
+const learnerAnswer = answerLearnerQuestion("How do I make a SaaS hero prompt better?", profile, patternExtraction, archetypePacks);
+assert.ok(learnerAnswer.answer.includes("SaaS") || learnerAnswer.answer.includes("website"), "Learner answer should respond to the question.");
+assert.ok(learnerAnswer.suggestedPromptPatch.includes("-"), "Learner answer should include a prompt patch.");
+
 const importAudit = auditPromptImportBatch(
   [
     ...parsePromptBatch(exactPrompt, "test batch"),
@@ -292,4 +350,4 @@ const evaluationHistory = buildEvaluationHistoryReport({
 assert.ok(evaluationHistory.items.length >= 4, "Evaluation history should combine labels, builds, screenshots, pairwise reviews, and model rows.");
 assert.ok(evaluationHistory.summary.length >= 2, "Evaluation history should summarize trends.");
 
-console.log(JSON.stringify({ ok: true, assertions: 46, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 60, score: score.score, snapshot: snapshot.label }, null, 2));

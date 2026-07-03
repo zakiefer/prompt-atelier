@@ -50,6 +50,9 @@ import {
   buildBuildFeedbackReport,
   buildCodexBuildPack,
   buildLearnedGeneratorVariants,
+  buildGuidedPromptWizardReport,
+  buildHostedSyncReport,
+  buildArchetypePromptPacks,
   buildLeakageGuardReport,
   buildPatternDashboard,
   buildProjectExportPack,
@@ -59,6 +62,7 @@ import {
   buildReusableMemoryPack,
   buildSourceSafetyReport,
   buildVisualRegressionReport,
+  answerLearnerQuestion,
   buildRecipePrompt,
   buildRubricNotes,
   buildPromptTournament,
@@ -70,6 +74,7 @@ import {
   categoryLabels,
   curatePromptCorpus,
   compareDatasetVersions,
+  comparePromptImprovement,
   compilePromptFromBrief,
   composeInterviewPrompt,
   composeOutcomeAwarePrompt,
@@ -83,6 +88,7 @@ import {
   distillGoldenRecipes,
   dnaLabels,
   evaluatePrompt,
+  extractReusablePatterns,
   explainDnaScore,
   explainPromptWin,
   exportCorpus,
@@ -100,6 +106,7 @@ import {
   scorePromptDnaV2,
   scoreResultArtifact,
   scorePromptModel,
+  scoreScreenshotIssues,
   scoreScreenshotSet,
   slugify,
   titleFromPrompt,
@@ -130,14 +137,18 @@ import {
   type Feature,
   type InterviewBrief,
   type LocalEmbeddingIndex,
+  type LearnerAnswerReport,
   type LearnedGeneratorInput,
   type LearnedGeneratorVariant,
   type LeakageGuardReport,
+  type GuidedPromptWizardReport,
+  type HostedSyncReport,
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
   type PairwiseReviewRecord,
   type PatternDashboardReport,
+  type PatternExtractionReport,
   type PromptPack,
   type PromptAnalysis,
   type PromptBattle,
@@ -173,8 +184,10 @@ import {
   type VisualRegressionReport,
   type VisualQaReport,
   type PromptCoachReport,
+  type PromptImprovementComparison,
   type ProjectExportPack,
   type CodexBuildPack,
+  type ScreenshotScoringReport,
 } from "./promptEngine";
 import {
   analyzeScreenshots,
@@ -631,6 +644,7 @@ export default function App() {
   const [coachInput, setCoachInput] = useState("");
   const [coachResult, setCoachResult] = useState<Record<string, unknown> | undefined>();
   const [generatorInput, setGeneratorInput] = useState<LearnedGeneratorInput>(defaultGeneratorInput);
+  const [learnerQuestion, setLearnerQuestion] = useState("What makes my best website prompts work?");
   const [apiEvents, setApiEvents] = useState<ApiEvent[]>([]);
 
   const examples = useMemo(() => [...seedPrompts, ...attachmentExamples, ...userPrompts], [attachmentExamples, userPrompts]);
@@ -927,6 +941,51 @@ export default function App() {
   const evaluationHistory = useMemo(
     () => buildEvaluationHistoryReport({ buildRuns, modelEvaluations: modelBatchEvaluations, outcomes, pairwiseReviews, screenshots }),
     [buildRuns, modelBatchEvaluations, outcomes, pairwiseReviews, screenshots],
+  );
+  const guidedWizard = useMemo(
+    () => buildGuidedPromptWizardReport(generatorInput, profile, generatorPresets, outcomes),
+    [generatorInput, generatorPresets, outcomes, profile],
+  );
+  const patternExtraction = useMemo(
+    () => extractReusablePatterns(learningExamples, outcomes, clusters),
+    [clusters, learningExamples, outcomes],
+  );
+  const rewriteComparison = useMemo(
+    () => comparePromptImprovement(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
+    [coachInput, generatedPrompt, outcomes, profile, resultScore, selectedPrompt],
+  );
+  const archetypePromptPacks = useMemo(
+    () => buildArchetypePromptPacks(learningExamples, outcomes, clusters),
+    [clusters, learningExamples, outcomes],
+  );
+  const hostedSyncReport = useMemo(
+    () =>
+      buildHostedSyncReport({
+        apiOnline: Boolean(apiHealth?.ok),
+        authRequired: apiHealth?.authRequired,
+        apiBase: apiBaseDraft || getApiBase(),
+        counts: {
+          prompts: examples.length,
+          labels: outcomes.length,
+          runs: buildRuns.length,
+          screenshots: screenshots.length,
+          events: apiEvents.length,
+        },
+      }),
+    [
+      apiBaseDraft,
+      apiEvents.length,
+      apiHealth?.authRequired,
+      apiHealth?.ok,
+      buildRuns.length,
+      examples.length,
+      outcomes.length,
+      screenshots.length,
+    ],
+  );
+  const learnerAnswer = useMemo(
+    () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
+    [archetypePromptPacks, learnerQuestion, patternExtraction, profile],
   );
 
   useEffect(() => {
@@ -1968,6 +2027,68 @@ export default function App() {
     }
   }
 
+  async function pullFromApi() {
+    try {
+      const result = await getApiCollections();
+      const collections = result.collections as Partial<Record<keyof StoredCollections, unknown>>;
+      const restored: string[] = [];
+      if (Array.isArray(collections.userPrompts)) {
+        setUserPrompts(collections.userPrompts as PromptExample[]);
+        restored.push("prompts");
+      }
+      if (Array.isArray(collections.history)) {
+        setHistory(collections.history as PromptVersion[]);
+        restored.push("history");
+      }
+      if (Array.isArray(collections.outcomes)) {
+        setOutcomes(collections.outcomes as OutcomeRecord[]);
+        restored.push("outcomes");
+      }
+      if (Array.isArray(collections.screenshots)) {
+        setScreenshots(collections.screenshots as ScreenshotRecord[]);
+        restored.push("screenshots");
+      }
+      if (Array.isArray(collections.buildRuns)) {
+        setBuildRuns(collections.buildRuns as BuildRunRecord[]);
+        restored.push("runs");
+      }
+      if (Array.isArray(collections.queueJobs)) {
+        setQueueJobs(collections.queueJobs as BuildQueueJob[]);
+        restored.push("queue");
+      }
+      if (Array.isArray(collections.lineage)) {
+        setLineageNodes(collections.lineage as PromptLineageNode[]);
+        restored.push("lineage");
+      }
+      if (Array.isArray(collections.datasetVersions)) {
+        setDatasetVersions((collections.datasetVersions as DatasetVersion[]).slice(0, 20));
+        restored.push("versions");
+      }
+      if (collections.curationDecisions && typeof collections.curationDecisions === "object" && !Array.isArray(collections.curationDecisions)) {
+        setCurationDecisions(collections.curationDecisions as Record<string, CurationDecision>);
+        restored.push("curation");
+      }
+      if (Array.isArray(collections.modelBatchEvaluations)) {
+        setModelBatchEvaluations((collections.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
+        restored.push("model rows");
+      }
+      if (Array.isArray(collections.pairwiseReviews)) {
+        setPairwiseReviews((collections.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
+        restored.push("pairwise reviews");
+      }
+      if (Array.isArray(collections.backupSnapshots)) {
+        setBackupSnapshots((collections.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
+        restored.push("backups");
+      }
+      setDbReady(true);
+      setDbStatus("SQLite source of truth ready");
+      setApiNotice(restored.length ? `Pulled ${restored.join(", ")} from API.` : "API is online but has no stored collections yet.");
+      void checkApi();
+    } catch (error) {
+      setApiNotice(`API pull failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   async function exportTrainingSnapshot() {
     try {
       const snapshot = await getTrainingSnapshot();
@@ -2579,8 +2700,12 @@ export default function App() {
               interviewPrompt={interviewPrompt}
               goldenRecipes={goldenRecipes}
               goldReview={goldReview}
+              guidedWizard={guidedWizard}
               generatorPresets={generatorPresets}
               generatorInput={generatorInput}
+              hostedSyncReport={hostedSyncReport}
+              learnerAnswer={learnerAnswer}
+              learnerQuestion={learnerQuestion}
               learnedGeneratorVariants={learnedGeneratorVariants}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
@@ -2622,6 +2747,7 @@ export default function App() {
               onInstallSkill={installSkillFromApi}
               onLoadDemoMode={loadDemoMode}
               onModelEvaluate={runModelEvaluation}
+              onPullFromApi={pullFromApi}
               onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
               onRunAutonomousBattle={runAutonomousBattle}
               onRunAutomatedVisualQa={runAutomatedVisualQa}
@@ -2646,6 +2772,7 @@ export default function App() {
               outcomes={outcomes}
               onboardingMode={onboardingMode}
               pairwiseReviews={pairwiseReviews}
+              patternExtraction={patternExtraction}
               patternDashboard={patternDashboard}
               promptBattle={promptBattle}
               promptCoach={promptCoach}
@@ -2657,6 +2784,7 @@ export default function App() {
               queueExport={queueExport}
               queueJobs={queueJobs}
               resultImportText={resultImportText}
+              rewriteComparison={rewriteComparison}
               snapshotImportText={snapshotImportText}
               resultScore={resultScore}
               runnerPlan={runnerPlan}
@@ -2679,6 +2807,7 @@ export default function App() {
               setGeneratorInput={setGeneratorInput}
               setImproveText={setImproveText}
               setInterviewBrief={setInterviewBrief}
+              setLearnerQuestion={setLearnerQuestion}
               setModelSettings={setModelSettings}
               setMutationSource={setMutationSource}
               setQaText={setQaText}
@@ -2694,6 +2823,7 @@ export default function App() {
               visualQa={visualQa}
               visualRegression={visualRegression}
               visualAnalysisResult={visualAnalysisResult}
+              archetypePromptPacks={archetypePromptPacks}
               onAnalyzeSelectedVisuals={analyzeSelectedVisuals}
               repairedPrompt={repairedPrompt}
               resultGallery={resultGallery}
@@ -3600,8 +3730,12 @@ function TrainView({
   interviewPrompt,
   goldenRecipes,
   goldReview,
+  guidedWizard,
   generatorPresets,
   generatorInput,
+  hostedSyncReport,
+  learnerAnswer,
+  learnerQuestion,
   learnedGeneratorVariants,
   leakageGuard,
   experimentLeaderboard,
@@ -3644,6 +3778,7 @@ function TrainView({
   onInstallSkill,
   onLoadDemoMode,
   onModelEvaluate,
+  onPullFromApi,
   onQueueBattle,
   onQuarantineWeakCorpus,
   onRefreshApiEvents,
@@ -3668,6 +3803,7 @@ function TrainView({
   outcomes,
   onboardingMode,
   pairwiseReviews,
+  patternExtraction,
   patternDashboard,
   promptBattle,
   promptCoach,
@@ -3679,6 +3815,7 @@ function TrainView({
   queueExport,
   queueJobs,
   resultImportText,
+  rewriteComparison,
   snapshotImportText,
   resultScore,
   runnerPlan,
@@ -3701,6 +3838,7 @@ function TrainView({
   setGeneratorInput,
   setImproveText,
   setInterviewBrief,
+  setLearnerQuestion,
   setModelSettings,
   setMutationSource,
   setQaText,
@@ -3716,6 +3854,7 @@ function TrainView({
   visualQa,
   visualRegression,
   visualAnalysisResult,
+  archetypePromptPacks,
   repairedPrompt,
   resultGallery,
   reusableMemoryPack,
@@ -3764,8 +3903,12 @@ function TrainView({
   interviewPrompt: string;
   goldenRecipes: GoldenRecipe[];
   goldReview: GoldReviewReport;
+  guidedWizard: GuidedPromptWizardReport;
   generatorPresets: GeneratorPreset[];
   generatorInput: LearnedGeneratorInput;
+  hostedSyncReport: HostedSyncReport;
+  learnerAnswer: LearnerAnswerReport;
+  learnerQuestion: string;
   learnedGeneratorVariants: LearnedGeneratorVariant[];
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
@@ -3816,6 +3959,7 @@ function TrainView({
   onInstallSkill: () => void;
   onLoadDemoMode: () => void;
   onModelEvaluate: () => void;
+  onPullFromApi: () => void;
   onQueueBattle: () => void;
   onQuarantineWeakCorpus: () => void;
   onRefreshApiEvents: () => void;
@@ -3840,6 +3984,7 @@ function TrainView({
   outcomes: OutcomeRecord[];
   onboardingMode: OnboardingMode;
   pairwiseReviews: PairwiseReviewRecord[];
+  patternExtraction: PatternExtractionReport;
   patternDashboard: PatternDashboardReport;
   promptBattle: PromptBattle;
   promptCoach: PromptCoachReport;
@@ -3851,6 +3996,7 @@ function TrainView({
   queueExport: string;
   queueJobs: BuildQueueJob[];
   resultImportText: string;
+  rewriteComparison: PromptImprovementComparison;
   snapshotImportText: string;
   resultScore: ResultScore;
   runnerPlan?: BuildRunnerPlan;
@@ -3873,6 +4019,7 @@ function TrainView({
   setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
   setImproveText: (value: string) => void;
   setInterviewBrief: Dispatch<SetStateAction<InterviewBrief>>;
+  setLearnerQuestion: (value: string) => void;
   setModelSettings: Dispatch<
     SetStateAction<{
       provider: string;
@@ -3898,6 +4045,7 @@ function TrainView({
   visualQa: VisualQaReport;
   visualRegression: VisualRegressionReport;
   visualAnalysisResult?: Record<string, unknown>;
+  archetypePromptPacks: PromptPack[];
   repairedPrompt: string;
   resultGallery: ResultGalleryItem[];
   reusableMemoryPack: ReusableMemoryPack;
@@ -3988,6 +4136,50 @@ function TrainView({
         onRunModelBatchCalibration={onRunModelBatchCalibration}
       />
 
+      <GuidedPromptWizardPanel
+        copied={copied}
+        generatorInput={generatorInput}
+        guidedWizard={guidedWizard}
+        onApplyGeneratorVariant={onApplyGeneratorVariant}
+        onCopy={onCopy}
+        onSave={onSave}
+        setGeneratorInput={setGeneratorInput}
+      />
+
+      <section className="train-columns">
+        <PatternExtractionPanel copied={copied} onCopy={onCopy} patternExtraction={patternExtraction} />
+        <AskLearnerPanel
+          answer={learnerAnswer}
+          copied={copied}
+          onCopy={onCopy}
+          question={learnerQuestion}
+          setQuestion={setLearnerQuestion}
+        />
+      </section>
+
+      <section className="train-columns">
+        <PromptImprovementStudioPanel
+          coachInput={coachInput}
+          copied={copied}
+          onCopy={onCopy}
+          onSave={onSave}
+          rewriteComparison={rewriteComparison}
+          setCoachInput={setCoachInput}
+        />
+        <ScreenshotScoringStudioPanel
+          onAddScreenshot={onAddScreenshot}
+          onUpdateOutcome={onUpdateOutcome}
+          selectedPrompt={selectedPrompt}
+        />
+      </section>
+
+      <ArchetypePromptPackPanel
+        copied={copied}
+        onCopy={onCopy}
+        onDownload={onDownload}
+        packs={archetypePromptPacks}
+      />
+
       <section className="train-columns">
         <SourceSafetyDashboard
           leakageGuard={leakageGuard}
@@ -4032,7 +4224,9 @@ function TrainView({
         buildRuns={buildRuns}
         dbStatus={dbStatus}
         examples={examples}
+        hostedSyncReport={hostedSyncReport}
         onCheckApi={onCheckApi}
+        onPullFromApi={onPullFromApi}
         onSyncToApi={onSyncToApi}
         outcomes={outcomes}
         screenshots={screenshots}
@@ -4423,6 +4617,394 @@ function TrainView({
   );
 }
 
+function GuidedPromptWizardPanel({
+  copied,
+  generatorInput,
+  guidedWizard,
+  onApplyGeneratorVariant,
+  onCopy,
+  onSave,
+  setGeneratorInput,
+}: {
+  copied: string;
+  generatorInput: LearnedGeneratorInput;
+  guidedWizard: GuidedPromptWizardReport;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
+}) {
+  function update<K extends keyof LearnedGeneratorInput>(key: K, value: LearnedGeneratorInput[K]) {
+    setGeneratorInput((current) => ({ ...current, [key]: value }));
+  }
+
+  const fields: { key: keyof LearnedGeneratorInput; label: string; multiline?: boolean }[] = [
+    { key: "brandName", label: "Brand" },
+    { key: "siteType", label: "Website type" },
+    { key: "audience", label: "Audience" },
+    { key: "goal", label: "Goal", multiline: true },
+    { key: "stack", label: "Stack" },
+    { key: "visualStyle", label: "Signature mechanic", multiline: true },
+    { key: "assets", label: "Assets", multiline: true },
+    { key: "constraints", label: "No-go rules", multiline: true },
+  ];
+
+  return (
+    <section className="panel lab-panel guided-wizard-panel" data-testid="guided-prompt-wizard">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Real prompt generation workflow</h2>
+        </div>
+        <ScoreRing score={guidedWizard.readiness} label="Ready" />
+      </div>
+      <div className="wizard-form-grid">
+        {fields.map((field) => (
+          <Field label={field.label} key={field.key}>
+            {field.multiline ? (
+              <textarea
+                value={String(generatorInput[field.key] ?? "")}
+                onChange={(event) => update(field.key, event.target.value as never)}
+              />
+            ) : (
+              <input
+                value={String(generatorInput[field.key] ?? "")}
+                onChange={(event) => update(field.key, event.target.value as never)}
+              />
+            )}
+          </Field>
+        ))}
+      </div>
+      <Field label={`Strictness ${generatorInput.strictness}/10`}>
+        <input type="range" min="1" max="10" value={generatorInput.strictness} onChange={(event) => update("strictness", Number(event.target.value))} />
+      </Field>
+      <div className="wizard-question-grid">
+        {guidedWizard.questions.map((question) => (
+          <article className="wizard-question-card" data-ready={question.answered} key={question.key}>
+            <strong>{question.answered ? "Done" : "Needed"}</strong>
+            <span>{question.label}</span>
+            <p>{question.hint}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Next actions" items={guidedWizard.nextActions} empty="Wizard is ready." />
+      <div className="preset-grid">
+        {guidedWizard.variants.map((variant) => (
+          <article className="preset-card" key={variant.id}>
+            <div className="dna-v2-topline">
+              <strong>{variant.title}</strong>
+              <span data-tone={scoreTone(variant.score)}>{variant.score}</span>
+            </div>
+            <p>{variant.bestFor}</p>
+            <small>{variant.signals.slice(0, 5).join(", ")}</small>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onApplyGeneratorVariant(variant)}>
+                Use
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(variant.prompt, `guided-${variant.id}`)}>
+                {copied === `guided-${variant.id}` ? <Check size={15} /> : <Copy size={15} />}
+                Copy
+              </button>
+              <button className="primary-button compact-button" type="button" onClick={() => onSave("generated", variant.title, variant.prompt, variant.score)}>
+                <Save size={15} />
+                Save
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PatternExtractionPanel({
+  copied,
+  onCopy,
+  patternExtraction,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  patternExtraction: PatternExtractionReport;
+}) {
+  const markdown = patternExtraction.blocks
+    .map((block) => `## ${block.label}\nScore: ${block.score}\nCategory: ${block.category}\nPatch: ${block.promptPatch}\nEvidence: ${block.evidence.join(", ")}`)
+    .join("\n\n");
+  return (
+    <section className="panel lab-panel" data-testid="pattern-extraction-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Example-to-pattern extraction</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(markdown, "pattern-extraction")}>
+          {copied === "pattern-extraction" ? <Check size={15} /> : <Copy size={15} />}
+          Copy
+        </button>
+      </div>
+      <FeedbackList title="Extraction summary" items={patternExtraction.summary} empty="No pattern summary yet." />
+      <div className="pattern-block-grid">
+        {patternExtraction.blocks.slice(0, 10).map((block) => (
+          <article className="pattern-block-card" key={block.id}>
+            <div className="dna-v2-topline">
+              <strong>{block.label}</strong>
+              <span data-tone={scoreTone(block.score)}>{block.score}</span>
+            </div>
+            <span>{block.category}</span>
+            <p>{block.promptPatch}</p>
+            <small>{block.evidence.slice(0, 3).join(" / ") || "No specific evidence row."}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PromptImprovementStudioPanel({
+  coachInput,
+  copied,
+  onCopy,
+  onSave,
+  rewriteComparison,
+  setCoachInput,
+}: {
+  coachInput: string;
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  rewriteComparison: PromptImprovementComparison;
+  setCoachInput: (value: string) => void;
+}) {
+  return (
+    <section className="panel lab-panel" data-testid="prompt-improvement-studio">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Before/after prompt improvement</h2>
+        </div>
+        <div className="score-delta" data-positive={rewriteComparison.delta >= 0}>
+          {rewriteComparison.originalScore} to {rewriteComparison.improvedScore}
+          <strong>{rewriteComparison.delta >= 0 ? "+" : ""}{rewriteComparison.delta}</strong>
+        </div>
+      </div>
+      <Field label="Prompt to improve">
+        <textarea
+          value={coachInput}
+          onChange={(event) => setCoachInput(event.target.value)}
+          placeholder="Paste a prompt here, or leave blank to improve the selected prompt."
+        />
+      </Field>
+      <div className="two-field-grid">
+        <FeedbackList title="Changed signals" items={rewriteComparison.changes} empty="No category changes yet." />
+        <FeedbackList title="Missing before" items={rewriteComparison.missingBefore.slice(0, 6)} empty="Original prompt is already strong." />
+      </div>
+      <textarea className="generated-output style-guide-output" readOnly value={rewriteComparison.improvedPrompt} />
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(rewriteComparison.improvedPrompt, "rewrite-comparison")}>
+          {copied === "rewrite-comparison" ? <Check size={15} /> : <Copy size={15} />}
+          Copy improved
+        </button>
+        <button className="primary-button compact-button" type="button" onClick={() => onSave("improved", "Before-after improved prompt", rewriteComparison.improvedPrompt, rewriteComparison.improvedScore)}>
+          <Save size={15} />
+          Save improved
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ScreenshotScoringStudioPanel({
+  onAddScreenshot,
+  onUpdateOutcome,
+  selectedPrompt,
+}: {
+  onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
+  onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
+  selectedPrompt?: PromptExample;
+}) {
+  const [title, setTitle] = useState("");
+  const [url, setUrl] = useState("");
+  const [notes, setNotes] = useState("");
+  const [rating, setRating] = useState<OutcomeRating>("unrated");
+  const [selectedIssues, setSelectedIssues] = useState<string[]>([]);
+  const issueOptions = ["bad-mobile", "missing-assets", "text-overlap", "weak-first-viewport", "runtime-error", "generic-design"];
+  const issueNotes = [...selectedIssues, notes].filter(Boolean).join(". ");
+  const report: ScreenshotScoringReport = scoreScreenshotIssues(selectedPrompt, issueNotes, rating);
+
+  function toggleIssue(issue: string) {
+    setSelectedIssues((current) => (current.includes(issue) ? current.filter((item) => item !== issue) : [...current, issue]));
+  }
+
+  function saveScreenshot() {
+    if (!selectedPrompt || !url.trim()) return;
+    onAddScreenshot({
+      promptId: selectedPrompt.id,
+      title: title.trim() || `${selectedPrompt.title} scored screenshot`,
+      url,
+      notes: `${issueNotes}\n\n${report.promptPatch}`.trim(),
+      rating,
+    });
+    setTitle("");
+    setUrl("");
+    setNotes("");
+    setRating("unrated");
+    setSelectedIssues([]);
+  }
+
+  function promoteGold() {
+    if (!selectedPrompt) return;
+    onUpdateOutcome(selectedPrompt, {
+      rating: "great",
+      status: "gold",
+      notes: `Screenshot scoring promoted this prompt. Score ${report.score}/100. ${report.summary.join(" ")}`,
+    });
+  }
+
+  return (
+    <section className="panel lab-panel" data-testid="screenshot-scoring-studio">
+      <div className="output-header">
+        <div className="panel-header">
+          <FileText size={18} />
+          <h2>Result screenshot scoring</h2>
+        </div>
+        <ScoreRing score={report.score} label="Shot" />
+      </div>
+      <div className="two-field-grid">
+        <Field label="Screenshot title">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Homepage desktop, 1440px" />
+        </Field>
+        <Field label="Rating">
+          <select value={rating} onChange={(event) => setRating(event.target.value as OutcomeRating)}>
+            {ratingOptions.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Screenshot URL">
+        <input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://... or data:image/..." />
+      </Field>
+      <div className="issue-chip-grid" aria-label="Screenshot issue tags">
+        {issueOptions.map((issue) => (
+          <button className={selectedIssues.includes(issue) ? "active" : ""} key={issue} type="button" onClick={() => toggleIssue(issue)}>
+            {issue}
+          </button>
+        ))}
+      </div>
+      <Field label="Visual notes">
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="What did the screenshot prove or break?" />
+      </Field>
+      <FeedbackList title="Screenshot report" items={report.summary} empty="Add notes to score the result." />
+      <pre className="prompt-patch-box">{report.promptPatch}</pre>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={saveScreenshot} disabled={!selectedPrompt || !url.trim()}>
+          <Plus size={15} />
+          Save screenshot
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={promoteGold} disabled={!selectedPrompt || report.score < 80}>
+          <Trophy size={15} />
+          Mark gold
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function ArchetypePromptPackPanel({
+  copied,
+  onCopy,
+  onDownload,
+  packs,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  packs: PromptPack[];
+}) {
+  const bundle = packs.map((pack) => `# ${pack.title}\n\n${pack.description}\n\n${pack.prompts.join("\n\n---\n\n")}`).join("\n\n====\n\n");
+  return (
+    <section className="panel lab-panel" data-testid="archetype-prompt-pack-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Prompt pack export</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(bundle, "archetype-packs")}>
+            {copied === "archetype-packs" ? <Check size={15} /> : <Copy size={15} />}
+            Copy all
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onDownload("website-archetype-prompt-packs.md", bundle, "text/markdown")}>
+            <Download size={15} />
+            Export packs
+          </button>
+        </div>
+      </div>
+      <div className="prompt-pack-export-grid">
+        {packs.slice(0, 6).map((pack) => {
+          const text = `# ${pack.title}\n\n${pack.description}\n\n${pack.prompts.join("\n\n---\n\n")}`;
+          return (
+            <article className="prompt-pack-card" key={pack.id}>
+              <div className="dna-v2-topline">
+                <strong>{pack.title}</strong>
+                <span>{pack.prompts.length} prompts</span>
+              </div>
+              <p>{pack.description}</p>
+              <div className="button-row">
+                <button className="ghost-button compact-button" type="button" onClick={() => onCopy(text, pack.id)}>
+                  {copied === pack.id ? <Check size={15} /> : <Copy size={15} />}
+                  Copy
+                </button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onDownload(`${pack.id}.md`, text, "text/markdown")}>
+                  <Download size={15} />
+                  Download
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function AskLearnerPanel({
+  answer,
+  copied,
+  onCopy,
+  question,
+  setQuestion,
+}: {
+  answer: LearnerAnswerReport;
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  question: string;
+  setQuestion: (value: string) => void;
+}) {
+  const output = `${answer.answer}\n\nEvidence:\n- ${answer.evidence.join("\n- ")}\n\nSuggested patch:\n${answer.suggestedPromptPatch}`;
+  return (
+    <section className="panel lab-panel" data-testid="ask-learner-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Lightbulb size={18} />
+          <h2>Ask the prompt learner</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(output, "learner-answer")}>
+          {copied === "learner-answer" ? <Check size={15} /> : <Copy size={15} />}
+          Copy answer
+        </button>
+      </div>
+      <Field label="Question">
+        <textarea value={question} onChange={(event) => setQuestion(event.target.value)} />
+      </Field>
+      <div className="learner-answer-box">
+        <strong>{answer.answer}</strong>
+        <FeedbackList title="Evidence" items={answer.evidence} empty="No evidence available yet." />
+        <pre className="prompt-patch-box">{answer.suggestedPromptPatch}</pre>
+      </div>
+    </section>
+  );
+}
+
 function SourceSafetyDashboard({
   leakageGuard,
   onSelectPrompt,
@@ -4717,7 +5299,9 @@ function PersistenceStatusPanel({
   buildRuns,
   dbStatus,
   examples,
+  hostedSyncReport,
   onCheckApi,
+  onPullFromApi,
   onSyncToApi,
   outcomes,
   screenshots,
@@ -4728,7 +5312,9 @@ function PersistenceStatusPanel({
   buildRuns: BuildRunRecord[];
   dbStatus: string;
   examples: PromptExample[];
+  hostedSyncReport: HostedSyncReport;
   onCheckApi: () => void;
+  onPullFromApi: () => void;
   onSyncToApi: () => void;
   outcomes: OutcomeRecord[];
   screenshots: ScreenshotRecord[];
@@ -4749,7 +5335,8 @@ function PersistenceStatusPanel({
         </div>
         <div className="button-row">
           <button className="ghost-button compact-button" type="button" onClick={onCheckApi}>Check API</button>
-          <button className="primary-button compact-button" type="button" onClick={onSyncToApi}>Sync now</button>
+          <button className="ghost-button compact-button" type="button" onClick={onPullFromApi}>Pull API</button>
+          <button className="primary-button compact-button" type="button" onClick={onSyncToApi}>Push API</button>
         </div>
       </div>
       <div className="backend-grid">
@@ -4765,6 +5352,19 @@ function PersistenceStatusPanel({
           <h3>Persistence</h3>
           <p>{apiHealth?.sqlitePath || dbStatus}</p>
         </article>
+      </div>
+      <div className="gate-summary sync-summary">
+        <ScoreRing score={hostedSyncReport.score} label={hostedSyncReport.mode} />
+        <FeedbackList title="Sync summary" items={hostedSyncReport.summary} empty="No sync summary yet." />
+      </div>
+      <div className="sync-check-grid">
+        {hostedSyncReport.checks.map((check) => (
+          <article className="sync-check-card" data-ready={check.ready} key={check.label}>
+            <strong>{check.ready ? "Ready" : "Open"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </article>
+        ))}
       </div>
       <div className="source-safety-grid">
         {cards.map((card) => (
