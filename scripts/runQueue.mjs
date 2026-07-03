@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 function argValue(name, fallback = "") {
   const index = process.argv.indexOf(name);
@@ -16,6 +16,59 @@ function run(command, cwd, timeout = 120000) {
     stdout: result.stdout.trim(),
     stderr: result.error?.message || result.stderr.trim(),
   };
+}
+
+function sleep(ms) {
+  return new Promise((resolveSleep) => {
+    globalThis.setTimeout(resolveSleep, ms);
+  });
+}
+
+function applyPlaceholders(command, values) {
+  return command
+    .replaceAll("{runDir}", values.runDir)
+    .replaceAll("{implementationDir}", values.implementationDir || values.runDir)
+    .replaceAll("{promptFile}", join(values.implementationDir || values.runDir, "prompt.md"))
+    .replaceAll("{taskFile}", join(values.implementationDir || values.runDir, "codex-task.md"));
+}
+
+async function waitForUrl(url, timeout = 12000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return true;
+    } catch {
+      await sleep(350);
+    }
+  }
+  return false;
+}
+
+async function capturePreview({ buildCwd, port, screenshotDir }) {
+  const url = `http://127.0.0.1:${port}`;
+  const server = spawn("npm", ["run", "preview", "--", "--port", String(port)], {
+    cwd: buildCwd,
+    env: process.env,
+    stdio: "pipe",
+  });
+  let logs = "";
+  server.stdout.on("data", (chunk) => {
+    logs += chunk.toString();
+  });
+  server.stderr.on("data", (chunk) => {
+    logs += chunk.toString();
+  });
+  try {
+    const ready = await waitForUrl(url);
+    if (!ready) {
+      return { skipped: false, status: 1, stdout: logs.trim(), stderr: `Preview did not become ready at ${url}.\n${logs}`.trim(), url };
+    }
+    const capture = run(`npm run capture:result -- --url ${url} --out ${screenshotDir}`, process.cwd(), 90000);
+    return { ...capture, url, stdout: [logs.trim(), capture.stdout].filter(Boolean).join("\n") };
+  } finally {
+    server.kill("SIGTERM");
+  }
 }
 
 function escapeTemplate(text) {
@@ -142,6 +195,7 @@ const onlyJob = argValue("--job");
 const buildCommand = argValue("--build", process.env.PROMPT_LAB_BUILD_COMMAND || "");
 const agentCommand = argValue("--agent", process.env.PROMPT_LAB_AGENT_COMMAND || "");
 const capture = process.argv.includes("--capture");
+const previewBasePort = Number(argValue("--preview-port", process.env.PROMPT_LAB_PREVIEW_PORT || "4320"));
 const scaffold = process.argv.includes("--scaffold");
 const installDeps = process.argv.includes("--install");
 
@@ -161,7 +215,7 @@ if (!selectedJobs.length) {
 
 const results = [];
 
-for (const job of selectedJobs) {
+for (const [jobIndex, job] of selectedJobs.entries()) {
   const runDir = resolve(job.runFolder || join("prompt-runs", job.id));
   mkdirSync(runDir, { recursive: true });
   writeFileSync(join(runDir, "prompt.md"), `${job.promptText.trim()}\n`);
@@ -203,15 +257,26 @@ Agent-ready prompt lab run folder.
   );
 
   const implementationDir = scaffold ? writeScaffold(job, runDir) : "";
+  if (implementationDir) {
+    writeFileSync(
+      join(implementationDir, "codex-task.md"),
+      `Build the website described in prompt.md. Keep the app runnable with npm run build and npm run preview. Preserve the prompt intent exactly.\n`,
+    );
+  }
   const buildCwd = implementationDir || runDir;
-  const agentResult = run(agentCommand, runDir, 300000);
+  const effectiveAgentCommand = agentCommand ? applyPlaceholders(agentCommand, { runDir, implementationDir }) : "";
+  const agentResult = run(effectiveAgentCommand, buildCwd, 300000);
   const installResult = installDeps ? run("npm install", buildCwd, 180000) : { skipped: true, status: 0, stdout: "", stderr: "" };
   const effectiveBuildCommand = buildCommand || (scaffold && installDeps ? "npm run build" : "");
   const buildResult = run(effectiveBuildCommand, buildCwd, 180000);
   const screenshotDir = join(runDir, "screenshots");
   let captureResult = { skipped: true, status: 0, stdout: "", stderr: "" };
+  let resultUrl = job.resultUrl || "";
   if (capture && job.resultUrl) {
     captureResult = run(`npm run capture:result -- --url ${job.resultUrl} --out ${screenshotDir}`, process.cwd());
+  } else if (capture && implementationDir && buildResult.status === 0) {
+    captureResult = await capturePreview({ buildCwd, port: previewBasePort + jobIndex, screenshotDir });
+    resultUrl = captureResult.url || "";
   }
 
   const status = agentResult.status === 0 && installResult.status === 0 && buildResult.status === 0 && captureResult.status === 0 ? "completed" : "failed";
@@ -219,6 +284,7 @@ Agent-ready prompt lab run folder.
     ...job,
     status,
     runFolder: runDir,
+    resultUrl,
     screenshotUrl: existsSync(join(screenshotDir, "desktop.png")) ? join(screenshotDir, "desktop.png") : "",
     filesChanged: [implementationDir ? `implementation: ${listFiles(implementationDir).join(", ")}` : "", "prompt.md", "codex-task.md", "README.md", "queue-result.json"].filter(Boolean).join("\n"),
     errors: [agentResult.stderr, installResult.stderr, buildResult.stderr, captureResult.stderr].filter(Boolean).join("\n"),

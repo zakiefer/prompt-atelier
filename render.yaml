@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: prompt-atelier-api
+    env: docker
+    plan: starter
+    autoDeploy: true
+    healthCheckPath: /api/health
+    disk:
+      name: prompt-atelier-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: PROMPT_LAB_API_PORT
+        value: 8787
+      - key: PROMPT_LAB_DATA_DIR
+        value: /data
+      - key: PROMPT_LAB_ALLOWED_ORIGIN
+        value: https://zakiefer.github.io
+      - key: PROMPT_LAB_API_TOKEN
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

@@ -1428,7 +1428,14 @@ button:disabled {
   align-items: end;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr) auto;
+  margin-top: 12px;
+}
+
+.coach-output-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
   margin-top: 12px;
 }
 
@@ -2327,6 +2334,11 @@ button:disabled {
   .evaluate-grid,
   .lab-columns,
   .train-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .api-base-row,
+  .coach-output-grid {
     grid-template-columns: 1fr;
   }
 

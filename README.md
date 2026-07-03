@@ -18,6 +18,9 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Corpus curation so repo-task prompts can be quarantined from website-prompt learning
 - Batch model calibration across curated prompts
 - Configurable API base for local or hosted backend usage
+- Token-protected hosted API mode with external SQLite data directory support
+- Pairwise ground-truth labeling, pattern dashboards, prompt coaching, visual regression scoring, and project export packs
+- Queue runner scaffolding that can install, build, preview, and capture screenshots for generated Vite apps
 - Codex skill and reusable memory pack exports
 
 ## Development
@@ -37,6 +40,21 @@ Optional Claude evaluator:
 
 ```bash
 ANTHROPIC_API_KEY=... npm run api
+```
+
+Hosted-style API with persistent storage and bearer auth:
+
+```bash
+PROMPT_LAB_DATA_DIR=/data \
+PROMPT_LAB_API_TOKEN=replace-me \
+PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io \
+npm run api
+```
+
+Queue worker smoke for scaffolded builds:
+
+```bash
+npm run run:queue -- --queue prompt-lab-queue.json --scaffold --install --capture --preview-port 4320
 ```
 
 Useful checks:
@@ -60,6 +78,7 @@ The app runs at `http://127.0.0.1:5173` and the API runs at `http://127.0.0.1:87
 - Training snapshots can be exported and restored from the Train tab.
 - Dataset versions are persisted as a first-class collection.
 - Curation decisions and model batch evaluations are persisted as first-class collections.
+- Pairwise reviews are persisted as a first-class collection.
 
 ## Learning Loop
 
@@ -68,7 +87,9 @@ The Train tab now starts with:
 1. A first-run checklist for curation, versioning, API connection, calibration, and memory export.
 2. Corpus curation that classifies website prompts, raw HTML prompts, repo tasks, and review tasks.
 3. Claude/local batch calibration for comparing external model judgment against internal DNA scores.
-4. A visual QA dashboard for screenshot coverage, failed runs, and pixel-analysis summaries.
+4. Pairwise labeling that converts human preference into gold and avoid outcome records.
+5. Pattern and visual regression dashboards for spotting which prompt structures are actually winning.
+6. A Claude/local prompt coach and project export pack for turning the current state into a reusable handoff.
 
 The raw corpus remains visible, but recipe, memory, search, and generator learning use curated website prompts by default.
 
