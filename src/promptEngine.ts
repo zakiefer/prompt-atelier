@@ -984,6 +984,95 @@ export type EvaluationArtifact = {
   nextMutation: string;
 };
 
+export type CorpusProvenanceFirewallReport = {
+  score: number;
+  allowedCount: number;
+  reviewCount: number;
+  quarantinedCount: number;
+  rows: {
+    id: string;
+    title: string;
+    source: PromptExample["source"];
+    createdAt: string;
+    decision: "allow" | "review" | "quarantine";
+    reason: string;
+    originHint: string;
+    risk: number;
+  }[];
+  notes: string[];
+  actions: string[];
+};
+
+export type GuidedTrainingStepperReport = {
+  score: number;
+  currentStep: string;
+  steps: {
+    id: string;
+    label: string;
+    status: "ready" | "active" | "blocked";
+    score: number;
+    detail: string;
+    fix: string;
+  }[];
+  notes: string[];
+};
+
+export type BuildResultLearningReport = {
+  score: number;
+  status: "ready-to-learn" | "needs-proof" | "needs-repair";
+  rows: { label: string; value: number; state: "ready" | "watch" | "blocked"; detail: string }[];
+  nextActions: string[];
+  notes: string[];
+};
+
+export type PromptQualityDnaReport = {
+  score: number;
+  label: string;
+  dimensions: {
+    key: string;
+    label: string;
+    score: number;
+    plainEnglish: string;
+    fix: string;
+  }[];
+  summary: string[];
+};
+
+export type PromptRecipeDistillerReport = {
+  score: number;
+  recipes: { title: string; score: number; ingredients: string[]; promptPatch: string }[];
+  notes: string[];
+};
+
+export type ModelJudgeComparisonReport = {
+  score: number;
+  alignment: "aligned" | "watch" | "divergent" | "empty";
+  rows: { label: string; score: number; detail: string }[];
+  notes: string[];
+};
+
+export type BenchmarkLibraryReport = {
+  score: number;
+  covered: number;
+  total: number;
+  rows: { id: string; title: string; status: "covered" | "thin"; missingTraits: string[]; fix: string }[];
+  notes: string[];
+};
+
+export type PromptEditorGuidanceReport = {
+  score: number;
+  sections: { id: string; label: string; status: "ready" | "thin"; detail: string; rewriteHint: string }[];
+  notes: string[];
+};
+
+export type BestNextActionReport = {
+  priority: "high" | "medium" | "low";
+  title: string;
+  target: string;
+  detail: string;
+  checklist: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -4858,6 +4947,405 @@ export function buildEvaluationArtifact({
     rulesUsed,
     proofStatus,
     nextMutation,
+  };
+}
+
+export function buildCorpusProvenanceFirewallReport({
+  curation,
+  examples,
+  leakage,
+}: {
+  curation: CorpusCurationReport;
+  examples: PromptExample[];
+  leakage: LeakageGuardReport;
+}): CorpusProvenanceFirewallReport {
+  const curationById = new Map(curation.items.map((item) => [item.promptId, item]));
+  const leakById = new Map(leakage.findings.map((item) => [item.promptId, item]));
+  const rows = examples.map((example) => {
+    const curationItem = curationById.get(example.id);
+    const leakItem = leakById.get(example.id);
+    const unsafeHits = leakItem?.matches ?? [];
+    const decision: CorpusProvenanceFirewallReport["rows"][number]["decision"] =
+      unsafeHits.length || curationItem?.recommendation === "quarantine" ? "quarantine" : curationItem?.recommendation === "review" ? "review" : "allow";
+    const risk = Math.max(0, Math.min(100, unsafeHits.length * 45 + (curationItem?.recommendation === "review" ? 35 : 0) + (curationItem?.recommendation === "quarantine" ? 60 : 0)));
+    return {
+      id: example.id,
+      title: example.title,
+      source: example.source,
+      createdAt: example.createdAt,
+      decision,
+      reason: unsafeHits[0] || curationItem?.reasons[0] || "Website prompt source is allowed for training.",
+      originHint: example.source === "attachment" ? "Imported from allowlisted attachment corpus." : example.source === "seed" ? "Curated seed prompt in repository." : "User-added prompt in browser corpus.",
+      risk,
+    };
+  });
+  const quarantinedCount = rows.filter((row) => row.decision === "quarantine").length;
+  const reviewCount = rows.filter((row) => row.decision === "review").length;
+  const allowedCount = rows.filter((row) => row.decision === "allow").length;
+  const score = Math.max(0, Math.min(100, 100 - quarantinedCount * 14 - reviewCount * 5 - leakage.blockers * 24 - leakage.warnings * 8));
+  return {
+    score,
+    allowedCount,
+    reviewCount,
+    quarantinedCount,
+    rows: rows.sort((a, b) => b.risk - a.risk).slice(0, 32),
+    notes: [
+      `${allowedCount} allowed / ${reviewCount} review / ${quarantinedCount} quarantine prompt(s).`,
+      leakage.status === "clean" ? "No cross-project or secret contamination detected." : "Review leakage warnings before exporting training memory.",
+    ],
+    actions: [
+      quarantinedCount ? "Keep quarantined prompts visible but excluded from recipes, generation, and memory exports." : "Keep the allowlist narrow and continue running corpus safety checks.",
+      reviewCount ? "Resolve review prompts before running a model training export." : "Corpus provenance is clear enough for guided training.",
+    ],
+  };
+}
+
+export function buildGuidedTrainingStepperReport({
+  benchmarkV2,
+  corpusFirewall,
+  corpusIntelligence,
+  evaluationArtifacts = [],
+  modelCache,
+  queueProgress,
+  safeToTrain,
+  trainingSummary,
+}: {
+  benchmarkV2: BenchmarkV2Report;
+  corpusFirewall: CorpusProvenanceFirewallReport;
+  corpusIntelligence: CorpusIntelligenceReport;
+  evaluationArtifacts?: EvaluationArtifact[];
+  modelCache: ModelEvaluationCacheReport;
+  queueProgress: QueueProgressReport;
+  safeToTrain: SafeToTrainReport;
+  trainingSummary: ReturnType<typeof buildTrainingRunSummary>;
+}): GuidedTrainingStepperReport {
+  const steps = [
+    { id: "ingest", label: "Ingest", score: corpusFirewall.score, detail: corpusFirewall.notes[0], fix: corpusFirewall.actions[0] },
+    { id: "curate", label: "Curate", score: corpusIntelligence.score, detail: `${corpusIntelligence.clusters.length} cluster(s), ${corpusIntelligence.gaps.length} gap(s).`, fix: corpusIntelligence.suggestions[0] || "Keep curation balanced across archetypes." },
+    { id: "judge", label: "Judge", score: Math.max(0, 100 - modelCache.averageDelta), detail: `${modelCache.items.length} cached model/local comparison(s).`, fix: modelCache.items.length ? modelCache.notes[1] : "Run Cache eval on the selected prompt." },
+    { id: "benchmark", label: "Benchmark", score: benchmarkV2.score, detail: benchmarkV2.summary[0], fix: benchmarkV2.rows.find((row) => row.missingTraits.length)?.suggestedFix || "Benchmark library is covered." },
+    { id: "prove", label: "Prove", score: queueProgress.score, detail: queueProgress.notes[0], fix: queueProgress.score >= 75 ? "Proof loop is moving." : "Queue a build and attach desktop/mobile screenshots." },
+    { id: "export", label: "Export", score: evaluationArtifacts.length || trainingSummary.latest ? 100 : 35, detail: evaluationArtifacts.length ? `${evaluationArtifacts.length} artifact(s) ready.` : "No evaluation artifact yet.", fix: "Create an evaluation artifact before handing the prompt to another agent." },
+    { id: "host", label: "Host", score: safeToTrain.score, detail: safeToTrain.safe ? "Hosted setup is safe to train." : `${safeToTrain.blocking.length} hosted blocker(s).`, fix: safeToTrain.blocking[0] || "Hosted setup is ready." },
+  ].map((step) => ({
+    ...step,
+    status: step.score >= 75 ? "ready" as const : step.score >= 45 ? "active" as const : "blocked" as const,
+  }));
+  const score = Math.round(steps.reduce((sum, step) => sum + step.score, 0) / Math.max(1, steps.length));
+  const currentStep = steps.find((step) => step.status !== "ready")?.label ?? "Export";
+  return {
+    score,
+    currentStep,
+    steps,
+    notes: [
+      `Guided stepper average is ${score}.`,
+      `Current focus: ${currentStep}.`,
+      steps.filter((step) => step.status === "blocked").length ? "Blocked steps need fixes before model training export." : "No blocked guided steps.",
+    ],
+  };
+}
+
+export function buildBuildResultLearningReport({
+  queueProgress,
+  resultScore,
+  screenshotQa,
+  visualRegression,
+}: {
+  queueProgress: QueueProgressReport;
+  resultScore: ResultScore;
+  screenshotQa: ScreenshotQaReport;
+  visualRegression: VisualRegressionReport;
+}): BuildResultLearningReport {
+  const rows = [
+    { label: "Queue proof", value: queueProgress.score, detail: queueProgress.notes[0] },
+    { label: "Build result", value: resultScore.score, detail: resultScore.recommendations[0] || "No build result recommendations." },
+    { label: "Screenshot QA", value: screenshotQa.score, detail: screenshotQa.notes[0] || "No screenshot QA notes." },
+    { label: "Visual regression", value: visualRegression.score, detail: visualRegression.notes[0] || "No visual regression summary." },
+  ].map((row) => ({
+    ...row,
+    state: row.value >= 75 ? "ready" as const : row.value >= 45 ? "watch" as const : "blocked" as const,
+  }));
+  const score = Math.round(rows.reduce((sum, row) => sum + row.value, 0) / rows.length);
+  const status = rows.some((row) => row.state === "blocked") ? "needs-repair" : rows.some((row) => row.state === "watch") ? "needs-proof" : "ready-to-learn";
+  return {
+    score,
+    status,
+    rows,
+    nextActions: rows.filter((row) => row.state !== "ready").map((row) => `${row.label}: ${row.detail}`).slice(0, 5),
+    notes: [
+      status === "ready-to-learn" ? "Build evidence is strong enough to write back into learning memory." : "Do not promote this prompt until weak proof rows are repaired.",
+      `Proof score blends ${rows.length} result signals.`,
+    ],
+  };
+}
+
+export function buildPromptQualityDnaReport({
+  dnaExplanation,
+  qualityGate,
+  resultScore,
+  screenshotQa,
+}: {
+  dnaExplanation: DnaScoreExplanation;
+  qualityGate: QualityGateReport;
+  resultScore: ResultScore;
+  screenshotQa: ScreenshotQaReport;
+}): PromptQualityDnaReport {
+  const dimensions = [
+    ...dnaExplanation.dimensions.map((dimension) => ({
+      key: dimension.key,
+      label: dimension.label,
+      score: dimension.score,
+      plainEnglish: dimension.why,
+      fix: dimension.nextAction,
+    })),
+    {
+      key: "quality-gate",
+      label: "Proof readiness",
+      score: qualityGate.score,
+      plainEnglish: qualityGate.ready ? "The prompt has enough implementation detail to build and verify." : "The prompt is missing build or proof gates.",
+      fix: qualityGate.nextPromptPatch,
+    },
+    {
+      key: "actual-result",
+      label: "Actual result",
+      score: resultScore.score,
+      plainEnglish: "How well the imported build result supports the prompt.",
+      fix: resultScore.recommendations[0] || "Import a build result and screenshot proof.",
+    },
+    {
+      key: "screenshot-readiness",
+      label: "Screenshot readiness",
+      score: screenshotQa.score,
+      plainEnglish: "Whether desktop/mobile screenshots are present and scorable.",
+      fix: screenshotQa.captureCommands[0] || "Capture desktop and mobile screenshots.",
+    },
+  ];
+  const score = Math.round(dimensions.reduce((sum, dimension) => sum + dimension.score, 0) / Math.max(1, dimensions.length));
+  return {
+    score,
+    label: score >= 80 ? "training-grade" : score >= 60 ? "needs proof" : "repair first",
+    dimensions,
+    summary: [
+      `Prompt Quality DNA is ${score}/100.`,
+      dnaExplanation.summary[0] || "Static DNA, proof readiness, result evidence, and screenshots are blended.",
+      dimensions.filter((dimension) => dimension.score < 65).length ? "Low dimensions should become the next prompt patch." : "No major weak dimensions detected.",
+    ],
+  };
+}
+
+export function buildPromptRecipeDistillerReport({
+  goldenRecipes = [],
+  patternExtraction,
+  promptMemory,
+}: {
+  goldenRecipes?: GoldenRecipe[];
+  patternExtraction: PatternExtractionReport;
+  promptMemory: PromptMemoryExport;
+}): PromptRecipeDistillerReport {
+  const recipeRows = [
+    ...goldenRecipes.slice(0, 4).map((recipe) => ({
+      title: recipe.archetype,
+      score: recipe.score,
+      ingredients: recipe.recipe.slice(0, 5),
+      promptPatch: [...recipe.recipe.map((item) => `- ${item}`), ...recipe.avoid.map((item) => `- Avoid: ${item}`)].join("\n"),
+    })),
+    ...patternExtraction.blocks.slice(0, 4).map((block) => ({
+      title: block.label,
+      score: block.score,
+      ingredients: block.evidence.slice(0, 5),
+      promptPatch: block.promptPatch,
+    })),
+  ];
+  const recipes = recipeRows.length ? recipeRows : promptMemory.sections.slice(0, 4).map((section) => ({
+    title: section.title,
+    score: Math.min(100, 50 + section.items.length * 8),
+    ingredients: section.items.slice(0, 5),
+    promptPatch: section.items.map((item) => `- ${item}`).join("\n"),
+  }));
+  const score = Math.round(recipes.reduce((sum, recipe) => sum + recipe.score, 0) / Math.max(1, recipes.length));
+  return {
+    score,
+    recipes,
+    notes: [
+      `${recipes.length} reusable prompt recipe(s) distilled from gold examples, pattern blocks, or memory sections.`,
+      "Use these recipes to generate sections instead of cloning full prompts.",
+    ],
+  };
+}
+
+export function buildModelJudgeComparisonReport({
+  cacheReport,
+  qualityGate,
+  resultScore,
+}: {
+  cacheReport: ModelEvaluationCacheReport;
+  qualityGate: QualityGateReport;
+  resultScore: ResultScore;
+}): ModelJudgeComparisonReport {
+  const latest = cacheReport.items[0];
+  const modelScore = latest?.score ?? 0;
+  const rows = [
+    { label: "Model judge", score: modelScore, detail: latest ? `${latest.provider} says ${latest.readiness}.` : "No cached model evaluation yet." },
+    { label: "Local DNA", score: latest?.localScore ?? qualityGate.score, detail: latest ? `${latest.agreement} with model.` : "Local quality gate is the current fallback." },
+    { label: "Actual result", score: resultScore.score, detail: resultScore.recommendations[0] || "No imported build result yet." },
+    { label: "Quality gate", score: qualityGate.score, detail: qualityGate.ready ? "Ready" : qualityGate.blocking[0] || "Needs proof." },
+  ];
+  const nonZero = rows.filter((row) => row.score > 0);
+  const spread = nonZero.length ? Math.max(...nonZero.map((row) => row.score)) - Math.min(...nonZero.map((row) => row.score)) : 0;
+  const alignment: ModelJudgeComparisonReport["alignment"] = !latest ? "empty" : spread <= 10 ? "aligned" : spread <= 24 ? "watch" : "divergent";
+  return {
+    score: Math.max(0, Math.min(100, 100 - spread)),
+    alignment,
+    rows,
+    notes: [
+      latest ? `Model/local delta is ${latest.delta}.` : "Run a cached model evaluation to compare model, local, and result signals.",
+      alignment === "divergent" ? "Do not auto-promote while model, local, and result evidence disagree." : "Signals are close enough for guided review.",
+    ],
+  };
+}
+
+export function buildBenchmarkLibraryReport({
+  corpusIntelligence,
+  fixtures = BENCHMARK_FIXTURES,
+}: {
+  corpusIntelligence: CorpusIntelligenceReport;
+  fixtures?: typeof BENCHMARK_FIXTURES;
+}): BenchmarkLibraryReport {
+  const gapByTitle = new Map(corpusIntelligence.gaps.map((gap) => [gap.label, gap]));
+  const rows = fixtures.map((fixture) => {
+    const gap = gapByTitle.get(fixture.title);
+    return {
+      id: fixture.id,
+      title: fixture.title,
+      status: gap ? "thin" as const : "covered" as const,
+      missingTraits: gap ? [...fixture.requiredSignals] : [],
+      fix: gap ? `Add or label more ${fixture.siteType.toLowerCase()} prompts with ${fixture.requiredSignals.join(", ")}.` : "Keep this fixture in the regression suite.",
+    };
+  });
+  const covered = rows.filter((row) => row.status === "covered").length;
+  const score = Math.round((covered / Math.max(1, rows.length)) * 100);
+  return {
+    score,
+    covered,
+    total: rows.length,
+    rows,
+    notes: [
+      `${covered}/${rows.length} benchmark archetype(s) covered by the corpus.`,
+      rows.some((row) => row.status === "thin") ? "Thin fixtures should become the next curated prompt search." : "Benchmark library is broadly covered.",
+    ],
+  };
+}
+
+export function buildPromptEditorGuidance(prompt?: PromptExample): PromptEditorGuidanceReport {
+  const text = prompt?.text ?? "";
+  const checks = [
+    { id: "brand", label: "Brand and audience", terms: ["brand", "audience", "called", "for"], rewriteHint: "Name the brand, product category, audience, and first-viewport promise." },
+    { id: "stack", label: "Stack", terms: ["react", "typescript", "vite", "tailwind"], rewriteHint: "Specify framework, styling system, icon/motion libraries, and disallowed libraries." },
+    { id: "visual", label: "Visual system", terms: ["font", "color", "layout", "video", "image"], rewriteHint: "Add exact fonts, colors, layout geometry, and real assets." },
+    { id: "interaction", label: "Interactions", terms: ["hover", "mobile", "menu", "animation", "focus"], rewriteHint: "Define desktop/mobile states, hover/focus, motion timing, and reduced-motion behavior." },
+    { id: "proof", label: "Verification", terms: ["test", "screenshot", "playwright", "build", "console"], rewriteHint: "Add build, lint, desktop/mobile screenshots, console checks, and overflow proof." },
+  ];
+  const lower = text.toLowerCase();
+  const sections = checks.map((check) => {
+    const hits = check.terms.filter((term) => lower.includes(term)).length;
+    return {
+      id: check.id,
+      label: check.label,
+      status: hits >= Math.ceil(check.terms.length / 2) ? "ready" as const : "thin" as const,
+      detail: `${hits}/${check.terms.length} signal(s) present.`,
+      rewriteHint: check.rewriteHint,
+    };
+  });
+  const score = Math.round((sections.filter((section) => section.status === "ready").length / sections.length) * 100);
+  return {
+    score,
+    sections,
+    notes: [
+      prompt ? `Editor guidance is based on ${prompt.title}.` : "Select a prompt to generate section editor guidance.",
+      "Regenerate only the thin sections instead of rewriting the whole prompt.",
+    ],
+  };
+}
+
+export function buildBestNextActionReport({
+  benchmarkLibrary,
+  buildLearning,
+  corpusFirewall,
+  modelComparison,
+  promptDna,
+  safeToTrain,
+  stepper,
+}: {
+  benchmarkLibrary: BenchmarkLibraryReport;
+  buildLearning: BuildResultLearningReport;
+  corpusFirewall: CorpusProvenanceFirewallReport;
+  modelComparison: ModelJudgeComparisonReport;
+  promptDna: PromptQualityDnaReport;
+  safeToTrain: SafeToTrainReport;
+  stepper: GuidedTrainingStepperReport;
+}): BestNextActionReport {
+  const candidates = [
+    corpusFirewall.quarantinedCount || corpusFirewall.reviewCount
+      ? {
+          priority: "high" as const,
+          title: "Resolve corpus provenance first",
+          target: "Provenance",
+          detail: corpusFirewall.actions[0],
+          checklist: corpusFirewall.rows.filter((row) => row.decision !== "allow").slice(0, 4).map((row) => `${row.title}: ${row.reason}`),
+        }
+      : undefined,
+    !safeToTrain.safe
+      ? {
+          priority: "high" as const,
+          title: "Finish safe-to-train setup",
+          target: "Hosted setup",
+          detail: safeToTrain.blocking[0] || "Hosted setup is incomplete.",
+          checklist: safeToTrain.blocking.slice(0, 4),
+        }
+      : undefined,
+    buildLearning.status !== "ready-to-learn"
+      ? {
+          priority: "high" as const,
+          title: "Add build proof before learning",
+          target: "Proof loop",
+          detail: buildLearning.nextActions[0] || buildLearning.notes[0],
+          checklist: buildLearning.rows.filter((row) => row.state !== "ready").map((row) => `${row.label}: ${row.detail}`),
+        }
+      : undefined,
+    modelComparison.alignment === "divergent"
+      ? {
+          priority: "medium" as const,
+          title: "Review model/local disagreement",
+          target: "Model intelligence",
+          detail: modelComparison.notes[1],
+          checklist: modelComparison.rows.map((row) => `${row.label}: ${row.score}`),
+        }
+      : undefined,
+    benchmarkLibrary.score < 75
+      ? {
+          priority: "medium" as const,
+          title: "Expand benchmark coverage",
+          target: "Benchmark library",
+          detail: benchmarkLibrary.notes[1],
+          checklist: benchmarkLibrary.rows.filter((row) => row.status === "thin").slice(0, 4).map((row) => row.fix),
+        }
+      : undefined,
+    promptDna.score < 75
+      ? {
+          priority: "medium" as const,
+          title: "Patch weak Prompt Quality DNA",
+          target: "Prompt DNA",
+          detail: promptDna.summary[2],
+          checklist: promptDna.dimensions.filter((dimension) => dimension.score < 65).slice(0, 4).map((dimension) => `${dimension.label}: ${dimension.fix}`),
+        }
+      : undefined,
+  ].filter(Boolean) as BestNextActionReport[];
+  return candidates[0] ?? {
+    priority: stepper.score >= 85 ? "low" : "medium",
+    title: stepper.score >= 85 ? "Create and export the next evaluation artifact" : `Continue guided step: ${stepper.currentStep}`,
+    target: stepper.score >= 85 ? "Evaluation artifacts" : "Guided workflow",
+    detail: stepper.notes[1],
+    checklist: stepper.steps.filter((step) => step.status !== "ready").map((step) => `${step.label}: ${step.fix}`).slice(0, 4),
   };
 }
 

@@ -2,6 +2,8 @@
 
 Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, closed-loop trainer results, benchmark runs, Claude health checks, prompt comparisons, screenshot-generated prompts, workspace packs, proof-loop runs, screenshot judge results, mutation tournaments, guided training runs, cached model evaluations, corpus intelligence runs, benchmark v2 runs, evaluation artifacts, hosted setup checks, and backups across browsers.
 
+The browser also computes deterministic training intelligence locally: corpus provenance, guided step readiness, real build-result learning, Prompt Quality DNA explanations, prompt recipes, benchmark-library coverage, generated-prompt editor guidance, model/local/result comparison, and best-next-action recommendations. These reports do not require a model key, but they become stronger when cached model evaluations, build runs, screenshots, and hosted artifacts are synced through the API.
+
 ## Render Blueprint
 
 1. Create a new Render Blueprint from this repository.
@@ -33,6 +35,8 @@ Claude evaluation runs through `/api/model/evaluate` on the Node API. Keep `ANTH
 If the key is absent, the API falls back to the local evaluator so the app remains usable, but Claude batch calibration, closed-loop training, prompt coach, benchmark scoring, A/B prompt comparison, and screenshot-to-prompt generation are strongest when `ANTHROPIC_API_KEY` is configured on the API host.
 
 Every model response is normalized to `schemaVersion: prompt-atelier.model-evaluation.v1` with `score`, `readiness`, `findings`, `recommendations`, optional prompt outputs, and a `redactions` array. Prompt text, memory, context, collection syncs, and API event details are redacted server-side before they are stored or logged.
+
+The Claude/local/result comparison panel reads cached model rows, local DNA scoring, and imported build outcomes together. Keep the Claude key server-side only: the browser should never receive `ANTHROPIC_API_KEY`, and the deterministic fallback is used whenever the hosted route cannot score safely.
 
 ## Training Artifacts
 
@@ -89,3 +93,5 @@ The top of the Train tab can run without a model key, then enrich through API ro
 - `POST /api/artifact/create`: creates a markdown/JSON evaluation artifact for the selected prompt.
 
 The browser always writes a local deterministic fallback before trying these routes. Hosted deployments should still set `PROMPT_LAB_API_TOKEN`, `PROMPT_LAB_DATA_DIR`, and `PROMPT_LAB_ALLOWED_ORIGIN` before treating the setup as safe to train.
+
+Safe-to-train should be considered a product gate, not just an API health check. A strong run has clean provenance, a locked dataset, recent backups, API auth, SQLite persistence, model-route readiness, redaction coverage, queue/proof history, benchmark coverage, and at least one imported build result or screenshot proof.

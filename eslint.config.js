@@ -3,7 +3,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist", "node_modules", "output"],
+    ignores: ["dist", "node_modules", "output", ".worktrees"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

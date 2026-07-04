@@ -48,6 +48,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, OpenAI fine-tune JSONL, Claude project memory, Codex skill bundles, evaluator schema JSON, and Markdown packs
 - One-click full training export pack with golden dataset, JSONL, prompt memory, quality grader, benchmark trend, project boundary report, reusable memory pack, and Codex build pack
 - Guided AI training workflow with durable run history, cached model/local agreement, candidate prompt quality loops, corpus intelligence, benchmark v2, safe-to-train checks, and evaluation artifacts
+- Best-next-action guidance, one-click training stepper, corpus provenance firewall, build-result learning loop, Claude/local/result comparison, prompt recipe distiller, section editor coaching, explainable Prompt Quality DNA, and benchmark-library coverage
 
 ## Development
 
@@ -97,9 +98,11 @@ Useful checks:
 ```bash
 npm run lint
 npm run test:engine
+npm run check:corpus-safety
 npm run test:api
 npm run build
 node --check scripts/promptLabApi.mjs
+node --check scripts/testApiRoutes.mjs
 node --check scripts/runQueue.mjs
 node --check scripts/analyzeScreenshots.mjs
 node --check scripts/visualQa.mjs
@@ -136,6 +139,7 @@ The Train tab now starts with:
 12. A production-hardening checklist, hosted brain connector, and Claude readiness panel covering API health, token posture, server-side model key visibility, restore points, dataset versions, and proof history.
 13. A collapsible training map, Train from this corpus button, queue progress ledger, memory diff, and visual proof gallery for operating the whole learner from one screen.
 14. A guided training product layer that records durable training runs, compares cached model judgment against local DNA, picks prompt candidates before spending build time, analyzes corpus gaps, runs benchmark v2, checks hosted safe-to-train posture, and packages evaluation artifacts.
+15. A best-next-action assistant, one-click stepper, provenance firewall, real build-result learning report, Claude/local/result comparison dashboard, distilled prompt recipes, generated-prompt editor guidance, explainable DNA dimensions, and benchmark-library coverage so the Train tab tells you what to do next instead of only showing raw scores.
 
 The tightest improvement cycle is:
 
@@ -154,6 +158,8 @@ Use the one-click export pack when handing the learner to another agent or model
 Use the Train from this corpus button after curation looks clean. It locks the current golden dataset, runs the benchmark suite, calibrates DNA against outcomes, and exports the model-training pack. The API and export paths redact recognized API keys, bearer tokens, and generic secrets before they are persisted or logged.
 
 Use Run guided train when you want the product workflow rather than the expert ladder. It writes a training run immediately, then syncs to `/api/training/run` when the API is available. Cache eval uses `/api/model/evaluate-cached` without sending browser secrets. Analyze, Run v2, and Create artifact call `/api/corpus/analyze`, `/api/benchmark/v2`, and `/api/artifact/create` while keeping deterministic browser fallbacks.
+
+Use the best-next-action panel when the system feels noisy. It prioritizes the next move from curation status, safe-to-train posture, model agreement, proof history, benchmark coverage, and available build evidence. The provenance firewall and Prompt Quality DNA panels explain why a prompt is safe, risky, thin, or ready so you can correct the corpus before spending another build run.
 
 ## Prompt Corpus
 
