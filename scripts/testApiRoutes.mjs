@@ -65,6 +65,7 @@ try {
     "benchmarkV2Runs",
     "evaluationArtifacts",
     "hostedSetupChecks",
+    "proofArtifacts",
   ];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
@@ -259,8 +260,29 @@ try {
   if (!closedLoopProof.ok || !closedLoopProofPayload.job?.id || !closedLoopProofPayload.proofRun?.id || closedLoopProofPayload.queueResult?.progressStage === "failed") {
     throw new Error("Closed-loop proof route should create and run a hosted queue proof job.");
   }
+  if (!closedLoopProofPayload.collections?.buildRuns?.length || !Array.isArray(closedLoopProofPayload.collections?.screenshots) || !Array.isArray(closedLoopProofPayload.collections?.proofArtifacts)) {
+    throw new Error("Closed-loop proof route should auto-import build, screenshot, and proof artifact collections.");
+  }
   if (!closedLoopProofPayload.redactions?.some((finding) => finding.kind === "anthropic-key") || JSON.stringify(closedLoopProofPayload).includes("sk-ant-api03-")) {
     throw new Error("Closed-loop proof route should redact prompt secrets.");
+  }
+
+  const rejectedQueuePath = await fetch(`${base}/api/queue/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ queuePath: "/tmp/prompt-atelier-outside.json", queue: { jobs: [] }, buildCommand: "true" }),
+  });
+  if (rejectedQueuePath.status !== 400) {
+    throw new Error(`Queue route should reject queue paths outside the API data directory, received ${rejectedQueuePath.status}.`);
+  }
+
+  const rejectedQueueCommand = await fetch(`${base}/api/queue/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ queue: { jobs: [] }, buildCommand: "rm -rf /" }),
+  });
+  if (rejectedQueueCommand.status !== 400) {
+    throw new Error(`Queue route should reject non-allowlisted build commands, received ${rejectedQueueCommand.status}.`);
   }
 
   const trainingRun = await fetch(`${base}/api/training/run`, {

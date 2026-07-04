@@ -48,7 +48,9 @@ import {
   buildCorpusCleaningReport,
   buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
+  buildDatasetGovernanceReport,
   buildEvaluationArtifact,
+  buildEvaluatorCalibrationWorkflowReport,
   buildEvaluationHistoryReport,
   buildExportPresets,
   buildFailureMemory,
@@ -92,11 +94,16 @@ import {
   buildModelJudgeComparisonReport,
   buildModelProviderRouterReport,
   buildOperatorModeReport,
+  buildProofArtifactStorageReport,
+  buildProviderPluginLayerReport,
+  buildQueueObservabilityReport,
+  buildSimpleModeReport,
   buildSourceSafetyReport,
   buildSpeedLabelingReport,
   buildTrainingRunSummary,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
+  buildWorkerSandboxReport,
   buildVisualRegressionReport,
   answerLearnerQuestion,
   buildRecipePrompt,
@@ -169,6 +176,7 @@ import {
   type CorpusIntelligenceReport,
   type CorpusCurationReport,
   type BulkImportPipelineReport,
+  type DatasetGovernanceReport,
   type DatasetVersion,
   type DatasetVersionComparison,
   type DnaCalibrationReport,
@@ -178,6 +186,7 @@ import {
   type Evaluation,
   type EvaluationArtifact,
   type EvaluationHistoryReport,
+  type EvaluatorCalibrationWorkflowReport,
   type CalibrationDashboardReport,
   type ClaudeCalibrationSetReport,
   type ClosedLoopRunDetailReport,
@@ -223,9 +232,11 @@ import {
   type PromptMutation,
   type PromptMemoryExport,
   type PromptLineageNode,
+  type ProofArtifactStorageReport,
   type PromptProfile,
   type PromptRank,
   type PromptTournament,
+  type ProviderPluginLayerReport,
   type SourceSafetyReport,
   type GoldenRecipe,
   type GeneratorPreset,
@@ -256,11 +267,14 @@ import {
   type ProjectExportPack,
   type CodexBuildPack,
   type QueueProgressReport,
+  type QueueObservabilityReport,
   type ScreenshotScoringReport,
+  type SimpleModeReport,
   type SpeedLabelingReport,
   type TrainingRunRecord,
   type TrueClosedLoopReport,
   type VisualProofComparisonReport,
+  type WorkerSandboxReport,
 } from "./promptEngine";
 import {
   analyzeScreenshots,
@@ -2726,6 +2740,40 @@ export default function App() {
       }),
     [apiEvents.length, apiHealth, backupSnapshots.length, hostedHardening],
   );
+  const workerSandbox = useMemo(
+    () =>
+      buildWorkerSandboxReport({
+        apiAdmin: apiAdminHardening,
+        configuredBuildCommand: modelSettings.buildCommand || "npm run build",
+        health: apiHealth,
+        hostedWorker: hostedBuildWorker,
+      }),
+    [apiAdminHardening, apiHealth, hostedBuildWorker, modelSettings.buildCommand],
+  );
+  const proofArtifactStorage = useMemo(
+    () => buildProofArtifactStorageReport({ buildRuns, screenshots }),
+    [buildRuns, screenshots],
+  );
+  const queueObservability = useMemo(
+    () => buildQueueObservabilityReport({ apiEvents, proofLearningRuns, queueProgress }),
+    [apiEvents, proofLearningRuns, queueProgress],
+  );
+  const simpleModeCleanup = useMemo(
+    () => buildSimpleModeReport({ beginnerPromptMaker, hostedBuildWorker, operatorMode, trueClosedLoop }),
+    [beginnerPromptMaker, hostedBuildWorker, operatorMode, trueClosedLoop],
+  );
+  const datasetGovernance = useMemo(
+    () => buildDatasetGovernanceReport({ comparison: datasetComparison, goldenDataset, versions: datasetVersions }),
+    [datasetComparison, datasetVersions, goldenDataset],
+  );
+  const providerPluginLayer = useMemo(
+    () => buildProviderPluginLayerReport({ cache: modelEvaluationCacheReport, router: modelProviderRouter }),
+    [modelEvaluationCacheReport, modelProviderRouter],
+  );
+  const evaluatorCalibrationWorkflow = useMemo(
+    () => buildEvaluatorCalibrationWorkflowReport({ calibrationDashboard, calibrationSet: claudeCalibrationSet }),
+    [calibrationDashboard, claudeCalibrationSet],
+  );
   const learnerAnswer = useMemo(
     () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
     [archetypePromptPacks, learnerQuestion, patternExtraction, profile],
@@ -3959,15 +4007,25 @@ export default function App() {
       const run = result.run as ClosedLoopRun | undefined;
       const job = result.job as BuildQueueJob | undefined;
       const proofRun = result.proofRun as ProofLearningRun | undefined;
-      const collections = result.collections as { closedLoopRuns?: unknown[]; queueJobs?: unknown[]; proofLearningRuns?: unknown[] } | undefined;
+      const collections = result.collections as {
+        buildRuns?: unknown[];
+        closedLoopRuns?: unknown[];
+        lineage?: unknown[];
+        proofLearningRuns?: unknown[];
+        queueJobs?: unknown[];
+        screenshots?: unknown[];
+      } | undefined;
       if (run) setClosedLoopRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 40));
       if (job) setQueueJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 140));
       if (proofRun) setProofLearningRuns((current) => [proofRun, ...current.filter((item) => item.id !== proofRun.id)].slice(0, 80));
+      if (Array.isArray(collections?.buildRuns)) setBuildRuns((collections.buildRuns as BuildRunRecord[]).slice(0, 120));
       if (Array.isArray(collections?.closedLoopRuns)) setClosedLoopRuns(collections.closedLoopRuns as ClosedLoopRun[]);
+      if (Array.isArray(collections?.lineage)) setLineageNodes((collections.lineage as PromptLineageNode[]).slice(0, 220));
       if (Array.isArray(collections?.queueJobs)) setQueueJobs((collections.queueJobs as BuildQueueJob[]).slice(0, 140));
       if (Array.isArray(collections?.proofLearningRuns)) setProofLearningRuns((collections.proofLearningRuns as ProofLearningRun[]).slice(0, 80));
+      if (Array.isArray(collections?.screenshots)) setScreenshots((collections.screenshots as ScreenshotRecord[]).slice(0, 120));
       setActiveTrainStage("Run");
-      setApiNotice(result.ok ? `Hosted proof worker completed ${job?.id || "the queue job"}. Import returned queue-result screenshots if needed.` : "Hosted proof worker returned a failed queue result.");
+      setApiNotice(result.ok ? `Hosted proof worker completed ${job?.id || "the queue job"} and imported returned proof artifacts.` : "Hosted proof worker returned a failed queue result.");
       void refreshApiEvents();
     } catch (error) {
       setApiNotice(`Hosted proof worker failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -6300,6 +6358,13 @@ export default function App() {
               visualProofComparison={visualProofComparison}
               modelProviderRouter={modelProviderRouter}
               apiAdminHardening={apiAdminHardening}
+              workerSandbox={workerSandbox}
+              proofArtifactStorage={proofArtifactStorage}
+              queueObservability={queueObservability}
+              simpleModeCleanup={simpleModeCleanup}
+              datasetGovernance={datasetGovernance}
+              providerPluginLayer={providerPluginLayer}
+              evaluatorCalibrationWorkflow={evaluatorCalibrationWorkflow}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -7452,6 +7517,13 @@ function TrainView({
   visualProofComparison,
   modelProviderRouter,
   apiAdminHardening,
+  workerSandbox,
+  proofArtifactStorage,
+  queueObservability,
+  simpleModeCleanup,
+  datasetGovernance,
+  providerPluginLayer,
+  evaluatorCalibrationWorkflow,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -7725,6 +7797,13 @@ function TrainView({
   visualProofComparison: VisualProofComparisonReport;
   modelProviderRouter: ModelProviderRouterReport;
   apiAdminHardening: ApiAdminHardeningReport;
+  workerSandbox: WorkerSandboxReport;
+  proofArtifactStorage: ProofArtifactStorageReport;
+  queueObservability: QueueObservabilityReport;
+  simpleModeCleanup: SimpleModeReport;
+  datasetGovernance: DatasetGovernanceReport;
+  providerPluginLayer: ProviderPluginLayerReport;
+  evaluatorCalibrationWorkflow: EvaluatorCalibrationWorkflowReport;
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -8013,9 +8092,26 @@ function TrainView({
       <HostedBuildWorkerPanel report={hostedBuildWorker} onRunHostedProofWorker={onRunHostedProofWorker} onRunQueueViaApi={onRunQueueViaApi} />
 
       <section className="train-columns">
+        <WorkerSandboxPanel report={workerSandbox} />
+        <QueueObservabilityPanel report={queueObservability} />
+      </section>
+
+      <section className="train-columns">
+        <ProofArtifactStoragePanel report={proofArtifactStorage} />
+        <SimpleModeCleanupPanel report={simpleModeCleanup} />
+      </section>
+
+      <section className="train-columns">
+        <DatasetGovernancePanel report={datasetGovernance} onLockGoldenDatasetV1={onLockGoldenDatasetV1} />
+        <ProviderPluginLayerPanel report={providerPluginLayer} onApplyProviderPreset={onApplyProviderPreset} />
+      </section>
+
+      <section className="train-columns">
         <ClosedLoopRunDetailPanel report={closedLoopRunDetail} />
         <ClaudeCalibrationSetPanel report={claudeCalibrationSet} onRunCachedModelEvaluation={onRunCachedModelEvaluation} />
       </section>
+
+      <EvaluatorCalibrationWorkflowPanel report={evaluatorCalibrationWorkflow} onRunCachedModelEvaluation={onRunCachedModelEvaluation} />
 
       <section className="train-columns">
         <BulkImportPipelinePanel report={bulkImportPipeline} onSelect={scrollToTrainSection} />
@@ -9031,6 +9127,195 @@ function HostedBuildWorkerPanel({
         <button className="ghost-button compact-button" type="button" onClick={onRunQueueViaApi}>Run existing queue</button>
       </div>
       <FeedbackList title="Worker notes" items={report.notes} empty="No worker notes." />
+    </section>
+  );
+}
+
+function WorkerSandboxPanel({ report }: { report: WorkerSandboxReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.readiness}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Check size={18} />
+          <h2>Worker sandbox and command guard</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Guarded" : "Needs guard"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Sandbox notes" items={report.notes} empty="No sandbox notes." />
+    </section>
+  );
+}
+
+function QueueObservabilityPanel({ report }: { report: QueueObservabilityReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status}>
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Queue observability timeline</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.stages.map((stage) => (
+          <div className="guided-step" key={stage.label} data-status={stage.ready ? "ready" : "active"}>
+            <strong>{stage.label}</strong>
+            <p>{stage.detail}</p>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Timeline notes" items={report.notes} empty="No queue notes." />
+    </section>
+  );
+}
+
+function ProofArtifactStoragePanel({ report }: { report: ProofArtifactStorageReport }) {
+  const artifactRows = report.artifacts.map((artifact) => `${artifact.title} - ${artifact.kind} - ${artifact.path || artifact.source}`);
+  return (
+    <section className="panel lab-panel" data-readiness={report.status}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Automatic proof import</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.artifacts.length)} label="Artifacts" />
+        <Metric value={report.status} label="Storage" />
+      </div>
+      <p className="selected-meta"><strong>Screenshot artifact storage</strong> attaches build, screenshot, lineage, and proof rows after hosted proof runs.</p>
+      <FeedbackList title="Stored artifacts" items={artifactRows} empty="No imported proof artifacts yet." />
+      <FeedbackList title="Import notes" items={report.notes} empty="No import notes." />
+    </section>
+  );
+}
+
+function SimpleModeCleanupPanel({ report }: { report: SimpleModeReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.mode}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Simple beginner mode cleanup</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.mode} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.steps.map((step) => (
+          <div className="guided-step" key={step.label} data-status={step.ready ? "ready" : "active"}>
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Hidden expert panels" items={report.hiddenPanels} empty="Expert mode keeps all panels visible." />
+      <FeedbackList title="Simple-mode notes" items={report.notes} empty="No simple-mode notes." />
+    </section>
+  );
+}
+
+function DatasetGovernancePanel({
+  onLockGoldenDatasetV1,
+  report,
+}: {
+  onLockGoldenDatasetV1: () => void;
+  report: DatasetGovernanceReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status}>
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Dataset governance</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <div className="safe-check" key={row.label} data-ready={row.ready ? "true" : "false"}>
+            <strong>{row.ready ? "Covered" : "Open"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onLockGoldenDatasetV1}>Lock Golden Dataset v1</button>
+      <FeedbackList title="Governance actions" items={report.actions} empty="No governance actions." />
+      <FeedbackList title="Governance notes" items={report.notes} empty="No governance notes." />
+    </section>
+  );
+}
+
+function ProviderPluginLayerPanel({
+  onApplyProviderPreset,
+  report,
+}: {
+  onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
+  report: ProviderPluginLayerReport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Provider plugin layer</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.activeRoute} />
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.adapters.map((adapter) => (
+          <div className="benchmark-row" key={adapter.id} data-status={adapter.ready ? "aligned" : "missing"}>
+            <strong>{adapter.label}</strong>
+            <p>{adapter.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("anthropic")}>Use server Claude</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("local")}>Use local fallback</button>
+      </div>
+      <FeedbackList title="Provider notes" items={report.notes} empty="No provider notes." />
+    </section>
+  );
+}
+
+function EvaluatorCalibrationWorkflowPanel({
+  onRunCachedModelEvaluation,
+  report,
+}: {
+  onRunCachedModelEvaluation: () => void;
+  report: EvaluatorCalibrationWorkflowReport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Evaluator calibration workflow</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <div className="safe-check" key={row.label} data-ready={row.ready ? "true" : "false"}>
+            <strong>{row.ready ? "Ready" : "Review"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>Run cached model evaluation</button>
+      <FeedbackList title="Calibration notes" items={report.notes} empty="No calibration notes." />
     </section>
   );
 }

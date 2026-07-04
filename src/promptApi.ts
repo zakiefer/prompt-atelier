@@ -68,6 +68,14 @@ export type ApiHealth = {
   authRequired?: boolean;
   allowedOrigin?: string;
   rateLimitPerMinute?: number;
+  maxBodyBytes?: number;
+  worker?: {
+    enabled: boolean;
+    timeoutMs: number;
+    allowedBuildCommands: string[];
+    agentPrefixesConfigured: number;
+    dataDir: string;
+  };
   skill: {
     installed: boolean;
     path: string;
