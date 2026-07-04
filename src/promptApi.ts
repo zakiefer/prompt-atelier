@@ -165,7 +165,7 @@ export function importResult<TBuildRun, TScreenshot, TLineage>(result: unknown) 
   });
 }
 
-export function evaluateWithModel(payload: { prompt: string; memory?: string; context?: unknown; settings?: Record<string, unknown> }) {
+export function evaluateWithModel(payload: { prompt: string; memory?: string; context?: unknown; settings?: Record<string, unknown>; imageDataUrl?: string }) {
   return requestJson<Record<string, unknown>>("/api/model/evaluate", {
     method: "POST",
     body: JSON.stringify(payload),

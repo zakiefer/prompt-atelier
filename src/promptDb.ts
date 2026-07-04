@@ -17,7 +17,11 @@ export type CollectionKey =
   | "backupSnapshots"
   | "activeWorkspace"
   | "closedLoopRuns"
-  | "benchmarkRuns";
+  | "benchmarkRuns"
+  | "claudeHealthChecks"
+  | "promptComparisons"
+  | "screenshotPromptRuns"
+  | "workspacePackRuns";
 
 type StoredCollection<T> = {
   key: CollectionKey;

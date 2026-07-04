@@ -29,6 +29,11 @@ const COLLECTION_KEYS = [
   "activeWorkspace",
   "closedLoopRuns",
   "benchmarkRuns",
+  "claudeHealthChecks",
+  "promptComparisons",
+  "screenshotPromptRuns",
+  "workspacePackRuns",
+  "healthChecks",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -266,8 +271,9 @@ function buildEvaluatorPrompt(body) {
   return [
     "You are a strict website-prompt evaluator for Prompt Atelier.",
     "Score whether the prompt is specific, buildable, visually strong, responsive, accessible, and ready for a coding agent.",
+    "If the task asks for prompt generation, screenshot recreation, A/B comparison, or recipe output, still score the work and put the generated prompt in rewrittenPrompt, the comparison hybrid in hybridPrompt, and the recipe in recipe.",
     "Return only JSON with this schema:",
-    '{"score": number, "findings": string[], "recommendations": string[], "readiness": "blocked" | "ready" | "excellent", "diagnosis": string[], "questions": string[], "rewrittenPrompt": string}',
+    '{"score": number, "findings": string[], "recommendations": string[], "readiness": "blocked" | "ready" | "excellent", "diagnosis": string[], "questions": string[], "rewrittenPrompt": string, "winner": string, "hybridPrompt": string, "recipe": string}',
     "",
     "PROMPT:",
     clampText(body.prompt, 9000),
@@ -277,6 +283,7 @@ function buildEvaluatorPrompt(body) {
     "",
     "CONTEXT:",
     clampText(JSON.stringify(body.context || {}, null, 2), 4000),
+    body.imageDataUrl ? "\nA screenshot image is attached as an image block. Use it only for visual reconstruction details." : "",
   ].join("\n");
 }
 
@@ -301,8 +308,24 @@ function normalizeModelEvaluation({ mode, payload, rawText }) {
     diagnosis,
     questions,
     rewrittenPrompt: typeof parsed.rewrittenPrompt === "string" ? parsed.rewrittenPrompt : "",
+    winner: typeof parsed.winner === "string" ? parsed.winner : "",
+    hybridPrompt: typeof parsed.hybridPrompt === "string" ? parsed.hybridPrompt : "",
+    recipe: typeof parsed.recipe === "string" ? parsed.recipe : "",
     rawText,
     payload,
+  };
+}
+
+function imageBlockFromDataUrl(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,([\s\S]+)$/i);
+  if (!match) return null;
+  return {
+    type: "image",
+    source: {
+      type: "base64",
+      media_type: match[1].toLowerCase() === "image/jpg" ? "image/jpeg" : match[1].toLowerCase(),
+      data: match[2].replace(/\s/g, ""),
+    },
   };
 }
 
@@ -314,10 +337,18 @@ async function anthropicModelEvaluation(body) {
     throw new Error("Missing Anthropic API key. Set ANTHROPIC_API_KEY, CLAUDE_API_KEY, PROMPT_LAB_MODEL_API_KEY, or provide settings.apiKey.");
   }
   const model = settings.model || process.env.PROMPT_LAB_MODEL_NAME || "claude-sonnet-5";
+  const imageBlock = imageBlockFromDataUrl(body.imageDataUrl);
   const requestBody = {
     model,
     max_tokens: Number(settings.maxTokens || process.env.PROMPT_LAB_MODEL_MAX_TOKENS || 900),
-    messages: [{ role: "user", content: buildEvaluatorPrompt(body) }],
+    messages: [
+      {
+        role: "user",
+        content: imageBlock
+          ? [{ type: "text", text: buildEvaluatorPrompt(body) }, imageBlock]
+          : buildEvaluatorPrompt(body),
+      },
+    ],
   };
   if (!/\bclaude-[a-z-]*5\b/.test(model)) {
     requestBody.temperature = Number(settings.temperature ?? 0.2);

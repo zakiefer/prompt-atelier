@@ -229,6 +229,10 @@ const ONBOARDING_KEY = "prompt-atelier-onboarding-mode";
 const WORKSPACE_KEY = "prompt-atelier-active-workspace";
 const CLOSED_LOOP_KEY = "prompt-atelier-closed-loop-runs";
 const BENCHMARK_KEY = "prompt-atelier-benchmark-runs";
+const CLAUDE_HEALTH_KEY = "prompt-atelier-claude-health-checks";
+const PROMPT_COMPARISON_KEY = "prompt-atelier-prompt-comparisons";
+const SCREENSHOT_PROMPT_KEY = "prompt-atelier-screenshot-prompt-runs";
+const WORKSPACE_PACK_KEY = "prompt-atelier-workspace-pack-runs";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -491,6 +495,54 @@ function readStoredBenchmarkRuns() {
   }
 }
 
+function readStoredClaudeHealthChecks() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(CLAUDE_HEALTH_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as HostedClaudeHealthCheck[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.createdAt).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredPromptComparisons() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROMPT_COMPARISON_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PromptComparisonRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.leftTitle && item?.rightTitle).slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredScreenshotPromptRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SCREENSHOT_PROMPT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ScreenshotPromptRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.prompt).slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredWorkspacePackRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(WORKSPACE_PACK_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as WorkspacePackRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && Array.isArray(item.packs)).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
 function readStoredOnboardingMode(): OnboardingMode {
   if (typeof window === "undefined") return "blank";
   const value = window.localStorage.getItem(ONBOARDING_KEY);
@@ -634,6 +686,63 @@ type BenchmarkRun = {
   }[];
 };
 
+type HostedClaudeHealthCheck = {
+  id: string;
+  createdAt: string;
+  apiOnline: boolean;
+  tokenValid: boolean;
+  claudeConfigured: boolean;
+  sqliteWritable: boolean;
+  modelRouteWorking: boolean;
+  modelMode: string;
+  modelScore: number;
+  apiBase: string;
+  sqlitePath: string;
+  detail: string[];
+};
+
+type PromptComparisonRun = {
+  id: string;
+  createdAt: string;
+  leftId: string;
+  rightId: string;
+  leftTitle: string;
+  rightTitle: string;
+  winnerId: string;
+  winnerTitle: string;
+  modelMode: string;
+  score: number;
+  findings: string[];
+  recommendations: string[];
+  hybridPrompt: string;
+};
+
+type ScreenshotPromptRun = {
+  id: string;
+  createdAt: string;
+  title: string;
+  screenshotTitle: string;
+  screenshotKind: "uploaded" | "url" | "notes";
+  prompt: string;
+  score: number;
+  modelMode: string;
+  notes: string[];
+  imagePreviewUrl?: string;
+};
+
+type WorkspacePackRun = {
+  id: string;
+  createdAt: string;
+  title: string;
+  packs: {
+    key: string;
+    label: string;
+    count: number;
+    markdown: string;
+    json: string;
+  }[];
+};
+
 const benchmarkBriefs: BenchmarkBrief[] = [
   {
     id: "cinematic-saas-hero",
@@ -757,6 +866,179 @@ const benchmarkBriefs: BenchmarkBrief[] = [
   },
 ];
 
+function topFeatureLabels(features: Feature[] | undefined, fallback: string[], limit = 6) {
+  const labels = (features ?? []).map((feature) => feature.label).filter(Boolean).slice(0, limit);
+  return labels.length ? labels : fallback;
+}
+
+function buildPromptQualityRecipeText(profile: PromptProfile, health: CorpusHealth, patternExtraction: PatternExtractionReport) {
+  const stacks = topFeatureLabels(profile.features.stack, ["React + TypeScript + Vite + Tailwind CSS"]);
+  const assets = topFeatureLabels(profile.features.assets, ["exact video/image URL", "logo asset", "desktop/mobile screenshots"]);
+  const typography = topFeatureLabels(profile.features.typography, ["Inter", "Instrument Serif"]);
+  const colors = topFeatureLabels(profile.features.color, ["hex/HSL tokens", "foreground/background variables"]);
+  const layout = topFeatureLabels(profile.features.layout, ["layer order", "z-index", "responsive grid"]);
+  const motion = topFeatureLabels(profile.features.motion, ["staggered reveal", "requestAnimationFrame loop"]);
+  const patterns = patternExtraction.blocks.slice(0, 4).map((block) => `- ${block.label}: ${block.promptPatch}`);
+  return [
+    "# Great Website Prompt Recipe",
+    "",
+    "## Stack",
+    `Use an exact build target and dependency boundary. Current corpus defaults: ${stacks.join(", ")}.`,
+    "",
+    "## Fonts",
+    `Name import method, weights, CSS variables/Tailwind extension, and UI usage. Frequent signals: ${typography.join(", ")}.`,
+    "",
+    "## Color System",
+    `Use real values and tokens for background, foreground, muted text, borders, surfaces, and hovers. Frequent signals: ${colors.join(", ")}.`,
+    "",
+    "## Assets",
+    `Use exact URLs or named generated asset slots. Include object-fit, focal point, preload/lazy behavior, and overlay rules. Frequent signals: ${assets.join(", ")}.`,
+    "",
+    "## Layout",
+    `Describe section anatomy, layer order, z-index, spacing, max widths, alignment, and responsive breakpoints. Frequent signals: ${layout.join(", ")}.`,
+    "",
+    "## Navigation And Controls",
+    "Specify desktop nav, mobile menu, CTA states, focus states, aria labels, disabled/loading states, and icon library.",
+    "",
+    "## Motion",
+    `Describe timing, delays, easing, state machines, cleanup, and reduced-motion behavior. Frequent signals: ${motion.join(", ")}.`,
+    "",
+    "## Constraints",
+    "State no-go rules explicitly: no generic stock, no unlisted libraries, no decorative filler, no text overlap, no missing mobile behavior.",
+    "",
+    "## QA",
+    "Require desktop and mobile screenshots, console/network checks, media-render checks, text-fit/overflow checks, and a build command.",
+    "",
+    "## Learned Pattern Patches",
+    patterns.length ? patterns.join("\n") : "- Add gold labels and screenshots to strengthen recipe patches.",
+    "",
+    "## Current Corpus Gaps To Cover",
+    health.gaps.map((gap) => `- ${gap}`).join("\n") || "- Keep balancing archetypes and visual systems.",
+  ].join("\n");
+}
+
+function buildCorpusQualityCards(examples: PromptExample[], clusters: ArchetypeCluster[], profile: PromptProfile, screenshots: ScreenshotRecord[]) {
+  const lowerCorpus = examples.map((example) => `${example.title}\n${example.text}`.toLowerCase()).join("\n");
+  const count = (pattern: RegExp) => (lowerCorpus.match(pattern) || []).length;
+  const videoHeroes = count(/\b(video background|fullscreen video|looping background video|<video)\b/g);
+  const plainCss = count(/\bplain css|no tailwind|vanilla css|css only\b/g);
+  const accessibility = count(/\baria-|accessibility|focus state|keyboard|reduced-motion|alt text\b/g);
+  const qa = profile.categoryScores.qa;
+  const paletteMap = new Map<string, number>();
+  const layoutMap = new Map<string, number>();
+  for (const example of examples) {
+    const analysis = analyzePrompt(example.text);
+    for (const color of analysis.colors.slice(0, 8)) paletteMap.set(color, (paletteMap.get(color) ?? 0) + 1);
+    for (const tag of analysis.tags) {
+      if (/hero|dashboard|signup|portfolio|feature|commerce|marquee|mobile menu|liquid glass|video background/i.test(tag)) {
+        layoutMap.set(tag, (layoutMap.get(tag) ?? 0) + 1);
+      }
+    }
+  }
+  const topPalette = [...paletteMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topLayouts = [...layoutMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  return [
+    {
+      label: "Similar video heroes",
+      score: videoHeroes > examples.length * 0.55 ? 44 : 78,
+      status: videoHeroes > examples.length * 0.55 ? "rebalance" : "healthy",
+      detail: `${videoHeroes} video-heavy signal(s) across ${examples.length} prompt(s). Add still-image, dashboard, product UI, and static feature examples.`,
+    },
+    {
+      label: "Plain CSS coverage",
+      score: plainCss >= 3 ? 82 : 38,
+      status: plainCss >= 3 ? "healthy" : "thin",
+      detail: `${plainCss} plain/no-Tailwind signal(s). Add a few HTML/CSS or plain-CSS React examples for stylistic range.`,
+    },
+    {
+      label: "QA coverage",
+      score: qa,
+      status: qa >= 65 ? "healthy" : "thin",
+      detail: `Prompt QA category is ${qa}/100. Require build, screenshots, media, console, overflow, and mobile checks more often.`,
+    },
+    {
+      label: "Accessibility language",
+      score: accessibility >= examples.length * 0.4 ? 78 : 46,
+      status: accessibility >= examples.length * 0.4 ? "healthy" : "thin",
+      detail: `${accessibility} accessibility signal(s). Add aria labels, focus states, keyboard behavior, alt text, and reduced-motion instructions.`,
+    },
+    {
+      label: "Overused palettes",
+      score: topPalette[0]?.[1] && topPalette[0][1] > examples.length * 0.35 ? 48 : 78,
+      status: topPalette.length ? "watch" : "unknown",
+      detail: topPalette.length ? topPalette.map(([label, total]) => `${label}: ${total}`).join(", ") : "No dominant explicit palette tokens detected.",
+    },
+    {
+      label: "Layout concentration",
+      score: clusters[0]?.count && clusters[0].count > examples.length * 0.55 ? 48 : 76,
+      status: clusters[0]?.label ?? "unknown",
+      detail: topLayouts.length ? topLayouts.map(([label, total]) => `${label}: ${total}`).join(", ") : "No dominant layout tags detected.",
+    },
+    {
+      label: "Screenshot evidence",
+      score: screenshots.length >= Math.min(8, examples.length) ? 82 : 44,
+      status: screenshots.length ? "started" : "missing",
+      detail: `${screenshots.length} saved screenshot(s). Add desktop/mobile captures to make result learning less speculative.`,
+    },
+  ];
+}
+
+function buildWorkspacePackSnapshot(examples: PromptExample[], outcomes: OutcomeRecord[]) {
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const packSpecs: { key: string; label: string; terms: string[] }[] = [
+    { key: "hero", label: "Hero systems", terms: ["hero", "video", "fullscreen", "cinematic", "liquid glass"] },
+    { key: "saas", label: "SaaS", terms: ["saas", "product", "platform", "dashboard", "analytics"] },
+    { key: "agency", label: "Agency", terms: ["agency", "portfolio", "studio", "creative", "case"] },
+    { key: "dashboard", label: "Dashboard", terms: ["dashboard", "data", "analytics", "metrics", "workflow"] },
+    { key: "auth", label: "Auth", terms: ["signup", "sign up", "login", "registration", "form"] },
+    { key: "ecommerce", label: "Ecommerce", terms: ["commerce", "product", "shop", "cart", "rating", "price"] },
+    { key: "feature-section", label: "Feature section", terms: ["feature", "cards", "section", "grid", "marketing"] },
+  ];
+  return packSpecs.map((spec) => {
+    const matches = examples
+      .map((example) => {
+        const analysis = analyzePrompt(example.text);
+        const haystack = `${example.title} ${example.text} ${analysis.tags.join(" ")} ${analysis.archetypes.map((item) => item.label).join(" ")}`.toLowerCase();
+        const score = spec.terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0);
+        const outcomeBoost = outcomeMap.get(example.id)?.status === "gold" ? 2 : outcomeMap.get(example.id)?.status === "good" ? 1 : 0;
+        return { example, score: score + outcomeBoost };
+      })
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map((item) => item.example);
+    const markdown = [
+      `# ${spec.label} Prompt Pack`,
+      "",
+      `Use these ${matches.length} prompt(s) as the taste reference for ${spec.label.toLowerCase()} builds.`,
+      "",
+      ...matches.map((example, index) => [`## ${index + 1}. ${example.title}`, "", example.text].join("\n")),
+    ].join("\n\n");
+    return {
+      key: spec.key,
+      label: spec.label,
+      count: matches.length,
+      markdown,
+      json: JSON.stringify({ key: spec.key, label: spec.label, prompts: matches }, null, 2),
+    };
+  });
+}
+
+function formatPromptForTarget(prompt: PromptExample | undefined, target: string, memory: PromptMemoryExport, packs: PromptPack[]) {
+  const source = prompt?.text || packs[0]?.prompts[0] || memory.markdown;
+  if (target === "JSON training dataset") {
+    return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), prompt, memory: memory.markdown }, null, 2);
+  }
+  const headers: Record<string, string> = {
+    "Codex prompt": "Use this as a Codex implementation task. Build the app, verify it locally, and report exact files changed.",
+    "Claude prompt": "Use this with Claude. Preserve exact implementation details, ask only blocking questions, and return the improved build prompt.",
+    "v0 prompt": "Use this with v0. Return clean React/Tailwind components and preserve asset/layout constraints.",
+    "Cursor task": "Use this as a Cursor task. Edit the existing app, keep changes scoped, and run lint/build.",
+    "Markdown prompt pack": "Use this as a portable prompt pack entry.",
+  };
+  return [`# ${target}`, "", headers[target] ?? "Use this prompt.", "", source].join("\n");
+}
+
 type ModelBatchEvaluation = {
   id: string;
   promptId: string;
@@ -792,6 +1074,10 @@ type StoredCollections = {
   activeWorkspace: WorkspaceKey;
   closedLoopRuns: ClosedLoopRun[];
   benchmarkRuns: BenchmarkRun[];
+  claudeHealthChecks: HostedClaudeHealthCheck[];
+  promptComparisons: PromptComparisonRun[];
+  screenshotPromptRuns: ScreenshotPromptRun[];
+  workspacePackRuns: WorkspacePackRun[];
 };
 
 export default function App() {
@@ -823,6 +1109,10 @@ export default function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>(() => readStoredWorkspace());
   const [closedLoopRuns, setClosedLoopRuns] = useState<ClosedLoopRun[]>(() => readStoredClosedLoopRuns());
   const [benchmarkRuns, setBenchmarkRuns] = useState<BenchmarkRun[]>(() => readStoredBenchmarkRuns());
+  const [claudeHealthChecks, setClaudeHealthChecks] = useState<HostedClaudeHealthCheck[]>(() => readStoredClaudeHealthChecks());
+  const [promptComparisons, setPromptComparisons] = useState<PromptComparisonRun[]>(() => readStoredPromptComparisons());
+  const [screenshotPromptRuns, setScreenshotPromptRuns] = useState<ScreenshotPromptRun[]>(() => readStoredScreenshotPromptRuns());
+  const [workspacePackRuns, setWorkspacePackRuns] = useState<WorkspacePackRun[]>(() => readStoredWorkspacePackRuns());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
@@ -1185,6 +1475,18 @@ export default function App() {
     () => extractReusablePatterns(learningExamples, outcomes, clusters),
     [clusters, learningExamples, outcomes],
   );
+  const promptQualityRecipe = useMemo(
+    () => buildPromptQualityRecipeText(profile, health, patternExtraction),
+    [health, patternExtraction, profile],
+  );
+  const corpusQualityCards = useMemo(
+    () => buildCorpusQualityCards(learningExamples, clusters, profile, screenshots),
+    [clusters, learningExamples, profile, screenshots],
+  );
+  const workspacePackSnapshot = useMemo(
+    () => buildWorkspacePackSnapshot(learningExamples, outcomes),
+    [learningExamples, outcomes],
+  );
   const rewriteComparison = useMemo(
     () => comparePromptImprovement(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
     [coachInput, generatedPrompt, outcomes, profile, resultScore, selectedPrompt],
@@ -1242,6 +1544,10 @@ export default function App() {
       activeWorkspace,
       closedLoopRuns,
       benchmarkRuns,
+      claudeHealthChecks,
+      promptComparisons,
+      screenshotPromptRuns,
+      workspacePackRuns,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -1263,6 +1569,10 @@ export default function App() {
       if (isWorkspaceKey(stored.activeWorkspace)) setActiveWorkspace(stored.activeWorkspace);
       if (Array.isArray(stored.closedLoopRuns)) setClosedLoopRuns((stored.closedLoopRuns as ClosedLoopRun[]).slice(0, 40));
       if (Array.isArray(stored.benchmarkRuns)) setBenchmarkRuns((stored.benchmarkRuns as BenchmarkRun[]).slice(0, 20));
+      if (Array.isArray(stored.claudeHealthChecks)) setClaudeHealthChecks((stored.claudeHealthChecks as HostedClaudeHealthCheck[]).slice(0, 20));
+      if (Array.isArray(stored.promptComparisons)) setPromptComparisons((stored.promptComparisons as PromptComparisonRun[]).slice(0, 40));
+      if (Array.isArray(stored.screenshotPromptRuns)) setScreenshotPromptRuns((stored.screenshotPromptRuns as ScreenshotPromptRun[]).slice(0, 40));
+      if (Array.isArray(stored.workspacePackRuns)) setWorkspacePackRuns((stored.workspacePackRuns as WorkspacePackRun[]).slice(0, 20));
     };
 
     async function hydrate() {
@@ -1410,6 +1720,30 @@ export default function App() {
   }, [benchmarkRuns, dbReady]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(CLAUDE_HEALTH_KEY, JSON.stringify(claudeHealthChecks));
+    void writeCollection("claudeHealthChecks", claudeHealthChecks);
+  }, [claudeHealthChecks, dbReady]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(PROMPT_COMPARISON_KEY, JSON.stringify(promptComparisons));
+    void writeCollection("promptComparisons", promptComparisons);
+  }, [dbReady, promptComparisons]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(SCREENSHOT_PROMPT_KEY, JSON.stringify(screenshotPromptRuns));
+    void writeCollection("screenshotPromptRuns", screenshotPromptRuns);
+  }, [dbReady, screenshotPromptRuns]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(WORKSPACE_PACK_KEY, JSON.stringify(workspacePackRuns));
+    void writeCollection("workspacePackRuns", workspacePackRuns);
+  }, [dbReady, workspacePackRuns]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -1428,12 +1762,16 @@ export default function App() {
         activeWorkspace,
         closedLoopRuns,
         benchmarkRuns,
+        claudeHealthChecks,
+        promptComparisons,
+        screenshotPromptRuns,
+        workspacePackRuns,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, buildRuns, closedLoopRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, buildRuns, claudeHealthChecks, closedLoopRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, promptComparisons, queueJobs, screenshotPromptRuns, screenshots, userPrompts, workspacePackRuns]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -2213,6 +2551,199 @@ export default function App() {
     setApiNotice("Loaded result-based repair prompt into Improve and Claude coach.");
   }
 
+  async function runHostedClaudeHealthCheck() {
+    const createdAt = new Date().toISOString();
+    const detail: string[] = [];
+    let healthResult: ApiHealth | undefined;
+    let envResult: Record<string, boolean> | undefined;
+    let sqliteWritable = false;
+    let modelRouteWorking = false;
+    let modelMode = "unavailable";
+    let modelScore = 0;
+    try {
+      healthResult = await getApiHealth();
+      setApiHealth(healthResult);
+      detail.push(`API online at ${getApiBase()}.`);
+    } catch (error) {
+      detail.push(`API health failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      envResult = await getModelSettings();
+      setModelEnvStatus(envResult);
+      detail.push(envResult.anthropicApiKeyConfigured ? "Claude key is configured on the API host." : "Claude key is not configured on the API host.");
+    } catch (error) {
+      detail.push(`Model settings failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      await syncCollections({
+        healthChecks: [{ id: `health-${Date.now()}`, createdAt, kind: "claude-health" }],
+      });
+      sqliteWritable = true;
+      detail.push("SQLite write probe succeeded.");
+    } catch (error) {
+      detail.push(`SQLite write probe failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      const result = await evaluateWithModel({
+        prompt: "Health-check this website prompt evaluator route. Return JSON.",
+        memory: promptMemory.markdown.slice(0, 1800),
+        context: { task: "Hosted Claude health check. Score route readiness." },
+        settings: modelSettingsPayload(),
+      });
+      modelRouteWorking = true;
+      modelMode = modelString(result, "mode", "unknown");
+      modelScore = modelNumber(result, "score", 0);
+      detail.push(`Model route returned ${modelMode} with score ${modelScore}.`);
+    } catch (error) {
+      detail.push(`Model route failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const check: HostedClaudeHealthCheck = {
+      id: `claude-health-${Date.now()}`,
+      createdAt,
+      apiOnline: Boolean(healthResult?.ok),
+      tokenValid: Boolean(healthResult?.ok),
+      claudeConfigured: Boolean(envResult?.anthropicApiKeyConfigured),
+      sqliteWritable,
+      modelRouteWorking,
+      modelMode,
+      modelScore,
+      apiBase: getApiBase(),
+      sqlitePath: healthResult?.sqlitePath ?? "",
+      detail,
+    };
+    setClaudeHealthChecks((current) => [check, ...current].slice(0, 20));
+    setModelNotice(modelRouteWorking ? `Hosted health check passed through ${modelMode}.` : "Hosted health check needs attention.");
+  }
+
+  async function runPromptComparison(left: PromptExample | undefined, right: PromptExample | undefined) {
+    if (!left || !right || left.id === right.id) {
+      setModelNotice("Choose two different prompts for comparison.");
+      return;
+    }
+    const leftScore = evaluatePrompt(left.text).score;
+    const rightScore = evaluatePrompt(right.text).score;
+    const localWinner = leftScore >= rightScore ? left : right;
+    let result: Record<string, unknown> | undefined;
+    try {
+      result = await evaluateWithModel({
+        prompt: [
+          "Compare these two website prompts for buildability, visual specificity, responsive behavior, accessibility, and QA readiness.",
+          "",
+          `PROMPT A: ${left.title}`,
+          left.text,
+          "",
+          `PROMPT B: ${right.title}`,
+          right.text,
+        ].join("\n"),
+        memory: promptMemory.markdown,
+        context: {
+          task: "A/B compare prompts. Return winner as A or B, findings, recommendations, and hybridPrompt that would beat both.",
+          leftTitle: left.title,
+          rightTitle: right.title,
+          leftScore,
+          rightScore,
+        },
+        settings: modelSettingsPayload(),
+      });
+    } catch (error) {
+      result = {
+        mode: "local-comparison",
+        score: Math.max(leftScore, rightScore),
+        winner: localWinner.id === left.id ? "A" : "B",
+        findings: [`Local score ${left.title}: ${leftScore}`, `Local score ${right.title}: ${rightScore}`],
+        recommendations: [error instanceof Error ? error.message : String(error)],
+        hybridPrompt: comparePromptImprovement(localWinner.text, profile, outcomes, resultScore).improvedPrompt,
+      };
+    }
+    const winnerToken = modelString(result, "winner", localWinner.id === left.id ? "A" : "B").toLowerCase();
+    const winner = winnerToken.includes("b") || winnerToken.includes(right.title.toLowerCase()) ? right : left;
+    const hybridPrompt = modelString(result, "hybridPrompt", modelString(result, "rewrittenPrompt", comparePromptImprovement(winner.text, profile, outcomes, resultScore).improvedPrompt));
+    const run: PromptComparisonRun = {
+      id: `prompt-comparison-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      leftId: left.id,
+      rightId: right.id,
+      leftTitle: left.title,
+      rightTitle: right.title,
+      winnerId: winner.id,
+      winnerTitle: winner.title,
+      modelMode: modelString(result, "mode", "local"),
+      score: modelNumber(result, "score", Math.max(leftScore, rightScore)),
+      findings: modelStringArray(result, "findings"),
+      recommendations: modelStringArray(result, "recommendations"),
+      hybridPrompt,
+    };
+    setPromptComparisons((current) => [run, ...current].slice(0, 40));
+    setImproveText(hybridPrompt);
+    setModelNotice(`A/B comparison picked ${winner.title} using ${run.modelMode}.`);
+  }
+
+  async function generatePromptFromScreenshot(input: { title: string; url: string; notes: string; siteType: string }) {
+    const imageDataUrl = input.url.startsWith("data:image/") ? input.url : undefined;
+    const localPrompt = [
+      `Create a high-fidelity website recreation prompt from the screenshot "${input.title || "uploaded screenshot"}".`,
+      "",
+      "Stack: React + TypeScript + Vite + Tailwind CSS + lucide-react unless the screenshot notes require otherwise.",
+      `Site type: ${input.siteType || generatorInput.siteType}.`,
+      `Visual evidence: ${input.notes || "Infer layout, typography, spacing, colors, assets, and interaction states from the screenshot."}`,
+      "",
+      "Include exact sections for fonts/global CSS, colors, asset handling, layout/layer order, navigation, main content, motion/state mechanics, responsive rules, constraints, accessibility, and QA.",
+      "No generic stock imagery, no decorative filler, no unlisted UI libraries, no text overlap, and no missing mobile behavior.",
+    ].join("\n");
+    let result: Record<string, unknown> | undefined;
+    try {
+      result = await evaluateWithModel({
+        prompt: localPrompt,
+        memory: promptMemory.markdown,
+        imageDataUrl,
+        context: {
+          task: "Generate a build-ready website prompt from this screenshot. Put the final prompt in rewrittenPrompt.",
+          screenshotTitle: input.title,
+          screenshotNotes: input.notes,
+          siteType: input.siteType,
+          hasImage: Boolean(imageDataUrl),
+        },
+        settings: modelSettingsPayload(),
+      });
+    } catch (error) {
+      result = {
+        mode: "local-screenshot-prompt",
+        score: evaluatePrompt(localPrompt).score,
+        rewrittenPrompt: localPrompt,
+        findings: [error instanceof Error ? error.message : String(error)],
+        recommendations: ["Add more screenshot notes or configure Claude vision on the API host."],
+      };
+    }
+    const prompt = modelString(result, "rewrittenPrompt", localPrompt);
+    const run: ScreenshotPromptRun = {
+      id: `screenshot-prompt-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      title: input.title || "Screenshot prompt",
+      screenshotTitle: input.title || "Screenshot",
+      screenshotKind: imageDataUrl ? "uploaded" : input.url.trim() ? "url" : "notes",
+      prompt,
+      score: modelNumber(result, "score", evaluatePrompt(prompt).score),
+      modelMode: modelString(result, "mode", "local"),
+      notes: [...modelStringArray(result, "findings"), ...modelStringArray(result, "recommendations")].slice(0, 8),
+      imagePreviewUrl: input.url,
+    };
+    setScreenshotPromptRuns((current) => [run, ...current].slice(0, 40));
+    setImproveText(prompt);
+    setModelNotice(`Generated screenshot prompt with ${run.modelMode}.`);
+    return run;
+  }
+
+  function saveWorkspacePackRun() {
+    const run: WorkspacePackRun = {
+      id: `workspace-packs-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      title: `Workspace packs ${workspacePackRuns.length + 1}`,
+      packs: workspacePackSnapshot,
+    };
+    setWorkspacePackRuns((current) => [run, ...current].slice(0, 20));
+    setApiNotice(`Saved ${run.packs.length} workspace prompt pack(s).`);
+  }
+
   function addPairwiseReview(left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) {
     if (!left || !right || !winnerId) return;
     const winner = winnerId === left.id ? left : right;
@@ -2316,6 +2847,10 @@ export default function App() {
       activeWorkspace,
       closedLoopRuns,
       benchmarkRuns,
+      claudeHealthChecks,
+      promptComparisons,
+      screenshotPromptRuns,
+      workspacePackRuns,
     };
     const backup: TrainingBackupSnapshot = {
       id: `backup-${Date.now()}`,
@@ -2345,6 +2880,10 @@ export default function App() {
     if (Array.isArray(collections.pairwiseReviews)) setPairwiseReviews(collections.pairwiseReviews);
     if (Array.isArray(collections.closedLoopRuns)) setClosedLoopRuns(collections.closedLoopRuns);
     if (Array.isArray(collections.benchmarkRuns)) setBenchmarkRuns(collections.benchmarkRuns);
+    if (Array.isArray(collections.claudeHealthChecks)) setClaudeHealthChecks(collections.claudeHealthChecks);
+    if (Array.isArray(collections.promptComparisons)) setPromptComparisons(collections.promptComparisons);
+    if (Array.isArray(collections.screenshotPromptRuns)) setScreenshotPromptRuns(collections.screenshotPromptRuns);
+    if (Array.isArray(collections.workspacePackRuns)) setWorkspacePackRuns(collections.workspacePackRuns);
     if (isWorkspaceKey(collections.activeWorkspace)) setActiveWorkspace(collections.activeWorkspace);
     setApiNotice(`Restored ${backup.label}.`);
   }
@@ -2659,6 +3198,10 @@ export default function App() {
         activeWorkspace,
         closedLoopRuns,
         benchmarkRuns,
+        claudeHealthChecks,
+        promptComparisons,
+        screenshotPromptRuns,
+        workspacePackRuns,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -2729,6 +3272,22 @@ export default function App() {
         setBenchmarkRuns((collections.benchmarkRuns as BenchmarkRun[]).slice(0, 20));
         restored.push("benchmark runs");
       }
+      if (Array.isArray(collections.claudeHealthChecks)) {
+        setClaudeHealthChecks((collections.claudeHealthChecks as HostedClaudeHealthCheck[]).slice(0, 20));
+        restored.push("Claude health");
+      }
+      if (Array.isArray(collections.promptComparisons)) {
+        setPromptComparisons((collections.promptComparisons as PromptComparisonRun[]).slice(0, 40));
+        restored.push("prompt comparisons");
+      }
+      if (Array.isArray(collections.screenshotPromptRuns)) {
+        setScreenshotPromptRuns((collections.screenshotPromptRuns as ScreenshotPromptRun[]).slice(0, 40));
+        restored.push("screenshot prompts");
+      }
+      if (Array.isArray(collections.workspacePackRuns)) {
+        setWorkspacePackRuns((collections.workspacePackRuns as WorkspacePackRun[]).slice(0, 20));
+        restored.push("workspace packs");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -2752,7 +3311,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace, closedLoopRuns, benchmarkRuns },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace, closedLoopRuns, benchmarkRuns, claudeHealthChecks, promptComparisons, screenshotPromptRuns, workspacePackRuns },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -2827,6 +3386,22 @@ export default function App() {
         setBenchmarkRuns((collections.benchmarkRuns as BenchmarkRun[]).slice(0, 20));
         restored.push("benchmark runs");
       }
+      if (Array.isArray(collections.claudeHealthChecks)) {
+        setClaudeHealthChecks((collections.claudeHealthChecks as HostedClaudeHealthCheck[]).slice(0, 20));
+        restored.push("Claude health");
+      }
+      if (Array.isArray(collections.promptComparisons)) {
+        setPromptComparisons((collections.promptComparisons as PromptComparisonRun[]).slice(0, 40));
+        restored.push("prompt comparisons");
+      }
+      if (Array.isArray(collections.screenshotPromptRuns)) {
+        setScreenshotPromptRuns((collections.screenshotPromptRuns as ScreenshotPromptRun[]).slice(0, 40));
+        restored.push("screenshot prompts");
+      }
+      if (Array.isArray(collections.workspacePackRuns)) {
+        setWorkspacePackRuns((collections.workspacePackRuns as WorkspacePackRun[]).slice(0, 20));
+        restored.push("workspace packs");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -2857,6 +3432,10 @@ export default function App() {
           activeWorkspace: isWorkspaceKey(collections.activeWorkspace) ? collections.activeWorkspace : activeWorkspace,
           closedLoopRuns: collections.closedLoopRuns ?? closedLoopRuns,
           benchmarkRuns: collections.benchmarkRuns ?? benchmarkRuns,
+          claudeHealthChecks: collections.claudeHealthChecks ?? claudeHealthChecks,
+          promptComparisons: collections.promptComparisons ?? promptComparisons,
+          screenshotPromptRuns: collections.screenshotPromptRuns ?? screenshotPromptRuns,
+          workspacePackRuns: collections.workspacePackRuns ?? workspacePackRuns,
         });
       }
       setSnapshotImportText("");
@@ -3345,6 +3924,7 @@ export default function App() {
               buildRuns={buildRuns}
               closedLoopRuns={closedLoopRuns}
               codexBuildPack={codexBuildPack}
+              claudeHealthChecks={claudeHealthChecks}
               codexSkill={codexSkill}
               coachInput={coachInput}
               coachResult={coachResult}
@@ -3352,6 +3932,7 @@ export default function App() {
               compilerInput={compilerInput}
               copied={copied}
               corpusCleaning={corpusCleaning}
+              corpusQualityCards={corpusQualityCards}
               curationDecisions={curationDecisions}
               curationReport={curationReport}
               dbStatus={dbStatus}
@@ -3428,7 +4009,11 @@ export default function App() {
               onRunBenchmarkSuite={runBenchmarkSuite}
               onRunClosedLoopTrainer={runClosedLoopTrainer}
               onRunCorpusHygieneSweep={runCorpusHygieneSweep}
+              onRunHostedClaudeHealthCheck={runHostedClaudeHealthCheck}
               onRunModelBatchCalibration={runModelBatchCalibration}
+              onRunPromptComparison={runPromptComparison}
+              onGeneratePromptFromScreenshot={generatePromptFromScreenshot}
+              onSaveWorkspacePackRun={saveWorkspacePackRun}
               onRunPromptCoach={runPromptCoach}
               onQueueTournament={queueTournamentFinalists}
               onQueueWizard={() => queueBattleVariants(wizardBattle, "one-click wizard")}
@@ -3451,9 +4036,11 @@ export default function App() {
               pairwiseReviews={pairwiseReviews}
               patternExtraction={patternExtraction}
               patternDashboard={patternDashboard}
+              promptComparisons={promptComparisons}
               promptBattle={promptBattle}
               promptCoach={promptCoach}
               promptMemory={promptMemory}
+              promptQualityRecipe={promptQualityRecipe}
               promptDiff={promptDiff}
               projectExportPack={projectExportPack}
               qualityGate={qualityGate}
@@ -3466,6 +4053,7 @@ export default function App() {
               resultScore={resultScore}
               runnerPlan={runnerPlan}
               screenshotQa={screenshotQa}
+              screenshotPromptRuns={screenshotPromptRuns}
               scoreBreakdown={scoreBreakdown}
               scoreWeights={scoreWeights}
               screenshots={screenshots}
@@ -3513,6 +4101,8 @@ export default function App() {
               driftReport={driftReport}
               winExplanation={winExplanation}
               workspaceExamples={workspaceExamples}
+              workspacePackRuns={workspacePackRuns}
+              workspacePackSnapshot={workspacePackSnapshot}
             />
           )}
         </section>
@@ -4383,6 +4973,7 @@ function TrainView({
   benchmarkRuns,
   buildFeedback,
   buildRuns,
+  claudeHealthChecks,
   codexBuildPack,
   closedLoopRuns,
   codexSkill,
@@ -4392,6 +4983,7 @@ function TrainView({
   compilerInput,
   copied,
   corpusCleaning,
+  corpusQualityCards,
   curationDecisions,
   curationReport,
   dbStatus,
@@ -4472,7 +5064,11 @@ function TrainView({
   onRunBenchmarkSuite,
   onRunClosedLoopTrainer,
   onRunCorpusHygieneSweep,
+  onRunHostedClaudeHealthCheck,
   onRunModelBatchCalibration,
+  onRunPromptComparison,
+  onGeneratePromptFromScreenshot,
+  onSaveWorkspacePackRun,
   onRunPromptCoach,
   onQueueTournament,
   onQueueWizard,
@@ -4493,9 +5089,11 @@ function TrainView({
   pairwiseReviews,
   patternExtraction,
   patternDashboard,
+  promptComparisons,
   promptBattle,
   promptCoach,
   promptMemory,
+  promptQualityRecipe,
   promptDiff,
   projectExportPack,
   qualityGate,
@@ -4508,6 +5106,7 @@ function TrainView({
   resultScore,
   runnerPlan,
   screenshotQa,
+  screenshotPromptRuns,
   scoreBreakdown,
   scoreWeights,
   screenshots,
@@ -4553,6 +5152,8 @@ function TrainView({
   wizardIdea,
   winExplanation,
   workspaceExamples,
+  workspacePackRuns,
+  workspacePackSnapshot,
 }: {
   activeTrainStage: string;
   activeWorkspace: WorkspaceKey;
@@ -4567,6 +5168,7 @@ function TrainView({
   benchmarkRuns: BenchmarkRun[];
   buildFeedback: BuildFeedbackReport;
   buildRuns: BuildRunRecord[];
+  claudeHealthChecks: HostedClaudeHealthCheck[];
   codexBuildPack: CodexBuildPack;
   closedLoopRuns: ClosedLoopRun[];
   codexSkill: string;
@@ -4576,6 +5178,7 @@ function TrainView({
   compilerInput: PromptCompilerInput;
   copied: string;
   corpusCleaning: CorpusCleaningReport;
+  corpusQualityCards: ReturnType<typeof buildCorpusQualityCards>;
   curationDecisions: Record<string, CurationDecision>;
   curationReport: CorpusCurationReport;
   dbStatus: string;
@@ -4664,7 +5267,11 @@ function TrainView({
   onRunBenchmarkSuite: () => void;
   onRunClosedLoopTrainer: () => void;
   onRunCorpusHygieneSweep: () => void;
+  onRunHostedClaudeHealthCheck: () => void;
   onRunModelBatchCalibration: () => void;
+  onRunPromptComparison: (left: PromptExample | undefined, right: PromptExample | undefined) => void;
+  onGeneratePromptFromScreenshot: (input: { title: string; url: string; notes: string; siteType: string }) => Promise<ScreenshotPromptRun>;
+  onSaveWorkspacePackRun: () => void;
   onRunPromptCoach: () => void;
   onQueueTournament: () => void;
   onQueueWizard: () => void;
@@ -4685,9 +5292,11 @@ function TrainView({
   pairwiseReviews: PairwiseReviewRecord[];
   patternExtraction: PatternExtractionReport;
   patternDashboard: PatternDashboardReport;
+  promptComparisons: PromptComparisonRun[];
   promptBattle: PromptBattle;
   promptCoach: PromptCoachReport;
   promptMemory: PromptMemoryExport;
+  promptQualityRecipe: string;
   promptDiff?: PromptDiff;
   projectExportPack: ProjectExportPack;
   qualityGate: QualityGateReport;
@@ -4700,6 +5309,7 @@ function TrainView({
   resultScore: ResultScore;
   runnerPlan?: BuildRunnerPlan;
   screenshotQa: ScreenshotQaReport;
+  screenshotPromptRuns: ScreenshotPromptRun[];
   scoreBreakdown: ScoreBreakdown;
   scoreWeights: ScoreWeights;
   screenshots: ScreenshotRecord[];
@@ -4755,6 +5365,8 @@ function TrainView({
   wizardIdea: string;
   winExplanation: PromptWinExplanationReport;
   workspaceExamples: PromptExample[];
+  workspacePackRuns: WorkspacePackRun[];
+  workspacePackSnapshot: WorkspacePackRun["packs"];
 }) {
   const [sectionQuery, setSectionQuery] = useState("");
   const trainSections = [
@@ -4855,6 +5467,13 @@ function TrainView({
         onCopy={onCopy}
       />
 
+      <ClaudeHealthDeepCheckPanel
+        apiHealth={apiHealth}
+        checks={claudeHealthChecks}
+        modelEnvStatus={modelEnvStatus}
+        onRunHostedClaudeHealthCheck={onRunHostedClaudeHealthCheck}
+      />
+
       <ProjectWorkspacePanel
         activeWorkspace={activeWorkspace}
         activeWorkspacePreset={activeWorkspacePreset}
@@ -4882,6 +5501,17 @@ function TrainView({
         setGeneratorInput={setGeneratorInput}
       />
 
+      <GreatPromptWizardPanel
+        copied={copied}
+        generatorInput={generatorInput}
+        guidedWizard={guidedWizard}
+        onApplyGeneratorVariant={onApplyGeneratorVariant}
+        onCopy={onCopy}
+        onRunClosedLoopTrainer={onRunClosedLoopTrainer}
+        onSave={onSave}
+        setGeneratorInput={setGeneratorInput}
+      />
+
       <section className="train-columns">
         <ClosedLoopTrainerPanel
           closedLoopRuns={closedLoopRuns}
@@ -4893,6 +5523,17 @@ function TrainView({
           benchmarkRuns={benchmarkRuns}
           onRunBenchmarkSuite={onRunBenchmarkSuite}
         />
+      </section>
+
+      <section className="train-columns">
+        <PromptQualityRecipePanel
+          copied={copied}
+          onCopy={onCopy}
+          onDownload={onDownload}
+          onSave={onSave}
+          promptQualityRecipe={promptQualityRecipe}
+        />
+        <CorpusQualityDashboardPanel cards={corpusQualityCards} />
       </section>
 
       <section className="train-columns">
@@ -4920,6 +5561,27 @@ function TrainView({
         repairedPrompt={repairedPrompt}
         resultScore={resultScore}
       />
+
+      <section className="train-columns">
+        <PromptComparisonClaudePanel
+          copied={copied}
+          diffLeftId={diffLeftId}
+          diffRightId={diffRightId}
+          examples={learningExamples}
+          onCopy={onCopy}
+          onRunPromptComparison={onRunPromptComparison}
+          promptComparisons={promptComparisons}
+          setDiffLeftId={setDiffLeftId}
+          setDiffRightId={setDiffRightId}
+        />
+        <ScreenshotPromptGeneratorPanel
+          copied={copied}
+          onCopy={onCopy}
+          onGeneratePromptFromScreenshot={onGeneratePromptFromScreenshot}
+          onSave={onSave}
+          runs={screenshotPromptRuns}
+        />
+      </section>
 
       <SecurityOpsPanel
         apiEvents={apiEvents}
@@ -4993,6 +5655,25 @@ function TrainView({
         onCopy={onCopy}
         onDownload={onDownload}
         packs={archetypePromptPacks}
+      />
+
+      <WorkspacePromptPacksPanel
+        copied={copied}
+        onCopy={onCopy}
+        onDownload={onDownload}
+        onSaveWorkspacePackRun={onSaveWorkspacePackRun}
+        packs={workspacePackSnapshot}
+        runs={workspacePackRuns}
+      />
+
+      <ExportFormatStudioPanel
+        copied={copied}
+        onCopy={onCopy}
+        onDownload={onDownload}
+        onSave={onSave}
+        packs={archetypePromptPacks}
+        promptMemory={promptMemory}
+        selectedPrompt={selectedPrompt}
       />
 
       <section className="train-columns">
@@ -5997,6 +6678,492 @@ function HostedClaudeSetupPanel({
       </div>
       <pre className="prompt-patch-box">{env}</pre>
       <p className="selected-meta">Keep the API key on the Node API host. GitHub Pages should only know the hosted API URL and token.</p>
+    </section>
+  );
+}
+
+function ClaudeHealthDeepCheckPanel({
+  apiHealth,
+  checks,
+  modelEnvStatus,
+  onRunHostedClaudeHealthCheck,
+}: {
+  apiHealth?: ApiHealth;
+  checks: HostedClaudeHealthCheck[];
+  modelEnvStatus?: Record<string, boolean>;
+  onRunHostedClaudeHealthCheck: () => void;
+}) {
+  const latest = checks[0];
+  const statusItems = [
+    { label: "API", ok: Boolean(apiHealth?.ok ?? latest?.apiOnline), value: apiHealth?.ok || latest?.apiOnline ? "Online" : "Unchecked" },
+    { label: "Token", ok: Boolean(latest?.tokenValid ?? apiHealth?.authRequired !== undefined), value: latest?.tokenValid ? "Accepted" : apiHealth?.authRequired ? "Required" : "Open" },
+    { label: "Claude key", ok: Boolean(modelEnvStatus?.anthropicApiKeyConfigured ?? latest?.claudeConfigured), value: modelEnvStatus?.anthropicApiKeyConfigured || latest?.claudeConfigured ? "Ready" : "Missing" },
+    { label: "SQLite", ok: Boolean(latest?.sqliteWritable ?? apiHealth?.sqlitePath), value: latest?.sqlitePath ? "Writable" : apiHealth?.sqlitePath ? "Detected" : "Unknown" },
+  ];
+  return (
+    <section className="panel lab-panel hosted-readiness-panel" data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Hosted Claude readiness</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunHostedClaudeHealthCheck}>
+          <Sparkles size={15} />
+          Run deep check
+        </button>
+      </div>
+      <div className="backend-grid readiness-grid">
+        {statusItems.map((item) => (
+          <article className="index-card" key={item.label} data-tone={item.ok ? "good" : "watch"}>
+            <strong>{item.value}</strong>
+            <span>{item.label}</span>
+          </article>
+        ))}
+        <article className="index-card wide-index-card">
+          <h3>{latest ? `${latest.modelMode} / ${latest.modelScore}` : "No deep check yet"}</h3>
+          <p>{latest?.detail.join(" ") || "Runs API health, model settings, sync write, and model evaluation as one hosted smoke test."}</p>
+        </article>
+      </div>
+      <div className="version-list compact-list">
+        {checks.slice(0, 4).map((check) => (
+          <article className="version-card" key={check.id}>
+            <div className="dna-v2-topline">
+              <strong>{new Date(check.createdAt).toLocaleString()}</strong>
+              <span data-tone={check.modelRouteWorking ? "good" : "watch"}>{check.modelScore}</span>
+            </div>
+            <p>{check.detail.join(" ")}</p>
+            <small>{check.apiBase || check.sqlitePath}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function GreatPromptWizardPanel({
+  copied,
+  generatorInput,
+  guidedWizard,
+  onApplyGeneratorVariant,
+  onCopy,
+  onRunClosedLoopTrainer,
+  onSave,
+  setGeneratorInput,
+}: {
+  copied: string;
+  generatorInput: LearnedGeneratorInput;
+  guidedWizard: GuidedPromptWizardReport;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  onRunClosedLoopTrainer: () => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
+}) {
+  const best = guidedWizard.variants[0];
+  function update<K extends keyof LearnedGeneratorInput>(key: K, value: LearnedGeneratorInput[K]) {
+    setGeneratorInput((current) => ({ ...current, [key]: value }));
+  }
+  return (
+    <section className="panel lab-panel great-prompt-wizard-panel" data-train-section="generate">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Great Prompt wizard</h2>
+        </div>
+        <ScoreRing score={guidedWizard.readiness} label="ready" />
+      </div>
+      <div className="wizard-brief-grid">
+        <div className="simple-brief-fields">
+          <div className="two-field-grid">
+            <Field label="Brand">
+              <input value={generatorInput.brandName} onChange={(event) => update("brandName", event.target.value)} />
+            </Field>
+            <Field label="Site type">
+              <input value={generatorInput.siteType} onChange={(event) => update("siteType", event.target.value)} />
+            </Field>
+          </div>
+          <Field label="Audience">
+            <input value={generatorInput.audience} onChange={(event) => update("audience", event.target.value)} />
+          </Field>
+          <Field label="Visual direction">
+            <textarea value={generatorInput.visualStyle} onChange={(event) => update("visualStyle", event.target.value)} />
+          </Field>
+          <Field label="Assets">
+            <textarea value={generatorInput.assets} onChange={(event) => update("assets", event.target.value)} />
+          </Field>
+          <Field label="No-go rules">
+            <textarea value={generatorInput.constraints} onChange={(event) => update("constraints", event.target.value)} />
+          </Field>
+        </div>
+        <article className="simple-prompt-preview">
+          <div className="dna-v2-topline">
+            <strong>{best?.title ?? "Draft a sharper brief"}</strong>
+            <span data-tone={scoreTone(best?.score ?? 0)}>{best?.score ?? 0}</span>
+          </div>
+          <p>{best?.bestFor ?? "The wizard turns your brief into a build-ready website prompt and can send the best draft through the closed-loop trainer."}</p>
+          <FeedbackList title="Wizard guardrails" items={guidedWizard.nextActions} empty="No recommendations yet." />
+          <textarea className="generated-output mini-output" readOnly value={best?.prompt ?? ""} />
+          <div className="button-row">
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onApplyGeneratorVariant(best)}>
+              Use
+            </button>
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onCopy(best.prompt, "great-prompt-wizard")}>
+              {copied === "great-prompt-wizard" ? <Check size={15} /> : <Copy size={15} />}
+              Copy
+            </button>
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onSave("generated", best.title, best.prompt, best.score)}>
+              <Save size={15} />
+              Save
+            </button>
+            <button className="primary-button compact-button" type="button" disabled={!best} onClick={onRunClosedLoopTrainer}>
+              <Sparkles size={15} />
+              Claude refine
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function PromptQualityRecipePanel({
+  copied,
+  onCopy,
+  onDownload,
+  onSave,
+  promptQualityRecipe,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  promptQualityRecipe: string;
+}) {
+  return (
+    <section className="panel lab-panel prompt-recipe-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Prompt quality recipe</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(promptQualityRecipe, "prompt-quality-recipe")}>
+            {copied === "prompt-quality-recipe" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => onDownload("great-website-prompt-recipe.md", promptQualityRecipe, "text/markdown")}>
+            <Download size={15} />
+            Export
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onSave("recipe", "Great Website Prompt Recipe", promptQualityRecipe, evaluatePrompt(promptQualityRecipe).score)}>
+            <Save size={15} />
+            Save
+          </button>
+        </div>
+      </div>
+      <textarea className="generated-output style-guide-output" readOnly value={promptQualityRecipe} />
+    </section>
+  );
+}
+
+function CorpusQualityDashboardPanel({ cards }: { cards: ReturnType<typeof buildCorpusQualityCards> }) {
+  return (
+    <section className="panel lab-panel corpus-quality-panel" data-train-section="patterns">
+      <div className="panel-header">
+        <BarChart3 size={18} />
+        <h2>Corpus quality dashboard</h2>
+      </div>
+      <div className="quality-card-grid">
+        {cards.map((card) => (
+          <article className="index-card quality-card" key={card.label} data-tone={card.score >= 70 ? "good" : card.score >= 50 ? "watch" : "bad"}>
+            <div className="dna-v2-topline">
+              <strong>{card.label}</strong>
+              <span>{card.score}</span>
+            </div>
+            <small>{card.status}</small>
+            <p>{card.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PromptComparisonClaudePanel({
+  copied,
+  diffLeftId,
+  diffRightId,
+  examples,
+  onCopy,
+  onRunPromptComparison,
+  promptComparisons,
+  setDiffLeftId,
+  setDiffRightId,
+}: {
+  copied: string;
+  diffLeftId: string;
+  diffRightId: string;
+  examples: PromptExample[];
+  onCopy: (value: string, key: string) => void;
+  onRunPromptComparison: (left: PromptExample | undefined, right: PromptExample | undefined) => void;
+  promptComparisons: PromptComparisonRun[];
+  setDiffLeftId: (id: string) => void;
+  setDiffRightId: (id: string) => void;
+}) {
+  const left = examples.find((example) => example.id === diffLeftId) ?? examples[0];
+  const right = examples.find((example) => example.id === diffRightId) ?? examples[1] ?? examples[0];
+  const latest = promptComparisons[0];
+  return (
+    <section className="panel lab-panel prompt-comparison-panel" data-train-section="improve">
+      <div className="output-header">
+        <div className="panel-header">
+          <Shuffle size={18} />
+          <h2>Claude A/B prompt comparison</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" disabled={!left || !right} onClick={() => onRunPromptComparison(left, right)}>
+          <Sparkles size={15} />
+          Compare
+        </button>
+      </div>
+      <div className="compare-selectors">
+        <Field label="Prompt A">
+          <select value={left?.id ?? ""} onChange={(event) => setDiffLeftId(event.target.value)}>
+            {examples.map((example) => (
+              <option key={example.id} value={example.id}>{example.title}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Prompt B">
+          <select value={right?.id ?? ""} onChange={(event) => setDiffRightId(event.target.value)}>
+            {examples.map((example) => (
+              <option key={example.id} value={example.id}>{example.title}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      {latest ? (
+        <article className="version-card comparison-result-card">
+          <div className="dna-v2-topline">
+            <strong>{latest.winnerTitle || "Hybrid result"}</strong>
+            <span data-tone={scoreTone(latest.score)}>{latest.score}</span>
+          </div>
+          <p>{latest.findings[0] ?? `${latest.leftTitle} vs ${latest.rightTitle}`}</p>
+          <textarea className="generated-output mini-output" readOnly value={latest.hybridPrompt} />
+          <div className="button-row">
+            <button className="ghost-button compact-button" type="button" onClick={() => onCopy(latest.hybridPrompt, `comparison-${latest.id}`)}>
+              {copied === `comparison-${latest.id}` ? <Check size={15} /> : <Copy size={15} />}
+              Copy hybrid
+            </button>
+          </div>
+        </article>
+      ) : (
+        <p className="selected-meta">Pick two corpus prompts and ask the hosted model to choose a winner, diagnose why, and produce a hybrid prompt.</p>
+      )}
+    </section>
+  );
+}
+
+function ScreenshotPromptGeneratorPanel({
+  copied,
+  onCopy,
+  onGeneratePromptFromScreenshot,
+  onSave,
+  runs,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onGeneratePromptFromScreenshot: (input: { title: string; url: string; notes: string; siteType: string }) => Promise<ScreenshotPromptRun>;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  runs: ScreenshotPromptRun[];
+}) {
+  const [title, setTitle] = useState("Screenshot recreation");
+  const [siteType, setSiteType] = useState("single-page website hero");
+  const [url, setUrl] = useState("");
+  const [notes, setNotes] = useState("");
+  const [running, setRunning] = useState(false);
+  const [current, setCurrent] = useState<ScreenshotPromptRun | undefined>(runs[0]);
+  const latest = current ?? runs[0];
+
+  async function runGenerator() {
+    setRunning(true);
+    try {
+      const run = await onGeneratePromptFromScreenshot({ title, siteType, url, notes });
+      setCurrent(run);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  function handleFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setUrl(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  }
+
+  return (
+    <section className="panel lab-panel screenshot-prompt-generator-panel" data-train-section="screenshots">
+      <div className="output-header">
+        <div className="panel-header">
+          <Upload size={18} />
+          <h2>Generate prompt from screenshot</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" disabled={running} onClick={() => void runGenerator()}>
+          <Sparkles size={15} />
+          {running ? "Generating..." : "Generate"}
+        </button>
+      </div>
+      <div className="two-field-grid">
+        <Field label="Title">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} />
+        </Field>
+        <Field label="Site type">
+          <input value={siteType} onChange={(event) => setSiteType(event.target.value)} />
+        </Field>
+      </div>
+      <Field label="Screenshot URL or uploaded image">
+        <input value={url.startsWith("data:") ? "Uploaded image data URL" : url} onChange={(event) => setUrl(event.target.value)} placeholder="https://... or upload below" />
+      </Field>
+      <input className="file-input" accept="image/png,image/jpeg,image/webp,image/gif" type="file" onChange={handleFile} />
+      <Field label="Notes">
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Describe what must be preserved: layout, typography, imagery, interactions, no-go rules." />
+      </Field>
+      {latest ? (
+        <article className="version-card">
+          <div className="dna-v2-topline">
+            <strong>{latest.title}</strong>
+            <span data-tone={scoreTone(latest.score)}>{latest.score}</span>
+          </div>
+          <p>{latest.notes[0] ?? latest.modelMode}</p>
+          {latest.imagePreviewUrl ? <img className="screenshot-prompt-preview" src={latest.imagePreviewUrl} alt="" /> : null}
+          <textarea className="generated-output mini-output" readOnly value={latest.prompt} />
+          <div className="button-row">
+            <button className="ghost-button compact-button" type="button" onClick={() => onCopy(latest.prompt, `screenshot-prompt-${latest.id}`)}>
+              {copied === `screenshot-prompt-${latest.id}` ? <Check size={15} /> : <Copy size={15} />}
+              Copy
+            </button>
+            <button className="ghost-button compact-button" type="button" onClick={() => onSave("generated", latest.title, latest.prompt, latest.score)}>
+              <Save size={15} />
+              Save
+            </button>
+          </div>
+        </article>
+      ) : (
+        <p className="selected-meta">Paste a screenshot URL, upload an image, or write notes. Claude will use the image when the API host has a key.</p>
+      )}
+    </section>
+  );
+}
+
+function WorkspacePromptPacksPanel({
+  copied,
+  onCopy,
+  onDownload,
+  onSaveWorkspacePackRun,
+  packs,
+  runs,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onSaveWorkspacePackRun: () => void;
+  packs: WorkspacePackRun["packs"];
+  runs: WorkspacePackRun[];
+}) {
+  return (
+    <section className="panel lab-panel workspace-packs-panel" data-train-section="packs">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Workspace prompt packs</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onSaveWorkspacePackRun}>
+          <Save size={15} />
+          Save packs
+        </button>
+      </div>
+      <div className="workspace-pack-grid">
+        {packs.map((pack) => (
+          <article className="version-card" key={pack.key}>
+            <div className="dna-v2-topline">
+              <strong>{pack.label}</strong>
+              <span>{pack.count}</span>
+            </div>
+            <p>{pack.count ? `Best ${pack.label.toLowerCase()} examples distilled into a portable pack.` : "Needs more examples before this pack is useful."}</p>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(pack.markdown, `workspace-pack-${pack.key}`)}>
+                {copied === `workspace-pack-${pack.key}` ? <Check size={15} /> : <Copy size={15} />}
+                Copy
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onDownload(`${pack.key}-prompt-pack.md`, pack.markdown, "text/markdown")}>
+                <Download size={15} />
+                MD
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onDownload(`${pack.key}-prompt-pack.json`, pack.json, "application/json")}>
+                <Download size={15} />
+                JSON
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      <p className="selected-meta">{runs[0] ? `Last saved ${new Date(runs[0].createdAt).toLocaleString()} with ${runs[0].packs.length} packs.` : "No saved pack snapshot yet."}</p>
+    </section>
+  );
+}
+
+function ExportFormatStudioPanel({
+  copied,
+  onCopy,
+  onDownload,
+  onSave,
+  packs,
+  promptMemory,
+  selectedPrompt,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  packs: PromptPack[];
+  promptMemory: PromptMemoryExport;
+  selectedPrompt?: PromptExample;
+}) {
+  const targets = ["Codex prompt", "Claude prompt", "v0 prompt", "Cursor task", "JSON training dataset", "Markdown prompt pack"];
+  const [target, setTarget] = useState(targets[0]);
+  const formatted = formatPromptForTarget(selectedPrompt, target, promptMemory, packs);
+  const extension = target === "JSON training dataset" ? "json" : "md";
+  return (
+    <section className="panel lab-panel export-format-panel" data-train-section="packs">
+      <div className="output-header">
+        <div className="panel-header">
+          <Download size={18} />
+          <h2>Export format studio</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(formatted, `export-format-${target}`)}>
+            {copied === `export-format-${target}` ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => onDownload(`${slugify(target)}.${extension}`, formatted, extension === "json" ? "application/json" : "text/markdown")}>
+            <Download size={15} />
+            Export
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onSave(target === "JSON training dataset" ? "pack" : "compiled", target, formatted, evaluatePrompt(formatted).score)}>
+            <Save size={15} />
+            Save
+          </button>
+        </div>
+      </div>
+      <div className="format-chip-row">
+        {targets.map((item) => (
+          <button className={item === target ? "tag-chip active" : "tag-chip"} key={item} type="button" onClick={() => setTarget(item)}>
+            {item}
+          </button>
+        ))}
+      </div>
+      <textarea className="generated-output style-guide-output" readOnly value={formatted} />
     </section>
   );
 }

@@ -1569,6 +1569,23 @@ button:disabled {
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
 }
 
+.wizard-brief-grid,
+.workspace-pack-grid,
+.quality-card-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.wizard-brief-grid {
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+}
+
+.workspace-pack-grid,
+.quality-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
 .simple-brief-fields,
 .simple-prompt-preview {
   display: grid;
@@ -1619,6 +1636,28 @@ button:disabled {
   display: grid;
   gap: 10px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.readiness-grid {
+  margin-top: 12px;
+}
+
+.index-card[data-tone="good"],
+.quality-card[data-tone="good"] {
+  background: rgba(31, 122, 104, 0.08);
+  border-color: rgba(31, 122, 104, 0.22);
+}
+
+.index-card[data-tone="watch"],
+.quality-card[data-tone="watch"] {
+  background: rgba(185, 130, 42, 0.1);
+  border-color: rgba(185, 130, 42, 0.22);
+}
+
+.index-card[data-tone="bad"],
+.quality-card[data-tone="bad"] {
+  background: rgba(164, 72, 63, 0.09);
+  border-color: rgba(164, 72, 63, 0.2);
 }
 
 .source-safety-grid {
@@ -1774,6 +1813,48 @@ button:disabled {
   overflow: auto;
   padding: 10px;
   white-space: pre-wrap;
+}
+
+.format-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.tag-chip {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  min-height: 32px;
+  padding: 0 10px;
+}
+
+.tag-chip.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.file-input {
+  background: #fff;
+  border: 1px dashed var(--line);
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 10px;
+  width: 100%;
+}
+
+.screenshot-prompt-preview {
+  aspect-ratio: 16 / 10;
+  border-radius: 6px;
+  display: block;
+  object-fit: cover;
+  width: 100%;
 }
 
 .prompt-pack-card .dna-v2-topline span {
@@ -2845,9 +2926,24 @@ button.preset-card {
     grid-template-columns: 1fr;
   }
 
+  .workspace,
+  .center-panel,
+  .train-grid,
+  .train-grid > .panel,
+  .train-grid > .train-columns {
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .train-section-nav {
+    position: static;
+  }
+
   .api-base-row,
   .coach-output-grid,
-  .simple-front-door-grid {
+  .simple-front-door-grid,
+  .wizard-brief-grid {
     grid-template-columns: 1fr;
   }
 

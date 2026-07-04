@@ -35,7 +35,19 @@ async function waitForHealth() {
 
 try {
   const health = await waitForHealth();
-  const expectedCollections = ["datasetVersions", "pairwiseReviews", "backupSnapshots", "activeWorkspace", "closedLoopRuns", "benchmarkRuns"];
+  const expectedCollections = [
+    "datasetVersions",
+    "pairwiseReviews",
+    "backupSnapshots",
+    "activeWorkspace",
+    "closedLoopRuns",
+    "benchmarkRuns",
+    "claudeHealthChecks",
+    "promptComparisons",
+    "screenshotPromptRuns",
+    "workspacePackRuns",
+    "healthChecks",
+  ];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
   if (!health.rateLimitPerMinute) throw new Error("Health route should expose rate limit metadata.");
@@ -65,6 +77,53 @@ try {
           recommendations: ["fixture"],
         }],
         benchmarkRuns: [{ id: "benchmark-test", rows: [] }],
+        claudeHealthChecks: [{
+          id: "claude-health-test",
+          createdAt: new Date().toISOString(),
+          apiOnline: true,
+          tokenValid: true,
+          claudeConfigured: false,
+          sqliteWritable: true,
+          modelRouteWorking: true,
+          modelMode: "local-fallback",
+          modelScore: 72,
+          apiBase: base,
+          sqlitePath: "fixture.sqlite",
+          detail: ["fixture"],
+        }],
+        promptComparisons: [{
+          id: "comparison-test",
+          createdAt: new Date().toISOString(),
+          leftId: "left",
+          rightId: "right",
+          leftTitle: "Left",
+          rightTitle: "Right",
+          winnerId: "left",
+          winnerTitle: "Left",
+          modelMode: "local-fallback",
+          score: 77,
+          findings: ["fixture"],
+          recommendations: ["fixture"],
+          hybridPrompt: "Build a precise hybrid prompt.",
+        }],
+        screenshotPromptRuns: [{
+          id: "screenshot-prompt-test",
+          createdAt: new Date().toISOString(),
+          title: "Screenshot prompt",
+          screenshotTitle: "Screenshot prompt",
+          screenshotKind: "notes",
+          prompt: "Build a screenshot recreation prompt.",
+          score: 74,
+          modelMode: "local-fallback",
+          notes: ["fixture"],
+        }],
+        workspacePackRuns: [{
+          id: "workspace-pack-test",
+          createdAt: new Date().toISOString(),
+          title: "Workspace packs",
+          packs: [],
+        }],
+        healthChecks: [{ id: "health-test", createdAt: new Date().toISOString(), kind: "fixture" }],
       },
     }),
   });
@@ -87,6 +146,11 @@ try {
     !payload.collections?.backupSnapshots?.length ||
     !payload.collections?.closedLoopRuns?.length ||
     !payload.collections?.benchmarkRuns?.length ||
+    !payload.collections?.claudeHealthChecks?.length ||
+    !payload.collections?.promptComparisons?.length ||
+    !payload.collections?.screenshotPromptRuns?.length ||
+    !payload.collections?.workspacePackRuns?.length ||
+    !payload.collections?.healthChecks?.length ||
     payload.collections?.activeWorkspace !== "hero"
   ) throw new Error("Snapshot route did not include synced collections.");
 
