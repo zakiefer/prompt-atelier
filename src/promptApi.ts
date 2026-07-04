@@ -172,6 +172,41 @@ export function evaluateWithModel(payload: { prompt: string; memory?: string; co
   });
 }
 
+export function createTrainingRun(payload: Record<string, unknown>) {
+  return requestJson<Record<string, unknown>>("/api/training/run", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function evaluateWithModelCache(payload: Record<string, unknown>) {
+  return requestJson<Record<string, unknown>>("/api/model/evaluate-cached", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function analyzeCorpusViaApi(payload: Record<string, unknown>) {
+  return requestJson<Record<string, unknown>>("/api/corpus/analyze", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function runBenchmarkV2ViaApi(payload: Record<string, unknown>) {
+  return requestJson<Record<string, unknown>>("/api/benchmark/v2", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createEvaluationArtifact(payload: Record<string, unknown>) {
+  return requestJson<Record<string, unknown>>("/api/artifact/create", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getModelSettings() {
   return requestJson<Record<string, boolean>>("/api/model/settings");
 }

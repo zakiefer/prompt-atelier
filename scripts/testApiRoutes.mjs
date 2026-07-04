@@ -58,6 +58,13 @@ try {
     "screenshotJudgeRuns",
     "mutationTournamentRuns",
     "healthChecks",
+    "trainingRuns",
+    "modelEvaluationCache",
+    "promptCandidateRuns",
+    "corpusClusterRuns",
+    "benchmarkV2Runs",
+    "evaluationArtifacts",
+    "hostedSetupChecks",
   ];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
@@ -217,6 +224,61 @@ try {
     throw new Error("Anthropic missing-key fallback should return a clean local evaluator response.");
   }
 
+  const trainingRun = await fetch(`${base}/api/training/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ source: "corpus", promptCount: 3, outcomeCount: 1, screenshotCount: 1 }),
+  });
+  const trainingRunPayload = await trainingRun.json();
+  if (!trainingRun.ok || !trainingRunPayload.trainingRun?.id || trainingRunPayload.trainingRun.stage !== "complete") {
+    throw new Error("Training route should create a completed run.");
+  }
+
+  const cachedEvaluation = await fetch(`${base}/api/model/evaluate-cached`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ prompt: "Build a React Tailwind hero with exact video, responsive QA, and no leaked token sk-ant-api03-cccccccccccccccccccccccccccccccccccccccc.", memory: "Exact assets win." }),
+  });
+  const cachedEvaluationPayload = await cachedEvaluation.json();
+  if (!cachedEvaluation.ok || !cachedEvaluationPayload.cacheRecord?.id || !cachedEvaluationPayload.redactions?.some((finding) => finding.kind === "anthropic-key")) {
+    throw new Error("Cached model evaluation route should create a redacted cache record.");
+  }
+
+  const corpusAnalyze = await fetch(`${base}/api/corpus/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      examples: [
+        { id: "prompt-a", title: "Video hero", text: "Build a cinematic React Tailwind video hero with mobile menu and verification." },
+        { id: "prompt-b", title: "Dashboard", text: "Build a dense dashboard SaaS page with charts, empty states, and responsive tables." },
+      ],
+    }),
+  });
+  const corpusAnalyzePayload = await corpusAnalyze.json();
+  if (!corpusAnalyze.ok || !corpusAnalyzePayload.report?.clusters?.length) {
+    throw new Error("Corpus analyze route should return cluster intelligence.");
+  }
+
+  const benchmarkV2 = await fetch(`${base}/api/benchmark/v2`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ examples: [{ id: "prompt-a", title: "Video hero", text: "Build a cinematic video hero with exact video URL and verification." }] }),
+  });
+  const benchmarkV2Payload = await benchmarkV2.json();
+  if (!benchmarkV2.ok || !benchmarkV2Payload.report?.rows?.length) {
+    throw new Error("Benchmark v2 route should return fixture rows.");
+  }
+
+  const artifactCreate = await fetch(`${base}/api/artifact/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ prompt: { id: "prompt-a", title: "Video hero", text: "Build a cinematic video hero." }, score: 82 }),
+  });
+  const artifactPayload = await artifactCreate.json();
+  if (!artifactCreate.ok || !artifactPayload.artifact?.markdown?.includes("Evaluation Artifact")) {
+    throw new Error("Artifact route should create a markdown artifact.");
+  }
+
   const authedSnapshot = await fetch(`${base}/api/snapshot`, { headers: { "x-prompt-lab-token": "test-token" } });
   const payload = await authedSnapshot.json();
   if (
@@ -234,6 +296,11 @@ try {
     !payload.collections?.screenshotJudgeRuns?.length ||
     !payload.collections?.mutationTournamentRuns?.length ||
     !payload.collections?.healthChecks?.length ||
+    !payload.collections?.trainingRuns?.length ||
+    !payload.collections?.modelEvaluationCache?.length ||
+    !payload.collections?.corpusClusterRuns?.length ||
+    !payload.collections?.benchmarkV2Runs?.length ||
+    !payload.collections?.evaluationArtifacts?.length ||
     payload.collections?.activeWorkspace !== "hero" ||
     JSON.stringify(payload.collections).includes("sk-ant-api03-")
   ) throw new Error("Snapshot route did not include synced collections.");
