@@ -35,6 +35,7 @@ import {
   auditVisualPrompt,
   buildAllInRunwayReport,
   buildAutonomousProofLoopReport,
+  buildAutonomousProofBatchProductReport,
   buildCodexSkill,
   buildBenchmarkExpansionReport,
   buildBenchmarkV2Report,
@@ -86,7 +87,9 @@ import {
   buildGuidedPromptWizardReport,
   buildGoldenBenchmarkHarnessReport,
   buildGeneratorV3Report,
+  buildGeneratorModeTestProductReport,
   buildHostedCiSmokeReport,
+  buildHostedApiDeploymentProductReport,
   buildHostedBackendKitReport,
   buildHostedHardeningReport,
   buildHostedBuildWorkerReport,
@@ -97,6 +100,7 @@ import {
   buildLeakageGuardReport,
   buildLearningExplanationReport,
   buildLearningMachineReport,
+  buildNextProductLayerReport,
   buildPatternDashboard,
   buildProjectExportPack,
   buildPreferenceTrainingReport,
@@ -108,6 +112,7 @@ import {
   buildResultGallery,
   buildReusableMemoryPack,
   buildPublicDemoPolishReport,
+  buildPreferenceDatasetV2ProductReport,
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
   buildModelJudgeComparisonReport,
@@ -131,6 +136,8 @@ import {
   buildSpeedLabelingReport,
   buildTrainingRunSummary,
   buildTrainingExportReadinessReport,
+  buildResultGalleryHydrationProductReport,
+  buildRegressionDashboardV2ProductReport,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
   buildNarrativePolishReport,
@@ -247,6 +254,7 @@ import {
   type LeakageGuardReport,
   type LearningExplanationReport,
   type LearningMachineReport,
+  type NextProductLayerReport,
   type GuidedPromptWizardReport,
   type HostedBackendKitReport,
   type HostedHardeningReport,
@@ -3160,6 +3168,7 @@ export default function App() {
         expectedHeadings: [
           "All-in product runway",
           "Learning machine control plane",
+          "Next product layer",
           "Autonomous proof loop",
           "Prompt generator v3",
           "Training export readiness",
@@ -3203,6 +3212,81 @@ export default function App() {
       preferenceTraining,
       publicDemoPolish,
       resultGallery.length,
+      trainingExportReadiness,
+    ],
+  );
+  const hostedApiDeploymentProduct = useMemo(
+    () => buildHostedApiDeploymentProductReport({ hostedBackend: hostedBackendKit, hostedCi: hostedCiSmoke }),
+    [hostedBackendKit, hostedCiSmoke],
+  );
+  const autonomousProofBatchProduct = useMemo(
+    () =>
+      buildAutonomousProofBatchProductReport({
+        autonomousProof: autonomousProofLoop,
+        generatorV3,
+        hostedWorker: hostedWorkerOps,
+        promptToProof: promptToProofWorkflow,
+      }),
+    [autonomousProofLoop, generatorV3, hostedWorkerOps, promptToProofWorkflow],
+  );
+  const preferenceDatasetV2Product = useMemo(
+    () =>
+      buildPreferenceDatasetV2ProductReport({
+        closedLoopRunCount: closedLoopRuns.length,
+        exampleCount: learningExamples.length,
+        outcomeCount: outcomes.length,
+        pairwiseCount: pairwiseReviews.length,
+      }),
+    [closedLoopRuns.length, learningExamples.length, outcomes.length, pairwiseReviews.length],
+  );
+  const generatorModeTestProduct = useMemo(
+    () =>
+      buildGeneratorModeTestProductReport({
+        benchmarkExpansion,
+        generatorV3,
+        proofRunCount: proofLearningRuns.length,
+      }),
+    [benchmarkExpansion, generatorV3, proofLearningRuns.length],
+  );
+  const resultGalleryHydrationProduct = useMemo(
+    () =>
+      buildResultGalleryHydrationProductReport({
+        buildRunCount: buildRuns.length,
+        proofArtifactCount: proofArtifacts.length,
+        resultGalleryCount: resultGallery.length,
+        screenshotCount: screenshots.length,
+      }),
+    [buildRuns.length, proofArtifacts.length, resultGallery.length, screenshots.length],
+  );
+  const regressionDashboardV2Product = useMemo(
+    () =>
+      buildRegressionDashboardV2ProductReport({
+        benchmarkRunCount: benchmarkRuns.length,
+        benchmarkV2RunCount: benchmarkV2Runs.length,
+        evaluationEventCount: evaluationHistory.items.length,
+        modelCacheCount: modelEvaluationCache.length,
+        trainingRunCount: trainingRuns.length,
+      }),
+    [benchmarkRuns.length, benchmarkV2Runs.length, evaluationHistory.items.length, modelEvaluationCache.length, trainingRuns.length],
+  );
+  const nextProductLayer = useMemo(
+    () =>
+      buildNextProductLayerReport({
+        autonomousProofBatch: autonomousProofBatchProduct,
+        galleryHydration: resultGalleryHydrationProduct,
+        generatorModeTest: generatorModeTestProduct,
+        hostedDeployment: hostedApiDeploymentProduct,
+        preferenceDataset: preferenceDatasetV2Product,
+        regressionDashboard: regressionDashboardV2Product,
+        trainingExports: trainingExportReadiness,
+      }),
+    [
+      autonomousProofBatchProduct,
+      generatorModeTestProduct,
+      hostedApiDeploymentProduct,
+      preferenceDatasetV2Product,
+      regressionDashboardV2Product,
+      resultGalleryHydrationProduct,
       trainingExportReadiness,
     ],
   );
@@ -7087,6 +7171,7 @@ export default function App() {
               publicDemoPolish={publicDemoPolish}
               hostedCiSmoke={hostedCiSmoke}
               trainingExportReadiness={trainingExportReadiness}
+              nextProductLayer={nextProductLayer}
               hostedBackendKit={hostedBackendKit}
               promptToProofWorkflow={promptToProofWorkflow}
               datasetBulkTools={datasetBulkTools}
@@ -8287,6 +8372,7 @@ function TrainView({
   publicDemoPolish,
   hostedCiSmoke,
   trainingExportReadiness,
+  nextProductLayer,
   hostedBackendKit,
   promptToProofWorkflow,
   datasetBulkTools,
@@ -8608,6 +8694,7 @@ function TrainView({
   publicDemoPolish: PublicDemoPolishReport;
   hostedCiSmoke: HostedCiSmokeReport;
   trainingExportReadiness: TrainingExportReadinessReport;
+  nextProductLayer: NextProductLayerReport;
   hostedBackendKit: HostedBackendKitReport;
   promptToProofWorkflow: PromptToProofWorkflowReport;
   datasetBulkTools: DatasetBulkToolsReport;
@@ -8825,6 +8912,7 @@ function TrainView({
   const trainSections = [
     { id: "workflow", label: "Workflow" },
     { id: "machine", label: "Learning machine" },
+    { id: "next-layer", label: "Next layer" },
     { id: "autonomous", label: "Autonomous" },
     { id: "generator-v3", label: "Generator v3" },
     { id: "benchmark-scale", label: "Benchmark scale" },
@@ -8895,6 +8983,8 @@ function TrainView({
       <AllInRunwayPanel report={allInRunway} onSelect={scrollToTrainSection} />
 
       <LearningMachinePanel report={learningMachine} onSelect={scrollToTrainSection} />
+
+      <NextProductLayerPanel copied={copied} onCopy={onCopy} report={nextProductLayer} />
 
       <section className="train-columns">
         <AutonomousProofLoopPanel report={autonomousProofLoop} onRunAutonomousProofLoop={onRunAutonomousProofLoop} />
@@ -10190,6 +10280,68 @@ function LearningMachinePanel({
       <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
       <FeedbackList title="Machine summary" items={report.summary} empty="No learning machine summary." />
       {report.blockers.length ? <FeedbackList title="Machine blockers" items={report.blockers} empty="No blockers." /> : null}
+    </section>
+  );
+}
+
+function NextProductLayerPanel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: NextProductLayerReport;
+}) {
+  const commandPack = report.items.map((item) => item.command).filter(Boolean).join("\n");
+
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="next-layer">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Next product layer</h2>
+        </div>
+        <div className="button-row">
+          <button
+            className="ghost-button compact-button"
+            type="button"
+            onClick={() => onCopy(commandPack, "next-layer-command-pack")}
+            disabled={!commandPack}
+          >
+            {copied === "next-layer-command-pack" ? <Check size={15} /> : <Copy size={15} />}
+            Copy commands
+          </button>
+          <ScoreRing score={report.score} label={report.status} />
+        </div>
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.items.filter((item) => item.status === "ready").length}/${report.items.length}`} label="Ready lanes" />
+        <Metric value={formatNumber(report.items.filter((item) => item.status === "active").length)} label="Active lanes" />
+        <Metric value={formatNumber(report.blockers.length)} label="Blockers" />
+      </div>
+      <div className="safe-check-grid">
+        {report.items.map((item) => (
+          <article className="safe-check product-command-card" key={item.id} data-ready={item.status === "ready" ? "true" : "false"}>
+            <strong>{item.score}</strong>
+            <span>{item.label}</span>
+            <p>{item.evidence}</p>
+            <small>{item.nextAction}</small>
+            <button
+              className="ghost-button compact-button"
+              type="button"
+              onClick={() => onCopy(item.command, `next-layer-${item.id}`)}
+              disabled={!item.command}
+            >
+              {copied === `next-layer-${item.id}` ? <Check size={15} /> : <Copy size={15} />}
+              Command
+            </button>
+          </article>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
+      <FeedbackList title="Next layer summary" items={report.summary} empty="No next-layer summary." />
+      {report.blockers.length ? <FeedbackList title="Next layer blockers" items={report.blockers} empty="No blockers." /> : null}
     </section>
   );
 }

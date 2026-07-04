@@ -17,6 +17,7 @@ The Train tab now exposes the same intelligence as a product runway: Product Com
 7. Use Connect hosted brain in the Train tab to verify health, SQLite writes, auth posture, and configured model settings before running calibration or one-click proof work.
 8. Use Claude readiness without browser secrets to confirm API health, bearer auth, SQLite write visibility, model route behavior, and whether image judging can run through the server-side key.
 9. Run `npm run verify:hosted-api -- --url https://your-api.example.com --token <token>` from a terminal or CI smoke to prove the same hosted-readiness checks outside the browser.
+10. Run `npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hosted-api-deploy` after the Blueprint deploy to write a JSON deployment-readiness report.
 
 ## Required Environment
 
@@ -47,6 +48,25 @@ The command checks `/api/health` and `/api/model/settings`, then optionally post
 The hosted app smoke command is frontend-only. It loads the public Pages app, switches to Train, checks the Learning Machine headings, and writes a screenshot artifact so deployment proof is visible even when no hosted API token is present.
 
 Blocking failures are limited to health reachability, bearer auth, SQLite storage, and the model-settings route. Worker enablement, build allowlists, Claude key visibility, and model-route readiness are reported as operational checks because a hosted demo can still run in deterministic fallback mode.
+
+## Next-layer Automation CLIs
+
+These commands are the terminal equivalents of the Train tab's Next Product Layer panel:
+
+```bash
+npm run deploy:hosted-api -- --out output/hosted-api-deploy
+npm run export:training-v2 -- --out output/training-dataset-v2
+npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-gallery
+npm run proof:batch -- --url http://127.0.0.1:8787 --limit 1 --allow-fail --out output/autonomous-proof-batch
+```
+
+`deploy:hosted-api` is safe to run without a deploy hook or API URL; it still validates the Blueprint, Dockerfile, package scripts, persistent disk posture, and server-side `ANTHROPIC_API_KEY` requirement. Add `--require-deploy` only in CI or release jobs where a Render deploy hook or reachable API URL is mandatory.
+
+`export:training-v2` writes supervised chat rows, chosen/rejected preference pairs, closed-loop repair rows, avoid/failure rows, and a manifest. It reads the hosted API when `--url` is supplied and falls back to the curated `src/prompts` corpus for offline exports.
+
+`gallery:hydrate` derives result-gallery rows from synced build runs, screenshots, and proof artifacts. Add `--sync` only when the API token and collection write path are intentionally available.
+
+`proof:batch` posts selected prompts to `/api/closed-loop/prove`. Use it only against a trusted worker host. `--allow-fail` records the proof-batch report even when the worker is disabled or a proof run is rejected.
 
 ## Claude Scoring
 

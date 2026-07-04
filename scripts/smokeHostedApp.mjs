@@ -27,6 +27,7 @@ if (shouldOpenTrain) {
 const expectedHeadings = [
   "All-in product runway",
   "Learning machine control plane",
+  "Next product layer",
   "Autonomous proof loop",
   "Prompt generator v3",
   "Training export readiness",

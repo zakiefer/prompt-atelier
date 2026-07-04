@@ -61,6 +61,8 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Hosted API verifier CLI for checking `/api/health`, `/api/model/settings`, bearer auth, SQLite persistence, worker allowlists, and optional model evaluation without printing secrets
 - Learning Machine control plane covering real hosted backend posture, autonomous proof loops, preference training, 60+ golden benchmark challenges, Prompt Generator v3 modes, result gallery proof, learning explanations, public demo polish, hosted CI smoke, and training exports
 - Hosted app smoke CLI for loading the public Pages app, switching to Train, asserting the learning-machine headings, and saving a screenshot artifact
+- Next Product Layer panel that turns hosted deploy, autonomous proof batches, preference/repair dataset v2, generator mode tests, gallery hydration, regression history, and training exports into copyable operator commands
+- CLI automation for hosted API deploy checks, proof batch runs, result-gallery hydration, and supervised/preference/repair/failure training dataset exports
 
 ## Development
 
@@ -114,6 +116,10 @@ npm run check:corpus-safety
 npm run check:quality-gate
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
 npm run smoke:hosted -- --url http://127.0.0.1:4173 --train --out output/playwright/learning-machine-local
+npm run deploy:hosted-api -- --out output/hosted-api-deploy
+npm run export:training-v2 -- --out output/training-dataset-v2
+npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-gallery
+npm run proof:batch -- --url http://127.0.0.1:8787 --limit 1 --allow-fail --out output/autonomous-proof-batch
 npm run test:api
 npm run build
 node --check scripts/promptLabApi.mjs
@@ -167,6 +173,7 @@ The Train tab now starts with:
 25. An all-in runway layer that explicitly tracks the ten product upgrades: hosted backend, prompt-to-proof, bulk inbox decisions, human preference labels, Claude calibration, generator brief completion, public demo mode, regression history, security cleanup, and narrative polish.
 26. A hosted API verifier command so the hosted-backend lane can be checked from CI, a terminal, or a deployment smoke without exposing API tokens or model keys.
 27. A Learning Machine control plane that ties the next product layer together: autonomous proof orchestration, Prompt Generator v3 mode patches, a scaled 60+ case benchmark harness, plain-English explanations, public demo polish, hosted Pages smoke, and real training-format exports.
+28. A Next Product Layer panel and CLI lane that makes deploy checks, autonomous proof batches, preference/repair exports, generator mode tests, gallery hydration, and regression dashboards repeatable from both the Train tab and terminal.
 
 The tightest improvement cycle is:
 

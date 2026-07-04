@@ -1637,6 +1637,72 @@ export type TrainingExportReadinessReport = {
   notes: string[];
 };
 
+export type HostedApiDeploymentProductReport = {
+  score: number;
+  status: "ready" | "needs-credentials" | "needs-work";
+  checks: { label: string; ready: boolean; detail: string; fix: string }[];
+  command: string;
+  notes: string[];
+};
+
+export type AutonomousProofBatchProductReport = {
+  score: number;
+  status: "ready" | "needs-worker" | "needs-prompts";
+  checks: { label: string; ready: boolean; detail: string }[];
+  command: string;
+  notes: string[];
+};
+
+export type PreferenceDatasetV2ProductReport = {
+  score: number;
+  status: "ready" | "needs-labels" | "empty";
+  counts: { supervised: number; preferences: number; repairs: number; failures: number };
+  command: string;
+  notes: string[];
+};
+
+export type GeneratorModeTestProductReport = {
+  score: number;
+  status: "ready" | "needs-proof";
+  rows: { label: string; ready: boolean; detail: string }[];
+  command: string;
+  notes: string[];
+};
+
+export type ResultGalleryHydrationProductReport = {
+  score: number;
+  status: "ready" | "needs-proof" | "empty";
+  counts: { gallery: number; buildRuns: number; screenshots: number; proofArtifacts: number };
+  command: string;
+  notes: string[];
+};
+
+export type RegressionDashboardV2ProductReport = {
+  score: number;
+  status: "ready" | "thin" | "empty";
+  metrics: { label: string; value: number; detail: string }[];
+  notes: string[];
+};
+
+export type NextProductLayerItem = {
+  id: "hosted-api-deploy" | "proof-batch" | "preference-dataset-v2" | "generator-mode-tests" | "gallery-hydration" | "regression-dashboard-v2" | "training-export-v2";
+  label: string;
+  score: number;
+  status: "ready" | "active" | "needs-work" | "blocked";
+  evidence: string;
+  nextAction: string;
+  command: string;
+};
+
+export type NextProductLayerReport = {
+  score: number;
+  status: "ready" | "in-progress" | "blocked";
+  items: NextProductLayerItem[];
+  summary: string[];
+  nextAction: string;
+  blockers: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -8848,6 +8914,218 @@ export function buildLearningMachineReport({
     summary: [
       `${items.filter((item) => item.status === "ready").length}/${items.length} learning-machine upgrade(s) are ready.`,
       "The learning machine now covers hosted backend, autonomous proof, preferences, benchmark scale, generator v3, gallery proof, explanations, public demo, CI smoke, and training exports.",
+    ],
+    nextAction: `${next.label}: ${next.nextAction}`,
+    blockers,
+  };
+}
+
+export function buildHostedApiDeploymentProductReport({
+  hostedBackend,
+  hostedCi,
+}: {
+  hostedBackend: HostedBackendKitReport;
+  hostedCi: HostedCiSmokeReport;
+}): HostedApiDeploymentProductReport {
+  const checks = [
+    { label: "Blueprint", ready: hostedBackend.checks.some((check) => /deployment|reachable/i.test(check.label)) || hostedBackend.score > 0, detail: "render.yaml and Dockerfile.api define the API service.", fix: "Keep render.yaml and Dockerfile.api aligned." },
+    { label: "Persistent SQLite", ready: hostedBackend.checks.some((check) => /storage/i.test(check.label) && check.ready), detail: hostedBackend.checks.find((check) => /storage/i.test(check.label))?.detail || "SQLite persistence must be visible on the API host.", fix: "Set PROMPT_LAB_DATA_DIR on a persistent disk." },
+    { label: "Bearer auth", ready: hostedBackend.checks.some((check) => /auth/i.test(check.label) && check.ready), detail: hostedBackend.checks.find((check) => /auth/i.test(check.label))?.detail || "Hosted API should require bearer auth.", fix: "Set PROMPT_LAB_API_TOKEN." },
+    { label: "Server-side Claude", ready: hostedBackend.checks.some((check) => /model|Claude/i.test(check.label) && check.ready), detail: "Claude/OpenAI-compatible keys must stay on the API host.", fix: "Set ANTHROPIC_API_KEY only on the server." },
+    { label: "Hosted smoke", ready: hostedCi.status === "ready", detail: hostedCi.notes[0], fix: "Run npm run smoke:hosted after deploy." },
+  ];
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: score >= 80 ? "ready" : checks.some((check) => !check.ready && /auth|Claude|SQLite/i.test(check.label)) ? "needs-credentials" : "needs-work",
+    checks,
+    command: "npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hosted-api-deploy",
+    notes: [
+      "This lane turns the existing Render/Docker API kit into an auditable deploy step.",
+      "Actual cloud service creation requires a Render Blueprint apply or RENDER_DEPLOY_HOOK_URL plus provider credentials.",
+    ],
+  };
+}
+
+export function buildAutonomousProofBatchProductReport({
+  autonomousProof,
+  generatorV3,
+  hostedWorker,
+  promptToProof,
+}: {
+  autonomousProof: AutonomousProofLoopReport;
+  generatorV3: GeneratorV3Report;
+  hostedWorker: HostedWorkerOpsReport;
+  promptToProof: PromptToProofWorkflowReport;
+}): AutonomousProofBatchProductReport {
+  const checks = [
+    { label: "Generator modes", ready: generatorV3.modes.some((mode) => mode.ready), detail: `${generatorV3.modes.filter((mode) => mode.ready).length}/${generatorV3.modes.length} mode(s) trained.` },
+    { label: "Prompt-to-proof", ready: promptToProof.canRun, detail: promptToProof.primaryAction },
+    { label: "Autonomous chain", ready: autonomousProof.score >= 60, detail: autonomousProof.notes[0] },
+    { label: "Worker ops", ready: hostedWorker.status !== "needs-attention", detail: hostedWorker.notes[0] },
+  ];
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: !checks[0].ready ? "needs-prompts" : score >= 75 ? "ready" : "needs-worker",
+    checks,
+    command: "npm run proof:batch -- --url https://your-api.example.com --limit 3 --out output/autonomous-proof-batch",
+    notes: [
+      "Proof batch runs multiple prompts through /api/closed-loop/prove and writes a proof batch report.",
+      "The API worker must be enabled only on trusted infrastructure before this can pass end to end.",
+    ],
+  };
+}
+
+export function buildPreferenceDatasetV2ProductReport({
+  closedLoopRunCount = 0,
+  exampleCount = 0,
+  outcomeCount = 0,
+  pairwiseCount = 0,
+}: {
+  closedLoopRunCount?: number;
+  exampleCount?: number;
+  outcomeCount?: number;
+  pairwiseCount?: number;
+}): PreferenceDatasetV2ProductReport {
+  const counts = {
+    supervised: exampleCount,
+    preferences: pairwiseCount,
+    repairs: closedLoopRunCount,
+    failures: Math.max(0, outcomeCount - Math.min(outcomeCount, exampleCount)),
+  };
+  const score = boundedProductScore(Math.min(100, counts.supervised * 2) * 0.35 + Math.min(100, counts.preferences * 10) * 0.3 + Math.min(100, counts.repairs * 12) * 0.25 + Math.min(100, outcomeCount * 3) * 0.1);
+  return {
+    score,
+    status: !exampleCount ? "empty" : pairwiseCount >= 5 && closedLoopRunCount >= 3 ? "ready" : "needs-labels",
+    counts,
+    command: "npm run export:training-v2 -- --out output/training-dataset-v2",
+    notes: [
+      "Dataset v2 exports supervised chat rows, chosen/rejected preference rows, closed-loop repairs, and avoid/failure rows.",
+      pairwiseCount < 5 ? "Add more pairwise labels before treating preferences as trainable." : "Preference rows are ready for export.",
+    ],
+  };
+}
+
+export function buildGeneratorModeTestProductReport({
+  benchmarkExpansion,
+  generatorV3,
+  proofRunCount = 0,
+}: {
+  benchmarkExpansion: BenchmarkExpansionReport;
+  generatorV3: GeneratorV3Report;
+  proofRunCount?: number;
+}): GeneratorModeTestProductReport {
+  const rows = generatorV3.modes.map((mode) => ({
+    label: mode.label,
+    ready: mode.ready && proofRunCount > 0 && benchmarkExpansion.status === "scaled",
+    detail: proofRunCount > 0 ? `${proofRunCount} proof run(s) can be compared against ${benchmarkExpansion.total} benchmark cases.` : `Needs proof run for ${mode.label}.`,
+  }));
+  const score = readyPercent(rows);
+  return {
+    score,
+    status: score >= 70 ? "ready" : "needs-proof",
+    rows,
+    command: "npm run proof:batch -- --limit 7 --out output/generator-mode-tests --allow-fail",
+    notes: [
+      "Generator mode testing runs each v3 mode through proof and compares the outputs against the expanded benchmark harness.",
+      "Use proof results to promote, demote, or rewrite mode patches.",
+    ],
+  };
+}
+
+export function buildResultGalleryHydrationProductReport({
+  buildRunCount = 0,
+  proofArtifactCount = 0,
+  resultGalleryCount = 0,
+  screenshotCount = 0,
+}: {
+  buildRunCount?: number;
+  proofArtifactCount?: number;
+  resultGalleryCount?: number;
+  screenshotCount?: number;
+}): ResultGalleryHydrationProductReport {
+  const score = boundedProductScore(Math.min(100, resultGalleryCount * 10) * 0.45 + Math.min(100, screenshotCount * 12) * 0.25 + Math.min(100, buildRunCount * 8) * 0.15 + Math.min(100, proofArtifactCount * 8) * 0.15);
+  return {
+    score,
+    status: resultGalleryCount >= 10 ? "ready" : resultGalleryCount > 0 || screenshotCount > 0 || proofArtifactCount > 0 ? "needs-proof" : "empty",
+    counts: { gallery: resultGalleryCount, buildRuns: buildRunCount, screenshots: screenshotCount, proofArtifacts: proofArtifactCount },
+    command: "npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-gallery",
+    notes: [
+      "Gallery hydration turns build runs, screenshots, and proof artifacts into a browsable result proof manifest.",
+      resultGalleryCount >= 10 ? "Gallery has enough examples for a credible demo." : "Run or import more proof results to reach 10+ gallery items.",
+    ],
+  };
+}
+
+export function buildRegressionDashboardV2ProductReport({
+  benchmarkRunCount = 0,
+  benchmarkV2RunCount = 0,
+  evaluationEventCount = 0,
+  modelCacheCount = 0,
+  trainingRunCount = 0,
+}: {
+  benchmarkRunCount?: number;
+  benchmarkV2RunCount?: number;
+  evaluationEventCount?: number;
+  modelCacheCount?: number;
+  trainingRunCount?: number;
+}): RegressionDashboardV2ProductReport {
+  const metrics = [
+    { label: "Evaluation events", value: evaluationEventCount, detail: "Labels, builds, screenshots, model scores, pairwise reviews." },
+    { label: "Classic benchmarks", value: benchmarkRunCount, detail: "Regression benchmark suite runs." },
+    { label: "Benchmark v2", value: benchmarkV2RunCount, detail: "Canonical fixture coverage runs." },
+    { label: "Training runs", value: trainingRunCount, detail: "Guided training run history." },
+    { label: "Model cache", value: modelCacheCount, detail: "Cached model/local agreement rows." },
+  ];
+  const score = boundedProductScore(metrics.reduce((sum, metric) => sum + Math.min(100, metric.value * 18), 0) / metrics.length);
+  return {
+    score,
+    status: metrics.every((metric) => metric.value === 0) ? "empty" : score >= 60 ? "ready" : "thin",
+    metrics,
+    notes: [
+      "Regression dashboard v2 tracks whether the learner is improving over repeated benchmark, proof, model, and export runs.",
+      score >= 60 ? "There is enough history for trend review." : "Run more benchmark/proof/calibration jobs to make trends meaningful.",
+    ],
+  };
+}
+
+export function buildNextProductLayerReport({
+  autonomousProofBatch,
+  galleryHydration,
+  generatorModeTest,
+  hostedDeployment,
+  preferenceDataset,
+  regressionDashboard,
+  trainingExports,
+}: {
+  autonomousProofBatch: AutonomousProofBatchProductReport;
+  galleryHydration: ResultGalleryHydrationProductReport;
+  generatorModeTest: GeneratorModeTestProductReport;
+  hostedDeployment: HostedApiDeploymentProductReport;
+  preferenceDataset: PreferenceDatasetV2ProductReport;
+  regressionDashboard: RegressionDashboardV2ProductReport;
+  trainingExports: TrainingExportReadinessReport;
+}): NextProductLayerReport {
+  const items: NextProductLayerItem[] = [
+    { id: "hosted-api-deploy", label: "Real hosted API deployment", score: hostedDeployment.score, status: hostedDeployment.status === "ready" ? "ready" : hostedDeployment.status === "needs-credentials" ? "blocked" : "needs-work", evidence: hostedDeployment.notes[0], nextAction: hostedDeployment.checks.find((check) => !check.ready)?.fix || "Run hosted API deploy check.", command: hostedDeployment.command },
+    { id: "proof-batch", label: "Autonomous proof batch", score: autonomousProofBatch.score, status: autonomousProofBatch.status === "ready" ? "ready" : "needs-work", evidence: autonomousProofBatch.notes[0], nextAction: autonomousProofBatch.checks.find((check) => !check.ready)?.detail || "Run proof batch.", command: autonomousProofBatch.command },
+    { id: "preference-dataset-v2", label: "Preference dataset v2", score: preferenceDataset.score, status: preferenceDataset.status === "ready" ? "ready" : preferenceDataset.status === "empty" ? "blocked" : "needs-work", evidence: `${preferenceDataset.counts.supervised} supervised / ${preferenceDataset.counts.preferences} preference / ${preferenceDataset.counts.repairs} repair rows.`, nextAction: preferenceDataset.notes[1], command: preferenceDataset.command },
+    { id: "generator-mode-tests", label: "Generator v3 output tests", score: generatorModeTest.score, status: generatorModeTest.status === "ready" ? "ready" : "needs-work", evidence: generatorModeTest.notes[0], nextAction: generatorModeTest.rows.find((row) => !row.ready)?.detail || "Run generator mode tests.", command: generatorModeTest.command },
+    { id: "gallery-hydration", label: "Result gallery hydration", score: galleryHydration.score, status: galleryHydration.status === "ready" ? "ready" : galleryHydration.status === "empty" ? "needs-work" : "active", evidence: `${galleryHydration.counts.gallery} gallery item(s), ${galleryHydration.counts.proofArtifacts} proof artifact(s).`, nextAction: galleryHydration.notes[1], command: galleryHydration.command },
+    { id: "regression-dashboard-v2", label: "Regression dashboard v2", score: regressionDashboard.score, status: regressionDashboard.status === "ready" ? "ready" : regressionDashboard.status === "empty" ? "needs-work" : "active", evidence: regressionDashboard.notes[0], nextAction: regressionDashboard.notes[1], command: "npm run test:engine && npm run check:quality-gate" },
+    { id: "training-export-v2", label: "Training dataset export v2", score: trainingExports.score, status: trainingExports.status === "ready" ? "ready" : "needs-work", evidence: trainingExports.notes[0], nextAction: trainingExports.targets.find((target) => !target.ready)?.detail || "Export dataset v2.", command: "npm run export:training-v2 -- --out output/training-dataset-v2" },
+  ];
+  const score = boundedProductScore(items.reduce((sum, item) => sum + item.score, 0) / Math.max(1, items.length));
+  const blockers = items.filter((item) => item.status === "blocked").map((item) => `${item.label}: ${item.nextAction}`);
+  const next = items.find((item) => item.status === "blocked") || items.find((item) => item.status === "needs-work") || items.find((item) => item.status === "active") || items[0];
+  return {
+    score,
+    status: blockers.length ? "blocked" : items.every((item) => item.status === "ready") ? "ready" : "in-progress",
+    items,
+    summary: [
+      `${items.filter((item) => item.status === "ready").length}/${items.length} next-layer automation lane(s) are ready.`,
+      "This layer adds deploy automation, proof batches, preference/repair exports, generator mode testing, gallery hydration, and trend-ready regression history.",
     ],
     nextAction: `${next.label}: ${next.nextAction}`,
     blockers,
