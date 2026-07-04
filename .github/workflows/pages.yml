@@ -34,6 +34,7 @@ jobs:
         run: npm run build
         env:
           GITHUB_PAGES: "true"
+          VITE_PROMPT_ATELIER_API_BASE: ${{ secrets.PROMPT_LAB_API_URL }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5

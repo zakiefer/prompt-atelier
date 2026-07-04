@@ -17,6 +17,7 @@ Repository settings:
 - Expected URL: `https://zakiefer.github.io/prompt-atelier/`.
 
 The Vite `base` path is controlled by `GITHUB_PAGES=true` in the workflow so local development still serves from `/`.
+The Pages build also reads `PROMPT_LAB_API_URL` from GitHub Actions secrets and exposes it as `VITE_PROMPT_ATELIER_API_BASE`, so the public app can default to the hosted API without bundling the bearer token.
 
 ## API
 
@@ -92,7 +93,17 @@ Blueprint deeplink after this file is merged to `main`:
 https://dashboard.render.com/blueprint/new?repo=https://github.com/zakiefer/prompt-atelier
 ```
 
-This machine does not currently have the Render CLI installed or a Render MCP connection available, so final service creation requires applying the Blueprint in the Render Dashboard and filling the two secret values above.
+Current live Render service:
+
+- Service: `prompt-atelier-api`
+- Service ID: `srv-d94ossa8qa3s73d2vjd0`
+- URL: `https://prompt-atelier-api.onrender.com`
+- Plan/runtime: free image-backed web service
+- Current image: `ttl.sh/prompt-atelier-api-9c3dc5c-1783205423:24h`
+- Worker execution: disabled with `PROMPT_LAB_WORKER_ENABLED=false`
+- API auth: enabled with `PROMPT_LAB_API_TOKEN` stored in Render and mirrored to GitHub Actions secrets
+
+That image-backed service was created from a temporary public image to avoid exposing the private GitHub repo or requiring paid persistent disk setup. For durable production redeploys, replace the temporary image with a stable registry image or apply the Blueprint after the Render workspace has payment info for the persistent disk.
 
 ## Verification
 
