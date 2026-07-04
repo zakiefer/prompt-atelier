@@ -31,7 +31,8 @@ export type CollectionKey =
   | "corpusClusterRuns"
   | "benchmarkV2Runs"
   | "evaluationArtifacts"
-  | "hostedSetupChecks";
+  | "hostedSetupChecks"
+  | "proofArtifacts";
 
 type StoredCollection<T> = {
   key: CollectionKey;

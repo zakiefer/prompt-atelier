@@ -29,25 +29,32 @@ import {
   buildArchetypePromptPacks,
   buildFailureMemory,
   buildGoldenDatasetV1LockReport,
+  buildGoldenBenchmarkHarnessReport,
   buildGuidedPromptWizardReport,
   buildHostedSyncReport,
   buildHostedHardeningReport,
   buildHostedBuildWorkerReport,
+  buildHostedWorkerOpsReport,
   buildImportWizardReport,
   buildFailureMemoryAutopilotReport,
   buildLearnedGeneratorVariants,
   buildLeakageGuardReport,
   buildPatternDashboard,
+  buildMeasuredQualitySprintReport,
   buildProjectExportPack,
   buildPromptMemoryDiffReport,
   buildModelEvaluationCacheReport,
   buildPromptCandidateTournament,
+  buildPromptCritiqueRepairReport,
   buildPromptCoachReport,
   buildPromptEditorGuidance,
+  buildPromptGeneratorV2Report,
   buildPromptQualityDnaReport,
   buildPromptRecipeDistillerReport,
   buildQueueProgressReport,
   buildQualityGateReport,
+  buildResultQualityDashboardReport,
+  buildDatasetReviewQueueReport,
   buildReusableMemoryPack,
   buildSourceSafetyReport,
   buildSafeToTrainReport,
@@ -84,6 +91,7 @@ import {
   slugify,
   titleFromPrompt,
   type BuildRunRecord,
+  type BuildQueueJob,
   type PairwiseReviewRecord,
   type OutcomeRecord,
   type PromptExample,
@@ -795,4 +803,107 @@ const calibrationWorkflow = buildEvaluatorCalibrationWorkflowReport({ calibratio
 assert.ok(calibrationWorkflow.rows.some((row) => row.label === "Manual review queue"), "Evaluator calibration workflow should expose manual review rows.");
 assert.ok(["aligned", "review", "needs-runs"].includes(calibrationWorkflow.status), "Evaluator calibration workflow should classify readiness.");
 
-console.log(JSON.stringify({ ok: true, assertions: 160, score: score.score, snapshot: snapshot.label }, null, 2));
+const goldenBenchmarkHarness = buildGoldenBenchmarkHarnessReport(curatedSeedPrompts);
+assert.equal(goldenBenchmarkHarness.total, 20, "Golden benchmark harness should cover the full measured case set.");
+assert.equal(goldenBenchmarkHarness.cases.length, goldenBenchmarkHarness.total, "Golden benchmark harness should expose one row per case.");
+assert.ok(goldenBenchmarkHarness.notes.some((note) => /golden benchmark/i.test(note)), "Golden benchmark harness should explain coverage.");
+
+const promptGeneratorV2 = buildPromptGeneratorV2Report({
+  benchmarkHarness: goldenBenchmarkHarness,
+  input: {
+    brandName: "Atlas",
+    industry: "AI research",
+    audience: "research founders",
+    goal: "prove the product is serious in the first viewport",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    siteType: "single-page hero",
+    vibe: "cinematic and exact",
+    visualStyle: "cinematic video hero with exact typography",
+    assets: "exact video URL and logo SVG",
+    constraints: "no vague placeholders",
+    outputTarget: "Codex build prompt",
+    strictness: 9,
+  },
+  promptMemory,
+  variants: learnedVariants,
+});
+assert.ok(promptGeneratorV2.compiledPrompt.includes("Verification ladder"), "Prompt Generator v2 should compile verification gates.");
+assert.notEqual(promptGeneratorV2.readiness, "needs-brief", "Prompt Generator v2 should pass a completed brief.");
+assert.ok(promptGeneratorV2.variant.prompt.includes("Golden benchmark influences"), "Prompt Generator v2 should expose a benchmark-aware variant.");
+
+const critiqueRepair = buildPromptCritiqueRepairReport({ benchmarkHarness: goldenBenchmarkHarness, prompt: "Make a cool website." });
+assert.ok(critiqueRepair.issues.length > 0, "Critique/repair should flag thin prompts.");
+assert.ok(critiqueRepair.repairSections.length > 0, "Critique/repair should create scoped repair sections.");
+assert.ok(critiqueRepair.repairedPrompt.includes("MEASURED REPAIR PATCH"), "Critique/repair should return a patchable prompt.");
+
+const resultQualityDashboard = buildResultQualityDashboardReport({
+  buildRuns,
+  generatedPrompt: promptGeneratorV2.compiledPrompt,
+  modelCache: cacheReport,
+  proofLearningRuns: [{ promptScore: 82, resultScore: 88, visualScore: 84, dnaScore: 86, learnedStatus: "proof-ready" }],
+  screenshotJudgeRuns: [{ score: 83, verdict: "ready" }],
+  screenshots,
+  sourcePrompt: exactPrompt,
+});
+assert.equal(resultQualityDashboard.stages.length, 5, "Result quality dashboard should connect five proof stages.");
+assert.notEqual(resultQualityDashboard.status, "unproven", "Result quality dashboard should use imported proof evidence.");
+assert.ok(resultQualityDashboard.deltas.some((delta) => delta.label === "Generator lift"), "Result quality dashboard should explain generator lift.");
+
+const datasetReviewQueue = buildDatasetReviewQueueReport({ curation, examples, outcomes });
+assert.ok(datasetReviewQueue.rows.length > 0, "Dataset review queue should prioritize curation rows.");
+assert.ok(datasetReviewQueue.counts.learn > 0, "Dataset review queue should preserve curation counts.");
+
+const hostedOpsQueueJobs: BuildQueueJob[] = [
+  {
+    id: "failed-job",
+    promptId: examples[0].id,
+    promptTitle: examples[0].title,
+    promptText: examples[0].text,
+    variantTitle: "Failed variant",
+    status: "failed",
+    runFolder: "prompt-runs/failed-job",
+    resultUrl: "",
+    score: 24,
+    commands: [],
+    notes: ["Build failed."],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: "queued-job",
+    promptId: examples[0].id,
+    promptTitle: examples[0].title,
+    promptText: examples[0].text,
+    variantTitle: "Queued variant",
+    status: "queued",
+    runFolder: "prompt-runs/queued-job",
+    resultUrl: "",
+    score: 0,
+    commands: [],
+    notes: ["Waiting for worker."],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+];
+const hostedWorkerOps = buildHostedWorkerOpsReport({
+  apiEvents: [{ kind: "queue-progress", detail: { jobId: "failed-job", stage: "failed" }, createdAt: new Date().toISOString() }],
+  proofArtifacts: [{ id: "stale-artifact", createdAt: "2026-01-01T00:00:00.000Z" }],
+  queueJobs: hostedOpsQueueJobs,
+});
+assert.ok(hostedWorkerOps.jobs.some((job) => job.id === "failed-job" && job.canRetry), "Hosted worker ops should mark failed jobs retryable.");
+assert.ok(hostedWorkerOps.jobs.some((job) => job.id === "queued-job" && job.canCancel), "Hosted worker ops should mark queued jobs cancelable.");
+assert.ok(hostedWorkerOps.retention.stale >= 1, "Hosted worker ops should flag stale proof artifacts.");
+
+const measuredQualitySprint = buildMeasuredQualitySprintReport({
+  benchmark: goldenBenchmarkHarness,
+  critique: critiqueRepair,
+  datasetReview: datasetReviewQueue,
+  generator: promptGeneratorV2,
+  ops: hostedWorkerOps,
+  resultQuality: resultQualityDashboard,
+  simpleMode,
+});
+assert.equal(measuredQualitySprint.cards.length, 7, "Measured quality sprint should summarize all seven product upgrades.");
+assert.ok(measuredQualitySprint.score > 0, "Measured quality sprint should compute sprint readiness.");
+
+console.log(JSON.stringify({ ok: true, assertions: 179, score: score.score, snapshot: snapshot.label }, null, 2));

@@ -104,6 +104,7 @@ The top of the Train tab can run without a model key, then enrich through API ro
 - `POST /api/model/evaluate-cached`: redacts prompt/model payloads, checks the cache, and appends a schema-versioned cache row when needed.
 - `POST /api/closed-loop/run`: performs server-side original-vs-rewrite judging and appends a closed-loop winner row.
 - `POST /api/closed-loop/prove`: chains closed-loop judging into the queue worker and appends closed-loop, queue, proof-learning, build-run, screenshot, lineage, and proof-artifact rows.
+- `POST /api/queue/job`: updates an existing queue job with `{ jobId, action }`, where `action` is `retry`, `cancel`, or `remove`; retry requeues the job, cancel marks it failed for review, and remove deletes it from the queue ledger.
 - `POST /api/corpus/analyze`: creates a deterministic corpus intelligence run from supplied examples.
 - `POST /api/benchmark/v2`: creates a deterministic benchmark v2 run from supplied examples.
 - `POST /api/artifact/create`: creates a markdown/JSON evaluation artifact for the selected prompt.

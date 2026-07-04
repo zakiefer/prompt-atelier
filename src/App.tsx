@@ -73,8 +73,10 @@ import {
   buildExperimentLeaderboard,
   buildBuildFeedbackReport,
   buildCodexBuildPack,
+  buildDatasetReviewQueueReport,
   buildLearnedGeneratorVariants,
   buildGuidedPromptWizardReport,
+  buildGoldenBenchmarkHarnessReport,
   buildHostedHardeningReport,
   buildHostedBuildWorkerReport,
   buildHostedSyncReport,
@@ -94,10 +96,15 @@ import {
   buildModelJudgeComparisonReport,
   buildModelProviderRouterReport,
   buildOperatorModeReport,
+  buildMeasuredQualitySprintReport,
   buildProofArtifactStorageReport,
+  buildPromptCritiqueRepairReport,
+  buildPromptGeneratorV2Report,
   buildProviderPluginLayerReport,
   buildQueueObservabilityReport,
   buildSimpleModeReport,
+  buildResultQualityDashboardReport,
+  buildHostedWorkerOpsReport,
   buildSourceSafetyReport,
   buildSpeedLabelingReport,
   buildTrainingRunSummary,
@@ -177,6 +184,7 @@ import {
   type CorpusCurationReport,
   type BulkImportPipelineReport,
   type DatasetGovernanceReport,
+  type DatasetReviewQueueReport,
   type DatasetVersion,
   type DatasetVersionComparison,
   type DnaCalibrationReport,
@@ -195,6 +203,7 @@ import {
   type FailureMemoryReport,
   type FailureMemoryAutopilotReport,
   type Feature,
+  type GoldenBenchmarkHarnessReport,
   type InterviewBrief,
   type ImportWizardReport,
   type LocalEmbeddingIndex,
@@ -205,11 +214,13 @@ import {
   type GuidedPromptWizardReport,
   type HostedHardeningReport,
   type HostedBuildWorkerReport,
+  type HostedWorkerOpsReport,
   type HostedSyncReport,
   type ModelEvaluationCacheRecord,
   type ModelEvaluationCacheReport,
   type ModelJudgeComparisonReport,
   type ModelProviderRouterReport,
+  type MeasuredQualitySprintReport,
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
@@ -233,6 +244,8 @@ import {
   type PromptMemoryExport,
   type PromptLineageNode,
   type ProofArtifactStorageReport,
+  type PromptCritiqueRepairReport,
+  type PromptGeneratorV2Report,
   type PromptProfile,
   type PromptRank,
   type PromptTournament,
@@ -271,6 +284,7 @@ import {
   type ScreenshotScoringReport,
   type SimpleModeReport,
   type SpeedLabelingReport,
+  type ResultQualityDashboardReport,
   type TrainingRunRecord,
   type TrueClosedLoopReport,
   type VisualProofComparisonReport,
@@ -301,6 +315,7 @@ import {
   setApiBase,
   setApiToken,
   syncCollections,
+  updateQueueJob,
   type ApiEvent,
   type ApiHealth,
 } from "./promptApi";
@@ -337,6 +352,7 @@ const CORPUS_CLUSTER_RUN_KEY = "prompt-atelier-corpus-cluster-runs";
 const BENCHMARK_V2_RUN_KEY = "prompt-atelier-benchmark-v2-runs";
 const EVALUATION_ARTIFACT_KEY = "prompt-atelier-evaluation-artifacts";
 const HOSTED_SETUP_CHECK_KEY = "prompt-atelier-hosted-setup-checks";
+const PROOF_ARTIFACT_KEY = "prompt-atelier-proof-artifacts";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -721,6 +737,10 @@ function readStoredEvaluationArtifacts() {
 
 function readStoredHostedSetupChecks() {
   return readStoredArray<HostedSetupCheck>(HOSTED_SETUP_CHECK_KEY, (item) => Boolean(item?.id && item?.report), 80);
+}
+
+function readStoredProofArtifacts() {
+  return readStoredArray<ProofArtifactRecord>(PROOF_ARTIFACT_KEY, (item) => Boolean(item?.id && item?.title), 160);
 }
 
 function readStoredOnboardingMode(): OnboardingMode {
@@ -2006,6 +2026,20 @@ type HostedSetupCheck = {
   notes: string[];
 };
 
+type ProofArtifactRecord = {
+  id: string;
+  jobId?: string;
+  promptId?: string;
+  title: string;
+  kind: string;
+  viewport?: string;
+  path?: string;
+  url?: string;
+  resultUrl?: string;
+  score?: number;
+  createdAt: string;
+};
+
 type TrainingBackupSnapshot = {
   id: string;
   label: string;
@@ -2044,6 +2078,7 @@ type StoredCollections = {
   benchmarkV2Runs: BenchmarkV2Run[];
   evaluationArtifacts: EvaluationArtifact[];
   hostedSetupChecks: HostedSetupCheck[];
+  proofArtifacts: ProofArtifactRecord[];
 };
 
 export default function App() {
@@ -2089,6 +2124,7 @@ export default function App() {
   const [benchmarkV2Runs, setBenchmarkV2Runs] = useState<BenchmarkV2Run[]>(() => readStoredBenchmarkV2Runs());
   const [evaluationArtifacts, setEvaluationArtifacts] = useState<EvaluationArtifact[]>(() => readStoredEvaluationArtifacts());
   const [hostedSetupChecks, setHostedSetupChecks] = useState<HostedSetupCheck[]>(() => readStoredHostedSetupChecks());
+  const [proofArtifacts, setProofArtifacts] = useState<ProofArtifactRecord[]>(() => readStoredProofArtifacts());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
@@ -2751,8 +2787,8 @@ export default function App() {
     [apiAdminHardening, apiHealth, hostedBuildWorker, modelSettings.buildCommand],
   );
   const proofArtifactStorage = useMemo(
-    () => buildProofArtifactStorageReport({ buildRuns, screenshots }),
-    [buildRuns, screenshots],
+    () => buildProofArtifactStorageReport({ buildRuns, proofArtifacts, screenshots }),
+    [buildRuns, proofArtifacts, screenshots],
   );
   const queueObservability = useMemo(
     () => buildQueueObservabilityReport({ apiEvents, proofLearningRuns, queueProgress }),
@@ -2773,6 +2809,58 @@ export default function App() {
   const evaluatorCalibrationWorkflow = useMemo(
     () => buildEvaluatorCalibrationWorkflowReport({ calibrationDashboard, calibrationSet: claudeCalibrationSet }),
     [calibrationDashboard, claudeCalibrationSet],
+  );
+  const goldenBenchmarkHarness = useMemo(
+    () => buildGoldenBenchmarkHarnessReport(learningExamples),
+    [learningExamples],
+  );
+  const promptGeneratorV2 = useMemo(
+    () =>
+      buildPromptGeneratorV2Report({
+        benchmarkHarness: goldenBenchmarkHarness,
+        input: generatorInput,
+        promptMemory,
+        variants: learnedGeneratorVariants,
+      }),
+    [generatorInput, goldenBenchmarkHarness, learnedGeneratorVariants, promptMemory],
+  );
+  const promptCritiqueRepair = useMemo(
+    () => buildPromptCritiqueRepairReport({ benchmarkHarness: goldenBenchmarkHarness, prompt: selectedPrompt?.text || promptGeneratorV2.compiledPrompt || generatedPrompt }),
+    [generatedPrompt, goldenBenchmarkHarness, promptGeneratorV2.compiledPrompt, selectedPrompt],
+  );
+  const resultQualityDashboard = useMemo(
+    () =>
+      buildResultQualityDashboardReport({
+        buildRuns,
+        generatedPrompt: promptGeneratorV2.compiledPrompt,
+        modelCache: modelEvaluationCacheReport,
+        proofLearningRuns,
+        screenshotJudgeRuns,
+        screenshots,
+        sourcePrompt: selectedPrompt?.text || generatedPrompt,
+      }),
+    [buildRuns, generatedPrompt, modelEvaluationCacheReport, promptGeneratorV2.compiledPrompt, proofLearningRuns, screenshotJudgeRuns, screenshots, selectedPrompt],
+  );
+  const datasetReviewQueue = useMemo(
+    () => buildDatasetReviewQueueReport({ curation: fullCorpusCurationReport, examples, outcomes }),
+    [examples, fullCorpusCurationReport, outcomes],
+  );
+  const hostedWorkerOps = useMemo(
+    () => buildHostedWorkerOpsReport({ apiEvents, proofArtifacts, queueJobs }),
+    [apiEvents, proofArtifacts, queueJobs],
+  );
+  const measuredQualitySprint = useMemo(
+    () =>
+      buildMeasuredQualitySprintReport({
+        benchmark: goldenBenchmarkHarness,
+        critique: promptCritiqueRepair,
+        datasetReview: datasetReviewQueue,
+        generator: promptGeneratorV2,
+        ops: hostedWorkerOps,
+        resultQuality: resultQualityDashboard,
+        simpleMode: simpleModeCleanup,
+      }),
+    [datasetReviewQueue, goldenBenchmarkHarness, hostedWorkerOps, promptCritiqueRepair, promptGeneratorV2, resultQualityDashboard, simpleModeCleanup],
   );
   const learnerAnswer = useMemo(
     () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
@@ -2825,6 +2913,7 @@ export default function App() {
       benchmarkV2Runs,
       evaluationArtifacts,
       hostedSetupChecks,
+      proofArtifacts,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -2860,6 +2949,7 @@ export default function App() {
       if (Array.isArray(stored.benchmarkV2Runs)) setBenchmarkV2Runs((stored.benchmarkV2Runs as BenchmarkV2Run[]).slice(0, 80));
       if (Array.isArray(stored.evaluationArtifacts)) setEvaluationArtifacts((stored.evaluationArtifacts as EvaluationArtifact[]).slice(0, 120));
       if (Array.isArray(stored.hostedSetupChecks)) setHostedSetupChecks((stored.hostedSetupChecks as HostedSetupCheck[]).slice(0, 80));
+      if (Array.isArray(stored.proofArtifacts)) setProofArtifacts((stored.proofArtifacts as ProofArtifactRecord[]).slice(0, 160));
     };
 
     async function hydrate() {
@@ -3091,6 +3181,12 @@ export default function App() {
   }, [dbReady, hostedSetupChecks]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(PROOF_ARTIFACT_KEY, JSON.stringify(proofArtifacts));
+    void writeCollection("proofArtifacts", proofArtifacts);
+  }, [dbReady, proofArtifacts]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -3123,12 +3219,13 @@ export default function App() {
         benchmarkV2Runs,
         evaluationArtifacts,
         hostedSetupChecks,
+        proofArtifacts,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, benchmarkV2Runs, buildRuns, claudeHealthChecks, closedLoopRuns, corpusClusterRuns, curationDecisions, datasetVersions, dbReady, evaluationArtifacts, history, hostedSetupChecks, lineageNodes, modelBatchEvaluations, modelEvaluationCache, mutationTournamentRuns, outcomes, pairwiseReviews, promptCandidateRuns, promptComparisons, proofLearningRuns, queueJobs, screenshotJudgeRuns, screenshotPromptRuns, screenshots, trainingRuns, userPrompts, workspacePackRuns]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, benchmarkV2Runs, buildRuns, claudeHealthChecks, closedLoopRuns, corpusClusterRuns, curationDecisions, datasetVersions, dbReady, evaluationArtifacts, history, hostedSetupChecks, lineageNodes, modelBatchEvaluations, modelEvaluationCache, mutationTournamentRuns, outcomes, pairwiseReviews, promptCandidateRuns, promptComparisons, proofArtifacts, proofLearningRuns, queueJobs, screenshotJudgeRuns, screenshotPromptRuns, screenshots, trainingRuns, userPrompts, workspacePackRuns]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -4011,6 +4108,7 @@ export default function App() {
         buildRuns?: unknown[];
         closedLoopRuns?: unknown[];
         lineage?: unknown[];
+        proofArtifacts?: unknown[];
         proofLearningRuns?: unknown[];
         queueJobs?: unknown[];
         screenshots?: unknown[];
@@ -4021,6 +4119,7 @@ export default function App() {
       if (Array.isArray(collections?.buildRuns)) setBuildRuns((collections.buildRuns as BuildRunRecord[]).slice(0, 120));
       if (Array.isArray(collections?.closedLoopRuns)) setClosedLoopRuns(collections.closedLoopRuns as ClosedLoopRun[]);
       if (Array.isArray(collections?.lineage)) setLineageNodes((collections.lineage as PromptLineageNode[]).slice(0, 220));
+      if (Array.isArray(collections?.proofArtifacts)) setProofArtifacts((collections.proofArtifacts as ProofArtifactRecord[]).slice(0, 160));
       if (Array.isArray(collections?.queueJobs)) setQueueJobs((collections.queueJobs as BuildQueueJob[]).slice(0, 140));
       if (Array.isArray(collections?.proofLearningRuns)) setProofLearningRuns((collections.proofLearningRuns as ProofLearningRun[]).slice(0, 80));
       if (Array.isArray(collections?.screenshots)) setScreenshots((collections.screenshots as ScreenshotRecord[]).slice(0, 120));
@@ -4930,6 +5029,7 @@ export default function App() {
       benchmarkV2Runs,
       evaluationArtifacts,
       hostedSetupChecks,
+      proofArtifacts,
     };
     const backup: TrainingBackupSnapshot = {
       id: `backup-${Date.now()}`,
@@ -4973,6 +5073,7 @@ export default function App() {
     if (Array.isArray(collections.benchmarkV2Runs)) setBenchmarkV2Runs(collections.benchmarkV2Runs);
     if (Array.isArray(collections.evaluationArtifacts)) setEvaluationArtifacts(collections.evaluationArtifacts);
     if (Array.isArray(collections.hostedSetupChecks)) setHostedSetupChecks(collections.hostedSetupChecks);
+    if (Array.isArray(collections.proofArtifacts)) setProofArtifacts((collections.proofArtifacts as ProofArtifactRecord[]).slice(0, 160));
     if (isWorkspaceKey(collections.activeWorkspace)) setActiveWorkspace(collections.activeWorkspace);
     setApiNotice(`Restored ${backup.label}.`);
   }
@@ -5254,6 +5355,36 @@ export default function App() {
     setQueueJobs((current) => current.filter((job) => job.id !== id));
   }
 
+  async function operateQueueJob(id: string, action: "retry" | "cancel" | "remove") {
+    const updatedAt = new Date().toISOString();
+    setQueueJobs((current) => {
+      if (action === "remove") return current.filter((job) => job.id !== id);
+      return current.map((job) => job.id === id
+        ? {
+            ...job,
+            status: action === "retry" ? "queued" : "failed",
+            updatedAt,
+            notes: [
+              action === "retry" ? "Queued for retry from worker operations." : "Canceled from worker operations.",
+              ...job.notes,
+            ].slice(0, 8),
+          }
+        : job);
+    });
+    if (!apiHealth?.ok) {
+      setApiNotice(`Updated ${id} locally; sync when the API is online.`);
+      return;
+    }
+    try {
+      const result = await updateQueueJob(id, action);
+      if (Array.isArray(result.collections.queueJobs)) setQueueJobs((result.collections.queueJobs as BuildQueueJob[]).slice(0, 140));
+      setApiNotice(`Queue job ${action} recorded for ${id}.`);
+      void refreshApiEvents();
+    } catch (error) {
+      setApiNotice(`Queue job ${action} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   function exportQueue() {
     downloadText("prompt-lab-queue.json", queueExport, "application/json");
   }
@@ -5301,6 +5432,7 @@ export default function App() {
         benchmarkV2Runs,
         evaluationArtifacts,
         hostedSetupChecks,
+        proofArtifacts,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -5427,6 +5559,10 @@ export default function App() {
         setHostedSetupChecks((collections.hostedSetupChecks as HostedSetupCheck[]).slice(0, 80));
         restored.push("setup checks");
       }
+      if (Array.isArray(collections.proofArtifacts)) {
+        setProofArtifacts((collections.proofArtifacts as ProofArtifactRecord[]).slice(0, 160));
+        restored.push("proof artifacts");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -5480,6 +5616,7 @@ export default function App() {
           benchmarkV2Runs,
           evaluationArtifacts,
           hostedSetupChecks,
+          proofArtifacts,
         },
         skill: codexSkill,
         promptMemory,
@@ -5611,6 +5748,10 @@ export default function App() {
         setHostedSetupChecks((collections.hostedSetupChecks as HostedSetupCheck[]).slice(0, 80));
         restored.push("setup checks");
       }
+      if (Array.isArray(collections.proofArtifacts)) {
+        setProofArtifacts((collections.proofArtifacts as ProofArtifactRecord[]).slice(0, 160));
+        restored.push("proof artifacts");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -5655,6 +5796,7 @@ export default function App() {
           benchmarkV2Runs: collections.benchmarkV2Runs ?? benchmarkV2Runs,
           evaluationArtifacts: collections.evaluationArtifacts ?? evaluationArtifacts,
           hostedSetupChecks: collections.hostedSetupChecks ?? hostedSetupChecks,
+          proofArtifacts: collections.proofArtifacts ?? proofArtifacts,
         });
       }
       setSnapshotImportText("");
@@ -6365,6 +6507,13 @@ export default function App() {
               datasetGovernance={datasetGovernance}
               providerPluginLayer={providerPluginLayer}
               evaluatorCalibrationWorkflow={evaluatorCalibrationWorkflow}
+              goldenBenchmarkHarness={goldenBenchmarkHarness}
+              promptGeneratorV2={promptGeneratorV2}
+              promptCritiqueRepair={promptCritiqueRepair}
+              resultQualityDashboard={resultQualityDashboard}
+              datasetReviewQueue={datasetReviewQueue}
+              hostedWorkerOps={hostedWorkerOps}
+              measuredQualitySprint={measuredQualitySprint}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -6449,6 +6598,7 @@ export default function App() {
               onRefreshApiEvents={refreshApiEvents}
               onRemoveBuildRun={removeBuildRun}
               onRemoveQueueJob={removeQueueJob}
+              onOperateQueueJob={operateQueueJob}
               onRemoveScreenshot={removeScreenshot}
               onRunQueueViaApi={runQueueViaApi}
               onSave={saveVersion}
@@ -7524,6 +7674,13 @@ function TrainView({
   datasetGovernance,
   providerPluginLayer,
   evaluatorCalibrationWorkflow,
+  goldenBenchmarkHarness,
+  promptGeneratorV2,
+  promptCritiqueRepair,
+  resultQualityDashboard,
+  datasetReviewQueue,
+  hostedWorkerOps,
+  measuredQualitySprint,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -7609,6 +7766,7 @@ function TrainView({
   onQuarantineOffProjectPrompts,
   onRemoveBuildRun,
   onRemoveQueueJob,
+  onOperateQueueJob,
   onRemoveScreenshot,
   onRunQueueViaApi,
   onSave,
@@ -7804,6 +7962,13 @@ function TrainView({
   datasetGovernance: DatasetGovernanceReport;
   providerPluginLayer: ProviderPluginLayerReport;
   evaluatorCalibrationWorkflow: EvaluatorCalibrationWorkflowReport;
+  goldenBenchmarkHarness: GoldenBenchmarkHarnessReport;
+  promptGeneratorV2: PromptGeneratorV2Report;
+  promptCritiqueRepair: PromptCritiqueRepairReport;
+  resultQualityDashboard: ResultQualityDashboardReport;
+  datasetReviewQueue: DatasetReviewQueueReport;
+  hostedWorkerOps: HostedWorkerOpsReport;
+  measuredQualitySprint: MeasuredQualitySprintReport;
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -7897,6 +8062,7 @@ function TrainView({
   onQuarantineOffProjectPrompts: () => void;
   onRemoveBuildRun: (id: string) => void;
   onRemoveQueueJob: (id: string) => void;
+  onOperateQueueJob: (id: string, action: "retry" | "cancel" | "remove") => void;
   onRemoveScreenshot: (id: string) => void;
   onRunQueueViaApi: () => void;
   onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
@@ -8073,6 +8239,23 @@ function TrainView({
         outcomes={outcomes}
         queueJobs={queueJobs}
       />
+
+      <MeasuredQualitySprintPanel report={measuredQualitySprint} />
+
+      <section className="train-columns">
+        <GoldenBenchmarkHarnessPanel report={goldenBenchmarkHarness} />
+        <PromptGeneratorV2Panel report={promptGeneratorV2} onApplyGeneratorVariant={onApplyGeneratorVariant} onCopy={onCopy} copied={copied} />
+      </section>
+
+      <section className="train-columns">
+        <PromptCritiqueRepairPanel report={promptCritiqueRepair} onCopy={onCopy} copied={copied} />
+        <ResultQualityDashboardPanel report={resultQualityDashboard} />
+      </section>
+
+      <section className="train-columns">
+        <DatasetReviewQueueV2Panel report={datasetReviewQueue} onSetPromptCurationDecision={onSetPromptCurationDecision} />
+        <HostedWorkerOperationsPanel report={hostedWorkerOps} onOperateQueueJob={onOperateQueueJob} />
+      </section>
 
       <TrainFromCorpusPanel
         dataset={goldenDataset}
@@ -9127,6 +9310,251 @@ function HostedBuildWorkerPanel({
         <button className="ghost-button compact-button" type="button" onClick={onRunQueueViaApi}>Run existing queue</button>
       </div>
       <FeedbackList title="Worker notes" items={report.notes} empty="No worker notes." />
+    </section>
+  );
+}
+
+function MeasuredQualitySprintPanel({ report }: { report: MeasuredQualitySprintReport }) {
+  return (
+    <section className="panel lab-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Measured quality sprint</h2>
+        </div>
+        <ScoreRing score={report.score} label="sprint" />
+      </div>
+      <div className="safe-check-grid">
+        {report.cards.map((card) => (
+          <div className="safe-check" key={card.label} data-ready={card.ready ? "true" : "false"}>
+            <strong>{card.ready ? "Ready" : "Open"}</strong>
+            <span>{card.label}</span>
+            <p>{card.detail}</p>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Sprint notes" items={report.notes} empty="No sprint notes." />
+    </section>
+  );
+}
+
+function GoldenBenchmarkHarnessPanel({ report }: { report: GoldenBenchmarkHarnessReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.readiness}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Golden benchmark harness</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.covered}/${report.total}`} label="Covered" />
+        <Metric value={formatNumber(report.score)} label="Harness score" />
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.cases.slice(0, 8).map((row) => (
+          <div className="benchmark-row" key={row.id} data-status={row.status}>
+            <strong>{row.title}</strong>
+            <p>{row.status === "covered" ? "Covered" : `Missing: ${row.missingSignals.slice(0, 4).join(", ")}`}</p>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Harness notes" items={report.notes} empty="No benchmark notes." />
+    </section>
+  );
+}
+
+function PromptGeneratorV2Panel({
+  copied,
+  onApplyGeneratorVariant,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  report: PromptGeneratorV2Report;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.readiness}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Prompt Generator v2</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.sections.map((section) => (
+          <div className="guided-step" key={section.label} data-status={section.ready ? "ready" : "active"}>
+            <strong>{section.label}</strong>
+            <p>{section.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={() => onApplyGeneratorVariant(report.variant)}>Use Generator v2 prompt</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.compiledPrompt, "generator-v2")}>
+          {copied === "generator-v2" ? <Check size={15} /> : <Copy size={15} />}
+          Copy prompt
+        </button>
+      </div>
+      <div className="output-box mini-output">
+        <pre>{report.compiledPrompt.slice(0, 1800)}</pre>
+      </div>
+      <FeedbackList title="Generator notes" items={report.notes} empty="No generator notes." />
+    </section>
+  );
+}
+
+function PromptCritiqueRepairPanel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: PromptCritiqueRepairReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Lightbulb size={18} />
+          <h2>Prompt critique and repair loop</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.issues.slice(0, 6).map((issue) => (
+          <div className="safe-check" key={issue.label} data-ready="false">
+            <strong>Severity {issue.severity}</strong>
+            <span>{issue.label}</span>
+            <p>{issue.fix}</p>
+          </div>
+        ))}
+        {!report.issues.length && <p className="selected-meta">No critique blockers detected.</p>}
+      </div>
+      <FeedbackList title="Repair sections" items={report.repairSections.map((section) => `${section.label}: ${section.patch}`)} empty="No repairs needed." />
+      <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.repairedPrompt, "repair-prompt")}>
+        {copied === "repair-prompt" ? <Check size={15} /> : <Copy size={15} />}
+        Copy repaired prompt
+      </button>
+    </section>
+  );
+}
+
+function ResultQualityDashboardPanel({ report }: { report: ResultQualityDashboardReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status}>
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Result quality dashboard</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.stages.map((stage) => (
+          <div className="guided-step" key={stage.label} data-status={stage.ready ? "ready" : "active"}>
+            <strong>{stage.label}</strong>
+            <p>{stage.score}/100 - {stage.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="metric-grid compact-metrics">
+        {report.deltas.map((delta) => (
+          <Metric key={delta.label} value={delta.value > 0 ? `+${delta.value}` : String(delta.value)} label={delta.label} />
+        ))}
+      </div>
+      <FeedbackList title="Quality notes" items={report.notes} empty="No quality notes." />
+    </section>
+  );
+}
+
+function DatasetReviewQueueV2Panel({
+  onSetPromptCurationDecision,
+  report,
+}: {
+  onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
+  report: DatasetReviewQueueReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Tags size={18} />
+          <h2>Dataset review queue</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.counts.learn)} label="Learn" />
+        <Metric value={formatNumber(report.counts.review)} label="Review" />
+        <Metric value={formatNumber(report.counts.quarantine)} label="Reject" />
+      </div>
+      <div className="version-list compact-list">
+        {report.rows.slice(0, 8).map((row) => (
+          <article className="version-card" key={row.promptId}>
+            <div>
+              <strong>{row.title}</strong>
+              <span>{row.decision} / priority {row.priority}</span>
+            </div>
+            <p>{row.reason}</p>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onSetPromptCurationDecision(row.promptId, "learn")}>Promote</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSetPromptCurationDecision(row.promptId, "review")}>Review</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSetPromptCurationDecision(row.promptId, "quarantine")}>Reject</button>
+            </div>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Dataset notes" items={report.notes} empty="No dataset notes." />
+    </section>
+  );
+}
+
+function HostedWorkerOperationsPanel({
+  onOperateQueueJob,
+  report,
+}: {
+  onOperateQueueJob: (id: string, action: "retry" | "cancel" | "remove") => void;
+  report: HostedWorkerOpsReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Hosted worker operations</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.retention.total)} label="Artifacts" />
+        <Metric value={formatNumber(report.retention.stale)} label="Stale" />
+        <Metric value={formatNumber(report.jobs.length)} label="Jobs" />
+      </div>
+      <div className="queue-list">
+        {report.jobs.length ? report.jobs.map((job) => (
+          <article className="queue-card" key={job.id}>
+            <div>
+              <strong>{job.title}</strong>
+              <span>{job.status}</span>
+            </div>
+            <p>{job.lastLog}</p>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" disabled={!job.canRetry} onClick={() => onOperateQueueJob(job.id, "retry")}>Retry</button>
+              <button className="ghost-button compact-button" type="button" disabled={!job.canCancel} onClick={() => onOperateQueueJob(job.id, "cancel")}>Cancel</button>
+              <button className="icon-button danger" type="button" onClick={() => onOperateQueueJob(job.id, "remove")} aria-label={`Remove ${job.title}`}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </article>
+        )) : <p className="selected-meta">No hosted worker jobs yet.</p>}
+      </div>
+      <FeedbackList title="Operations notes" items={report.notes} empty="No worker operations notes." />
     </section>
   );
 }

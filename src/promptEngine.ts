@@ -1303,6 +1303,83 @@ export type EvaluatorCalibrationWorkflowReport = {
   notes: string[];
 };
 
+export type GoldenBenchmarkCase = {
+  id: string;
+  title: string;
+  siteType: string;
+  goal: string;
+  requiredSignals: string[];
+  screenshotExpectations: string[];
+  failureModes: string[];
+};
+
+export type GoldenBenchmarkHarnessReport = {
+  score: number;
+  readiness: "locked" | "partial" | "empty";
+  total: number;
+  covered: number;
+  cases: {
+    id: string;
+    title: string;
+    coverage: number;
+    status: "covered" | "thin" | "missing";
+    missingSignals: string[];
+    screenshotExpectations: string[];
+    failureModes: string[];
+  }[];
+  notes: string[];
+};
+
+export type PromptGeneratorV2Report = {
+  score: number;
+  readiness: "ready" | "needs-brief" | "needs-proof";
+  compiledPrompt: string;
+  sections: { label: string; ready: boolean; detail: string }[];
+  appliedBenchmarks: string[];
+  missingInputs: string[];
+  variant: LearnedGeneratorVariant;
+  notes: string[];
+};
+
+export type PromptCritiqueRepairReport = {
+  score: number;
+  status: "ready" | "needs-repair" | "empty";
+  issues: { label: string; severity: number; fix: string }[];
+  repairSections: { label: string; patch: string }[];
+  repairedPrompt: string;
+  notes: string[];
+};
+
+export type ResultQualityDashboardReport = {
+  score: number;
+  status: "proven" | "partial" | "unproven";
+  stages: { label: string; score: number; ready: boolean; detail: string }[];
+  deltas: { label: string; value: number; detail: string }[];
+  notes: string[];
+};
+
+export type DatasetReviewQueueReport = {
+  score: number;
+  status: "ready" | "review" | "blocked" | "empty";
+  counts: { learn: number; review: number; quarantine: number };
+  rows: { promptId: string; title: string; decision: "learn" | "review" | "quarantine"; priority: number; reason: string; nextAction: string }[];
+  notes: string[];
+};
+
+export type HostedWorkerOpsReport = {
+  score: number;
+  status: "operational" | "needs-attention" | "idle";
+  jobs: { id: string; title: string; status: string; canRetry: boolean; canCancel: boolean; lastLog: string; nextAction: string }[];
+  retention: { total: number; stale: number; limit: number };
+  notes: string[];
+};
+
+export type MeasuredQualitySprintReport = {
+  score: number;
+  cards: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -4849,6 +4926,189 @@ export const BENCHMARK_FIXTURES = [
   },
 ] as const;
 
+export const GOLDEN_BENCHMARK_CASES: GoldenBenchmarkCase[] = [
+  {
+    id: "fullscreen-video-hero",
+    title: "Fullscreen video hero",
+    siteType: "single-page hero",
+    goal: "Prompt specifies exact media, focal point, typography, layout, and verification.",
+    requiredSignals: ["video", "autoplay", "object-cover", "fonts", "responsive", "verification"],
+    screenshotExpectations: ["desktop first viewport", "mobile focal point"],
+    failureModes: ["missing media URL", "text overlap", "unverified mobile crop"],
+  },
+  {
+    id: "liquid-glass-navigation",
+    title: "Liquid glass navigation",
+    siteType: "cinematic landing page",
+    goal: "Prompt includes actual glass CSS, nav states, contrast, and interaction rules.",
+    requiredSignals: ["backdrop-filter", "gradient border", "hover", "mobile menu", "accessibility"],
+    screenshotExpectations: ["glass pill visibility", "open mobile menu"],
+    failureModes: ["decorative blur blobs", "unreadable nav", "missing focus states"],
+  },
+  {
+    id: "dashboard-product-surface",
+    title: "Dashboard product surface",
+    siteType: "SaaS dashboard",
+    goal: "Prompt asks for dense utility UI, tables, filters, states, and realistic data.",
+    requiredSignals: ["table", "filter", "chart", "empty state", "loading", "responsive density"],
+    screenshotExpectations: ["wide dashboard", "narrow stacked panels"],
+    failureModes: ["marketing hero instead of product", "placeholder metrics", "overflowing columns"],
+  },
+  {
+    id: "signup-flow",
+    title: "Signup flow",
+    siteType: "registration interface",
+    goal: "Prompt covers form layout, validation, password affordance, social auth, and mobile behavior.",
+    requiredSignals: ["input", "validation", "password", "submit", "mobile", "error state"],
+    screenshotExpectations: ["filled form", "mobile stacked form"],
+    failureModes: ["no invalid state", "tiny tap targets", "unlabeled controls"],
+  },
+  {
+    id: "portfolio-agency",
+    title: "Portfolio agency",
+    siteType: "creative agency hero",
+    goal: "Prompt makes brand, nav, work CTA, reel CTA, motion, and typography specific.",
+    requiredSignals: ["brand", "projects", "motion", "CTA", "mobile menu", "font"],
+    screenshotExpectations: ["desktop hero", "mobile menu overlay"],
+    failureModes: ["generic agency copy", "missing work signal", "font mismatch"],
+  },
+  {
+    id: "feature-card-section",
+    title: "Feature card section",
+    siteType: "marketing section",
+    goal: "Prompt pins card geometry, gradients, visual assets, labels, and responsive grid.",
+    requiredSignals: ["cards", "gradient", "asset", "grid", "breakpoint", "static styling"],
+    screenshotExpectations: ["three-card desktop", "single-column mobile"],
+    failureModes: ["hover-only information", "unbounded card height", "missing assets"],
+  },
+  {
+    id: "hls-video-background",
+    title: "HLS video background",
+    siteType: "streaming hero",
+    goal: "Prompt specifies HLS setup, fallback, opacity, cleanup, and readability treatment.",
+    requiredSignals: ["hls.js", "fallback", "cleanup", "opacity", "gradient", "playsInline"],
+    screenshotExpectations: ["loaded fallback frame", "readable overlay text"],
+    failureModes: ["no HLS cleanup", "black video", "hidden controls"],
+  },
+  {
+    id: "interactive-ai-tool",
+    title: "Interactive AI tool",
+    siteType: "AI workbench",
+    goal: "Prompt describes the actual tool surface, corpus flow, controls, exports, and safe states.",
+    requiredSignals: ["corpus", "controls", "export", "redaction", "state", "empty"],
+    screenshotExpectations: ["tool default state", "populated results"],
+    failureModes: ["landing page instead of tool", "no data states", "secret leakage"],
+  },
+  {
+    id: "fintech-trust-hero",
+    title: "Fintech trust hero",
+    siteType: "fintech landing page",
+    goal: "Prompt balances trust, product proof, compliance-safe language, and conversion.",
+    requiredSignals: ["trust", "compliance", "CTA", "rates", "security", "responsive"],
+    screenshotExpectations: ["desktop trust signals", "mobile CTA stack"],
+    failureModes: ["financial promises", "unclear product", "low contrast fine print"],
+  },
+  {
+    id: "health-wellness-hero",
+    title: "Health wellness hero",
+    siteType: "wellness landing page",
+    goal: "Prompt avoids medical overclaiming while specifying calm design, form, and privacy.",
+    requiredSignals: ["wellness", "privacy", "email", "calm", "responsive", "disclaimer"],
+    screenshotExpectations: ["video hero readability", "mobile email form"],
+    failureModes: ["medical claims", "unreadable over video", "missing consent"],
+  },
+  {
+    id: "luxury-travel-hero",
+    title: "Luxury travel hero",
+    siteType: "travel landing page",
+    goal: "Prompt uses cinematic assets, premium typography, itinerary CTA, and secure trust detail.",
+    requiredSignals: ["travel", "video", "typography", "CTA", "secure", "mobile"],
+    screenshotExpectations: ["hero crop", "bottom CTA block"],
+    failureModes: ["stock generic copy", "dark unreadable image", "missing itinerary action"],
+  },
+  {
+    id: "developer-education",
+    title: "Developer education",
+    siteType: "coding platform",
+    goal: "Prompt includes curriculum proof, instructor credibility, CTA, and code/product visual.",
+    requiredSignals: ["curriculum", "instructor", "code", "CTA", "responsive", "proof"],
+    screenshotExpectations: ["desktop content hierarchy", "mobile nav"],
+    failureModes: ["empty claims", "no learning path", "no proof card"],
+  },
+  {
+    id: "nft-crypto-landing",
+    title: "NFT or crypto landing",
+    siteType: "web3 landing page",
+    goal: "Prompt asks for credible product UI, risk-safe copy, wallet CTA, and visual assets.",
+    requiredSignals: ["wallet", "collection", "risk", "asset", "CTA", "responsive"],
+    screenshotExpectations: ["collection preview", "mobile wallet CTA"],
+    failureModes: ["investment promises", "fake charts", "generic space theme"],
+  },
+  {
+    id: "404-utility-page",
+    title: "404 utility page",
+    siteType: "error page",
+    goal: "Prompt creates a useful full-viewport error state with return actions and responsive polish.",
+    requiredSignals: ["404", "return", "search", "state", "responsive", "accessibility"],
+    screenshotExpectations: ["centered error", "mobile action stack"],
+    failureModes: ["dead end page", "no nav back", "oversized text overflow"],
+  },
+  {
+    id: "email-style-page",
+    title: "Email-style landing page",
+    siteType: "editorial/email page",
+    goal: "Prompt specifies constrained width, email-like rhythm, certificate/proof content, and CTA.",
+    requiredSignals: ["email", "certificate", "width", "CTA", "typography", "mobile"],
+    screenshotExpectations: ["narrow email column", "mobile type scale"],
+    failureModes: ["full marketing layout", "poor line length", "missing proof artifact"],
+  },
+  {
+    id: "marquee-logo-section",
+    title: "Marquee logo section",
+    siteType: "social proof section",
+    goal: "Prompt covers seamless animation, masks, pause states, logos, and performance.",
+    requiredSignals: ["marquee", "mask", "logos", "pause", "animation", "performance"],
+    screenshotExpectations: ["edge fade", "hover pause not shifting"],
+    failureModes: ["jumpy loop", "missing alt text", "overlarge logos"],
+  },
+  {
+    id: "three-d-product",
+    title: "3D product page",
+    siteType: "3D landing page",
+    goal: "Prompt requires a real 3D scene, interaction, framing, canvas checks, and fallback.",
+    requiredSignals: ["three.js", "canvas", "interaction", "fallback", "screenshot", "mobile"],
+    screenshotExpectations: ["nonblank canvas", "mobile framed model"],
+    failureModes: ["blank canvas", "decorative card frame", "no pixel verification"],
+  },
+  {
+    id: "mobile-menu-overlay",
+    title: "Mobile menu overlay",
+    siteType: "responsive navigation",
+    goal: "Prompt specifies hamburger animation, overlay, close behavior, focus, and link actions.",
+    requiredSignals: ["hamburger", "overlay", "close", "focus", "transition", "mobile"],
+    screenshotExpectations: ["closed nav", "open overlay"],
+    failureModes: ["unclickable close", "desktop-only nav", "links hidden under hero"],
+  },
+  {
+    id: "data-security-saas",
+    title: "Data security SaaS",
+    siteType: "security landing page",
+    goal: "Prompt conveys product security, metrics, neutral palette, and credible data claims.",
+    requiredSignals: ["security", "data", "metrics", "neutral", "CTA", "responsive"],
+    screenshotExpectations: ["metric layout", "mobile stat hierarchy"],
+    failureModes: ["fake guarantees", "purple overload", "unclear product"],
+  },
+  {
+    id: "prompt-recreation-spec",
+    title: "Pixel recreation spec",
+    siteType: "recreation prompt",
+    goal: "Prompt captures exact dimensions, fonts, colors, assets, interactions, and forbidden extras.",
+    requiredSignals: ["exact", "dimensions", "font", "colors", "assets", "no extra"],
+    screenshotExpectations: ["desktop match", "mobile match"],
+    failureModes: ["creative reinterpretation", "missing exact values", "extra sections"],
+  },
+];
+
 export const CLAUDE_CALIBRATION_FIXTURES = [
   {
     id: "gold-video-hero",
@@ -6534,6 +6794,351 @@ export function buildEvaluatorCalibrationWorkflowReport({
     notes: [
       "Calibration compares known prompt fixtures against observed model/local scores.",
       calibrationDashboard.notes[0] || calibrationSet.notes[0],
+    ],
+  };
+}
+
+function signalNeedle(signal: string) {
+  return signal.toLowerCase().split(/[^a-z0-9.]+/).filter(Boolean)[0] || signal.toLowerCase();
+}
+
+export function buildGoldenBenchmarkHarnessReport(
+  examples: PromptExample[] = [],
+  cases: GoldenBenchmarkCase[] = GOLDEN_BENCHMARK_CASES,
+): GoldenBenchmarkHarnessReport {
+  const corpus = examples.map((example) => `${example.title}\n${example.text}`).join("\n").toLowerCase();
+  const rows = cases.map((benchmarkCase) => {
+    const missingSignals = benchmarkCase.requiredSignals.filter((signal) => !corpus.includes(signalNeedle(signal)));
+    const coverage = Math.round(((benchmarkCase.requiredSignals.length - missingSignals.length) / Math.max(1, benchmarkCase.requiredSignals.length)) * 100);
+    return {
+      id: benchmarkCase.id,
+      title: benchmarkCase.title,
+      coverage,
+      status: coverage >= 80 ? "covered" as const : coverage >= 40 ? "thin" as const : "missing" as const,
+      missingSignals,
+      screenshotExpectations: benchmarkCase.screenshotExpectations,
+      failureModes: benchmarkCase.failureModes,
+    };
+  });
+  const covered = rows.filter((row) => row.status === "covered").length;
+  const score = Math.round(rows.reduce((sum, row) => sum + row.coverage, 0) / Math.max(1, rows.length));
+  return {
+    score,
+    readiness: rows.length ? (covered >= Math.ceil(rows.length * 0.75) ? "locked" : "partial") : "empty",
+    total: rows.length,
+    covered,
+    cases: rows,
+    notes: [
+      `${covered}/${rows.length} golden benchmark case(s) are covered by the current learning corpus.`,
+      "Use missing signals as import targets before trusting generator changes.",
+    ],
+  };
+}
+
+export function buildPromptGeneratorV2Report({
+  benchmarkHarness,
+  input,
+  promptMemory,
+  variants = [],
+}: {
+  benchmarkHarness: GoldenBenchmarkHarnessReport;
+  input: LearnedGeneratorInput;
+  promptMemory: PromptMemoryExport;
+  variants?: LearnedGeneratorVariant[];
+}): PromptGeneratorV2Report {
+  const briefFields: [string, string | undefined][] = [
+    ["Brand", input.brandName],
+    ["Industry", input.industry],
+    ["Audience", input.audience],
+    ["Goal", input.goal],
+    ["Stack", input.stack],
+    ["Site type", input.siteType],
+    ["Visual style", input.visualStyle],
+    ["Assets", input.assets],
+    ["Constraints", input.constraints],
+  ];
+  const missingInputs = briefFields.filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+  const appliedBenchmarks = benchmarkHarness.cases.filter((row) => row.status === "covered").slice(0, 5).map((row) => row.title);
+  const bestVariant = variants[0] || {
+    id: "generator-v2-fallback",
+    title: `${input.brandName || "Generated"} measured prompt`,
+    score: 0,
+    bestFor: "Measured generator fallback",
+    signals: appliedBenchmarks,
+    prompt: "",
+  };
+  const memoryPatch = promptMemory.sections.slice(0, 4).map((section) => `- ${section.title}: ${section.items.slice(0, 3).join("; ")}`).join("\n");
+  const compiledPrompt = [
+    `Build a ${input.siteType || "single-page website"} for ${input.brandName || "the product"} using ${input.stack || "React + TypeScript + Tailwind CSS"}.`,
+    `Audience: ${input.audience || "quality-sensitive website visitors"}.`,
+    `Goal: ${input.goal || "make the first viewport specific, inspectable, and conversion-ready"}.`,
+    `Visual system: ${input.visualStyle || input.vibe || "high-fidelity, domain-specific, responsive"}.`,
+    `Assets: ${input.assets || "name exact URLs, file paths, generated bitmap slots, object-fit, and fallback behavior"}.`,
+    `Constraints: ${input.constraints || "avoid placeholders, unrelated sections, text overlap, and browser-visible secrets"}.`,
+    "",
+    "Required output sections:",
+    "- Stack and dependencies.",
+    "- Fonts, colors, spacing, and component structure.",
+    "- Exact media/assets with crop/focal-point rules.",
+    "- Interactive states, empty states, loading/error states when relevant.",
+    "- Mobile and desktop layout rules.",
+    "- Verification ladder: build, console, responsive screenshots, text-fit, media readiness.",
+    "",
+    "Golden benchmark influences:",
+    appliedBenchmarks.length ? appliedBenchmarks.map((title) => `- ${title}`).join("\n") : "- Add stronger benchmark coverage before promoting this generator output.",
+    "",
+    "Learned memory:",
+    memoryPatch || "- No learned memory sections yet.",
+    "",
+    bestVariant.prompt ? `Candidate seed:\n${bestVariant.prompt}` : "",
+  ].filter(Boolean).join("\n");
+  const sections = [
+    { label: "Brief fields", ready: missingInputs.length <= 1, detail: missingInputs.length ? `Missing ${missingInputs.join(", ")}.` : "Brief is complete." },
+    { label: "Benchmark coverage", ready: benchmarkHarness.score >= 70, detail: `${benchmarkHarness.score}/100 golden benchmark coverage.` },
+    { label: "Learned memory", ready: promptMemory.sections.length > 0, detail: `${promptMemory.sections.length} memory section(s).` },
+    { label: "Candidate seed", ready: Boolean(bestVariant.prompt), detail: bestVariant.title },
+    { label: "Verification ladder", ready: /verification|screenshot|console|mobile/i.test(compiledPrompt), detail: "Build, screenshot, media, and text-fit checks included." },
+  ];
+  const readyCount = sections.filter((section) => section.ready).length;
+  const score = Math.round((readyCount / sections.length) * 100);
+  return {
+    score,
+    readiness: missingInputs.length > 2 ? "needs-brief" : benchmarkHarness.score < 60 ? "needs-proof" : "ready",
+    compiledPrompt,
+    sections,
+    appliedBenchmarks,
+    missingInputs,
+    variant: {
+      id: "prompt-generator-v2",
+      title: `${input.brandName || "Generated"} Prompt Generator v2`,
+      score: Math.max(bestVariant.score || 0, evaluatePrompt(compiledPrompt).score),
+      bestFor: "Measured website prompt generation",
+      signals: ["benchmark-harness", "critique-ready", "proof-required", ...appliedBenchmarks.slice(0, 3)],
+      prompt: compiledPrompt,
+    },
+    notes: [
+      score >= 80 ? "Generator v2 is ready to produce benchmark-aware prompts." : "Fill brief gaps or improve benchmark coverage before promotion.",
+      `Applied ${appliedBenchmarks.length} benchmark influence(s).`,
+    ],
+  };
+}
+
+export function buildPromptCritiqueRepairReport({
+  benchmarkHarness,
+  prompt = "",
+}: {
+  benchmarkHarness: GoldenBenchmarkHarnessReport;
+  prompt?: string;
+}): PromptCritiqueRepairReport {
+  const text = String(prompt || "");
+  const checks = [
+    { label: "Exact assets", term: /video|image|asset|url|logo|font/i, fix: "Name exact media/font/logo paths, focal points, and fallbacks." },
+    { label: "Responsive proof", term: /mobile|desktop|responsive|breakpoint/i, fix: "Add mobile and desktop layout rules plus screenshot proof." },
+    { label: "Interaction states", term: /hover|active|focus|menu|state|transition/i, fix: "Specify hover, active, focus, menu, loading, and error states." },
+    { label: "Verification ladder", term: /verify|test|screenshot|console|build/i, fix: "Require build, console, screenshot, text-fit, and media checks." },
+    { label: "Domain specificity", term: /audience|brand|product|industry|goal/i, fix: "Name the audience, brand, product goal, and domain-specific UX." },
+    { label: "Forbidden extras", term: /no |avoid|forbidden|do not/i, fix: "State what not to add: placeholders, extra sections, secret keys, and decorative filler." },
+  ];
+  const issues = checks
+    .filter((check) => !check.term.test(text))
+    .map((check, index) => ({ label: check.label, severity: 5 - Math.min(index, 3), fix: check.fix }));
+  const benchmarkGaps = benchmarkHarness.cases.filter((row) => row.status !== "covered").slice(0, 4);
+  const repairSections = [
+    ...issues.map((issue) => ({ label: issue.label, patch: `Add: ${issue.fix}` })),
+    ...benchmarkGaps.map((row) => ({ label: row.title, patch: `Cover benchmark signals: ${row.missingSignals.slice(0, 4).join(", ")}.` })),
+  ].slice(0, 8);
+  const repairedPrompt = [
+    text || "Build a high-fidelity website prompt.",
+    "",
+    "MEASURED REPAIR PATCH",
+    ...repairSections.map((section) => `- ${section.label}: ${section.patch}`),
+    "- Verification: run build/type checks, capture desktop and mobile screenshots, inspect console output, confirm media loads, and check text-fit.",
+  ].join("\n");
+  const score = Math.max(0, Math.min(100, evaluatePrompt(text).score + (checks.length - issues.length) * 6 - issues.length * 4));
+  return {
+    score,
+    status: !text.trim() ? "empty" : issues.length || benchmarkGaps.length ? "needs-repair" : "ready",
+    issues,
+    repairSections,
+    repairedPrompt,
+    notes: [
+      issues.length ? `${issues.length} critique issue(s) need repair before proof.` : "Prompt includes the core quality signals.",
+      benchmarkGaps.length ? `${benchmarkGaps.length} benchmark gap(s) can strengthen this prompt.` : "Golden benchmark coverage looks strong for this prompt.",
+    ],
+  };
+}
+
+export function buildResultQualityDashboardReport({
+  buildRuns = [],
+  generatedPrompt = "",
+  modelCache,
+  proofLearningRuns = [],
+  screenshotJudgeRuns = [],
+  screenshots = [],
+  sourcePrompt = "",
+}: {
+  buildRuns?: BuildRunRecord[];
+  generatedPrompt?: string;
+  modelCache?: ModelEvaluationCacheReport;
+  proofLearningRuns?: { promptScore?: number; resultScore?: number; visualScore?: number; dnaScore?: number; learnedStatus?: string }[];
+  screenshotJudgeRuns?: { score?: number; verdict?: string }[];
+  screenshots?: ScreenshotRecord[];
+  sourcePrompt?: string;
+}): ResultQualityDashboardReport {
+  const originalScore = sourcePrompt ? evaluatePrompt(sourcePrompt).score : 0;
+  const generatedScore = generatedPrompt ? evaluatePrompt(generatedPrompt).score : 0;
+  const latestBuild = buildRuns[0];
+  const latestProof = proofLearningRuns[0];
+  const latestJudge = screenshotJudgeRuns[0];
+  const stages = [
+    { label: "Original prompt", score: originalScore, ready: originalScore > 0, detail: sourcePrompt ? "Selected source prompt scored locally." : "Select a prompt." },
+    { label: "Generated prompt", score: generatedScore, ready: generatedScore > 0, detail: generatedPrompt ? "Generator v2 output is available." : "Generate or compile a prompt." },
+    { label: "Build result", score: latestBuild?.score ?? 0, ready: Boolean(latestBuild), detail: latestBuild ? `${latestBuild.status}: ${latestBuild.resultUrl || latestBuild.folderPath}` : "No build run imported." },
+    { label: "Screenshot proof", score: latestJudge?.score ?? latestProof?.visualScore ?? (screenshots.length ? 65 : 0), ready: Boolean(latestJudge || latestProof?.visualScore || screenshots.length), detail: latestJudge?.verdict || `${screenshots.length} screenshot(s).` },
+    { label: "Model agreement", score: modelCache ? Math.max(0, 100 - modelCache.averageDelta) : 0, ready: Boolean(modelCache?.items.length), detail: modelCache?.notes[1] || "No cached model comparison." },
+  ];
+  const readyCount = stages.filter((stage) => stage.ready).length;
+  const score = Math.round(stages.reduce((sum, stage) => sum + stage.score, 0) / Math.max(1, stages.length));
+  return {
+    score,
+    status: readyCount >= 4 ? "proven" : readyCount >= 2 ? "partial" : "unproven",
+    stages,
+    deltas: [
+      { label: "Generator lift", value: generatedScore - originalScore, detail: "Generated prompt score minus original prompt score." },
+      { label: "Proof delta", value: (latestProof?.resultScore ?? latestBuild?.score ?? 0) - generatedScore, detail: "Result proof compared with generated prompt score." },
+      { label: "Visual delta", value: (latestJudge?.score ?? latestProof?.visualScore ?? 0) - (latestBuild?.score ?? 0), detail: "Visual judge compared with build score." },
+    ],
+    notes: [
+      "This dashboard links prompt quality to actual build and screenshot evidence.",
+      readyCount >= 4 ? "Enough proof exists to compare learning outcomes." : "Run build and screenshot proof before promoting this prompt.",
+    ],
+  };
+}
+
+export function buildDatasetReviewQueueReport({
+  curation,
+  examples = [],
+  outcomes = [],
+}: {
+  curation: CorpusCurationReport;
+  examples?: PromptExample[];
+  outcomes?: OutcomeRecord[];
+}): DatasetReviewQueueReport {
+  const exampleMap = new Map(examples.map((example) => [example.id, example]));
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const rows = curation.items
+    .map((item) => {
+      const prompt = exampleMap.get(item.promptId);
+      const outcome = outcomeMap.get(item.promptId);
+      const decision = item.recommendation;
+      const priority = decision === "quarantine" ? 100 : decision === "review" ? 70 : outcome?.status === "gold" ? 20 : 40;
+      return {
+        promptId: item.promptId,
+        title: prompt?.title || item.title,
+        decision,
+        priority,
+        reason: item.reasons[0] || outcome?.notes || item.category,
+        nextAction: decision === "learn" ? "Promote or keep in Golden Dataset candidates." : decision === "review" ? "Manually inspect before learning." : "Reject from training and quarantine.",
+      };
+    })
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 14);
+  const counts = {
+    learn: curation.counts.learn,
+    review: curation.counts.review,
+    quarantine: curation.counts.quarantine,
+  };
+  const total = counts.learn + counts.review + counts.quarantine;
+  const score = total ? Math.round((counts.learn / total) * 100) : 0;
+  return {
+    score,
+    status: !total ? "empty" : counts.quarantine ? "blocked" : counts.review ? "review" : "ready",
+    counts,
+    rows,
+    notes: [
+      `${rows.length} review queue row(s) are prioritized by quarantine, review, and promotion risk.`,
+      counts.quarantine ? "Resolve quarantined examples before locking the dataset." : "No quarantined examples are blocking the dataset.",
+    ],
+  };
+}
+
+export function buildHostedWorkerOpsReport({
+  apiEvents = [],
+  proofArtifacts = [],
+  queueJobs = [],
+}: {
+  apiEvents?: { kind?: string; detail?: unknown; createdAt?: string }[];
+  proofArtifacts?: { id?: string; createdAt?: string }[];
+  queueJobs?: BuildQueueJob[];
+}): HostedWorkerOpsReport {
+  const eventTextByJob = new Map<string, string>();
+  for (const event of apiEvents) {
+    const detail = typeof event.detail === "object" && event.detail ? event.detail as Record<string, unknown> : {};
+    const jobId = String(detail.jobId || "");
+    if (jobId && !eventTextByJob.has(jobId)) eventTextByJob.set(jobId, `${event.kind || "event"}: ${String(detail.stage || detail.ok || "updated")}`);
+  }
+  const jobs = queueJobs.slice(0, 12).map((job) => {
+    const canRetry = job.status === "failed";
+    const canCancel = ["queued", "scaffolded", "building", "capturing"].includes(job.status);
+    return {
+      id: job.id,
+      title: job.variantTitle,
+      status: job.status,
+      canRetry,
+      canCancel,
+      lastLog: eventTextByJob.get(job.id) || job.notes[0] || job.runFolder,
+      nextAction: canRetry ? "Retry job after reviewing logs." : canCancel ? "Cancel if this job is no longer useful." : "Archive artifacts after retention review.",
+    };
+  });
+  const stale = proofArtifacts.filter((artifact) => {
+    const createdAt = artifact.createdAt ? Date.parse(artifact.createdAt) : Date.now();
+    return Number.isFinite(createdAt) && Date.now() - createdAt > 1000 * 60 * 60 * 24 * 14;
+  }).length;
+  const active = jobs.filter((job) => job.canRetry || job.canCancel).length;
+  return {
+    score: queueJobs.length ? Math.max(20, Math.min(100, 100 - active * 8 - stale * 2)) : 0,
+    status: queueJobs.length ? (active ? "needs-attention" : "operational") : "idle",
+    jobs,
+    retention: { total: proofArtifacts.length, stale, limit: 160 },
+    notes: [
+      active ? `${active} queue job(s) can be retried or canceled.` : "No active queue operations need intervention.",
+      stale ? `${stale} proof artifact(s) are older than the retention window.` : "Proof artifact retention is within the current window.",
+    ],
+  };
+}
+
+export function buildMeasuredQualitySprintReport({
+  benchmark,
+  critique,
+  datasetReview,
+  generator,
+  ops,
+  resultQuality,
+  simpleMode,
+}: {
+  benchmark: GoldenBenchmarkHarnessReport;
+  critique: PromptCritiqueRepairReport;
+  datasetReview: DatasetReviewQueueReport;
+  generator: PromptGeneratorV2Report;
+  ops: HostedWorkerOpsReport;
+  resultQuality: ResultQualityDashboardReport;
+  simpleMode: SimpleModeReport;
+}): MeasuredQualitySprintReport {
+  const cards = [
+    { label: "Golden benchmark harness", ready: benchmark.readiness !== "empty" && benchmark.score >= 65, detail: `${benchmark.covered}/${benchmark.total} cases covered.` },
+    { label: "Prompt Generator v2", ready: generator.readiness === "ready", detail: generator.notes[0] },
+    { label: "Critique and repair", ready: critique.status !== "empty", detail: critique.notes[0] },
+    { label: "Result quality dashboard", ready: resultQuality.status !== "unproven", detail: resultQuality.notes[1] },
+    { label: "Beginner mode cleanup", ready: simpleMode.score >= 60, detail: simpleMode.notes[0] },
+    { label: "Dataset review queue", ready: datasetReview.status !== "blocked", detail: datasetReview.notes[1] },
+    { label: "Hosted worker operations", ready: ops.status !== "idle", detail: ops.notes[0] },
+  ];
+  return {
+    score: Math.round((cards.filter((card) => card.ready).length / cards.length) * 100),
+    cards,
+    notes: [
+      "Measured quality is strongest when benchmark, generator, critique, proof, dataset, and worker ops all have evidence.",
+      "Use this as the sprint-level readiness readout before claiming the learner improved.",
     ],
   };
 }
