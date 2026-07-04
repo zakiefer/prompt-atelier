@@ -57,6 +57,8 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Measured-quality sprint layer with a golden benchmark harness, Prompt Generator v2, critique/repair loop, result quality dashboard, dataset review queue, and hosted worker operations controls
 - Product Command Center with Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate panels for running the learning loop from one front door
 - Report-only prompt quality regression gate that blocks likely secrets or unrelated repo-operation text while scoring corpus coverage for stack, assets, layout, responsiveness, typography, interactions, constraints, and proof
+- All-in product runway covering hosted backend verification, one-click prompt-to-proof, Dataset Inbox bulk tools, preference training, Claude calibration, brief-builder completion, public demo mode, regression history, security cleanup, and narrative polish
+- Hosted API verifier CLI for checking `/api/health`, `/api/model/settings`, bearer auth, SQLite persistence, worker allowlists, and optional model evaluation without printing secrets
 
 ## Development
 
@@ -108,6 +110,7 @@ npm run lint
 npm run test:engine
 npm run check:corpus-safety
 npm run check:quality-gate
+npm run verify:hosted-api -- --url http://127.0.0.1:8787
 npm run test:api
 npm run build
 node --check scripts/promptLabApi.mjs
@@ -158,6 +161,8 @@ The Train tab now starts with:
 22. A measured-quality sprint layer that turns the training workspace into a scored operating loop: benchmark gaps feed Prompt Generator v2, critique patches repair thin prompts, result quality links generated prompts to build/screenshot/model evidence, dataset review rows protect curation, and hosted worker ops can retry or cancel queue jobs.
 23. A Product Command Center that condenses Import -> Review -> Generate -> Prove -> Calibrate -> Export into clickable cards, then opens the exact Train panel needed for the next action.
 24. Product-grade front-door panels for Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate so the learner can be operated without hunting through expert diagnostics.
+25. An all-in runway layer that explicitly tracks the ten product upgrades: hosted backend, prompt-to-proof, bulk inbox decisions, human preference labels, Claude calibration, generator brief completion, public demo mode, regression history, security cleanup, and narrative polish.
+26. A hosted API verifier command so the hosted-backend lane can be checked from CI, a terminal, or a deployment smoke without exposing API tokens or model keys.
 
 The tightest improvement cycle is:
 

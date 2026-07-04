@@ -19,6 +19,7 @@
     "export:prompts": "node scripts/exportPromptMarkdown.mjs",
     "check:corpus-safety": "node scripts/checkCorpusSafety.mjs",
     "check:quality-gate": "node scripts/checkQualityGate.mjs",
+    "verify:hosted-api": "node scripts/verifyHostedApi.mjs",
     "test:engine": "tsx scripts/testEngine.ts",
     "test:api": "node scripts/testApiRoutes.mjs"
   },

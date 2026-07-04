@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   analyzeCorpus,
   analyzeArchetypeClusters,
+  buildAllInRunwayReport,
   buildGeneratorPresets,
   buildBenchmarkV2Report,
   buildBenchmarkLibraryReport,
@@ -17,9 +18,12 @@ import {
   buildCorpusProvenanceFirewallReport,
   buildCalibrationDashboardReport,
   buildCalibrationProductReport,
+  buildBriefBuilderProductReport,
+  buildClaudeCalibrationProductReport,
   buildClaudeCalibrationSetReport,
   buildClosedLoopRunDetailReport,
   buildCorpusIntelligenceReport,
+  buildDatasetBulkToolsReport,
   buildDatasetGovernanceReport,
   buildDatasetInboxReport,
   buildEvaluationArtifact,
@@ -32,6 +36,7 @@ import {
   buildFailureMemory,
   buildGoldenDatasetV1LockReport,
   buildGoldenBenchmarkHarnessReport,
+  buildHostedBackendKitReport,
   buildGuidedPromptWizardReport,
   buildHostedSyncReport,
   buildHostedHardeningReport,
@@ -45,6 +50,7 @@ import {
   buildPatternDashboard,
   buildMeasuredQualitySprintReport,
   buildProjectExportPack,
+  buildPreferenceTrainingReport,
   buildPromptMemoryDiffReport,
   buildModelEvaluationCacheReport,
   buildPromptCandidateTournament,
@@ -52,6 +58,7 @@ import {
   buildPromptCoachReport,
   buildPromptEditorGuidance,
   buildPromptGeneratorV2Report,
+  buildPromptToProofWorkflowReport,
   buildProductCommandCenterReport,
   buildPromptQualityDnaReport,
   buildPromptRecipeDistillerReport,
@@ -60,8 +67,10 @@ import {
   buildQueueProgressReport,
   buildQualityGateReport,
   buildResultQualityDashboardReport,
+  buildRegressionHistoryProductReport,
   buildDatasetReviewQueueReport,
   buildReusableMemoryPack,
+  buildSecurityCleanupProductReport,
   buildSourceSafetyReport,
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
@@ -76,6 +85,7 @@ import {
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
   buildVisualRegressionReport,
+  buildNarrativePolishReport,
   buildWorkerSandboxReport,
   buildPromptSectionRegenerationReport,
   buildSpeedLabelingReport,
@@ -967,4 +977,101 @@ const productCommandCenter = buildProductCommandCenterReport({
 assert.equal(productCommandCenter.cards.length, 6, "Product command center should expose six product runway cards.");
 assert.ok(productCommandCenter.nextAction.length > 0, "Product command center should pick an obvious next action.");
 
-console.log(JSON.stringify({ ok: true, assertions: 197, score: score.score, snapshot: snapshot.label }, null, 2));
+const hostedBackendKit = buildHostedBackendKitReport({
+  admin: apiAdminHardening,
+  backupCount: 1,
+  hardening: hostedHardening,
+  hosted: hostedReadinessProduct,
+  router: providerRouter,
+  setupCheckCount: 1,
+});
+assert.equal(hostedBackendKit.checks.length, 8, "Hosted backend kit should expose deployment, auth, storage, model, worker, and backup checks.");
+assert.notEqual(hostedBackendKit.status, "blocked", "Fully configured hosted fixtures should not block the hosted backend kit.");
+
+const promptToProofWorkflow = buildPromptToProofWorkflowReport({
+  generator: promptGeneratorV2,
+  proof: proofRunController,
+  queueJobCount: hostedOpsQueueJobs.length,
+  resultQuality: resultQualityDashboard,
+  selectedPromptTitle: examples[0].title,
+});
+assert.equal(promptToProofWorkflow.steps.length, 6, "Prompt-to-proof workflow should expose the full proof chain.");
+assert.equal(promptToProofWorkflow.canRun, true, "Prompt-to-proof workflow should be runnable when a prompt and generator exist.");
+
+const datasetBulkTools = buildDatasetBulkToolsReport({ inbox: datasetInbox });
+assert.equal(datasetBulkTools.actions.length, 5, "Dataset bulk tools should expose all inbox decisions.");
+assert.ok(datasetBulkTools.actions.some((action) => action.enabled), "Dataset bulk tools should enable at least one fixture action.");
+
+const preferenceTraining = buildPreferenceTrainingReport({ examples, outcomes, pairwiseReviews });
+assert.notEqual(preferenceTraining.status, "empty", "Preference training should see fixture examples.");
+assert.ok(preferenceTraining.candidates.length <= 1, "Preference training should expose at most one recommended next pair.");
+
+const claudeCalibrationProduct = buildClaudeCalibrationProductReport({
+  calibration: calibrationProduct,
+  hosted: hostedReadinessProduct,
+  modelCache: cacheReport,
+  router: providerRouter,
+});
+assert.ok(claudeCalibrationProduct.rows.some((row) => row.label === "Server Claude route"), "Claude calibration dashboard should expose server route readiness.");
+assert.ok(["server-ready", "local-fallback", "needs-key", "divergent"].includes(claudeCalibrationProduct.status), "Claude calibration dashboard should classify route status.");
+
+const briefBuilderProduct = buildBriefBuilderProductReport({
+  generator: promptGeneratorV2,
+  generatorInput: {
+    brandName: "",
+    industry: "",
+    stack: "",
+    siteType: "",
+    visualStyle: "",
+    assets: "",
+    constraints: "",
+    strictness: 7,
+  },
+});
+assert.equal(briefBuilderProduct.status, "needs-brief", "Brief builder should detect missing brief fields.");
+assert.ok(Object.keys(briefBuilderProduct.suggestedPatch).length >= 6, "Brief builder should provide a patch for missing fields.");
+
+const regressionHistoryProduct = buildRegressionHistoryProductReport({
+  benchmarkRunCount: 1,
+  benchmarkV2RunCount: 1,
+  evaluationHistory,
+  qualityGate: qualityRegressionGate,
+});
+assert.ok(regressionHistoryProduct.metrics.some((metric) => metric.label === "Events"), "Regression history should expose event metrics.");
+assert.notEqual(regressionHistoryProduct.status, "empty", "Regression history with fixture runs should not be empty.");
+
+const securityCleanupProduct = buildSecurityCleanupProductReport({
+  firewall: provenanceFirewall,
+  hosted: hostedReadinessProduct,
+  leakage: leakageGuard,
+  qualityGate: qualityRegressionGate,
+  sourceSafety,
+});
+assert.ok(securityCleanupProduct.checks.some((check) => check.label === "Secret leakage"), "Security cleanup should check secret leakage.");
+assert.ok(["clean", "review", "blocked"].includes(securityCleanupProduct.status), "Security cleanup should classify corpus safety.");
+
+const narrativePolish = buildNarrativePolishReport({
+  commandCenter: productCommandCenter,
+  corpusCount: examples.length,
+  generator: promptGeneratorV2,
+  proof: promptToProofWorkflow,
+});
+assert.equal(narrativePolish.beats.length, 6, "Narrative polish should expose the corpus-to-export story beats.");
+assert.ok(narrativePolish.headline.includes("Learn"), "Narrative polish should include public-facing copy.");
+
+const allInRunway = buildAllInRunwayReport({
+  briefBuilder: briefBuilderProduct,
+  claudeCalibration: claudeCalibrationProduct,
+  datasetBulk: datasetBulkTools,
+  hostedBackend: hostedBackendKit,
+  narrative: narrativePolish,
+  preferenceTraining,
+  promptToProof: promptToProofWorkflow,
+  publicDemoReady: true,
+  regressionHistory: regressionHistoryProduct,
+  securityCleanup: securityCleanupProduct,
+});
+assert.equal(allInRunway.items.length, 10, "All-in runway should track all ten requested product upgrades.");
+assert.ok(allInRunway.summary.some((item) => /all-in runway/i.test(item)), "All-in runway should summarize the complete upgrade set.");
+
+console.log(JSON.stringify({ ok: true, assertions: 217, score: score.score, snapshot: snapshot.label }, null, 2));

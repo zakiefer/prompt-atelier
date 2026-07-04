@@ -4,7 +4,7 @@ Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labe
 
 The browser also computes deterministic training intelligence locally: corpus provenance, guided step readiness, real build-result learning, Prompt Quality DNA explanations, prompt recipes, benchmark-library coverage, generated-prompt editor guidance, model/local/result comparison, and best-next-action recommendations. These reports do not require a model key, but they become stronger when cached model evaluations, build runs, screenshots, and hosted artifacts are synced through the API.
 
-The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
+The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. The all-in runway layer adds hosted backend verification, one-click prompt-to-proof, Dataset Inbox bulk tools, preference training, Claude calibration, brief-builder completion, public demo mode, regression history, security cleanup, and narrative polish. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
 
 ## Render Blueprint
 
@@ -16,6 +16,7 @@ The Train tab now exposes the same intelligence as a product runway: Product Com
 6. Click Check API, then Push API.
 7. Use Connect hosted brain in the Train tab to verify health, SQLite writes, auth posture, and configured model settings before running calibration or one-click proof work.
 8. Use Claude readiness without browser secrets to confirm API health, bearer auth, SQLite write visibility, model route behavior, and whether image judging can run through the server-side key.
+9. Run `npm run verify:hosted-api -- --url https://your-api.example.com --token <token>` from a terminal or CI smoke to prove the same hosted-readiness checks outside the browser.
 
 ## Required Environment
 
@@ -29,6 +30,20 @@ The Train tab now exposes the same intelligence as a product runway: Product Com
 - `ANTHROPIC_API_KEY=<Claude API key on the API host only>`
 
 The SQLite file is stored on the mounted Render disk so the training state persists across deploys.
+
+## Hosted Verifier CLI
+
+Use the hosted verifier for repeatable smoke checks:
+
+```bash
+npm run verify:hosted-api -- --url http://127.0.0.1:8787
+PROMPT_LAB_API_TOKEN=replace-me npm run verify:hosted-api -- --url https://your-api.example.com
+PROMPT_LAB_API_TOKEN=replace-me npm run verify:hosted-api -- --url https://your-api.example.com --evaluate
+```
+
+The command checks `/api/health` and `/api/model/settings`, then optionally posts a tiny schema-compatible prompt to `/api/model/evaluate` when `--evaluate` is supplied. Output is JSON with booleans, route status, and next actions only. It never prints bearer tokens, Claude keys, or model endpoint secrets.
+
+Blocking failures are limited to health reachability, bearer auth, SQLite storage, and the model-settings route. Worker enablement, build allowlists, Claude key visibility, and model-route readiness are reported as operational checks because a hosted demo can still run in deterministic fallback mode.
 
 ## Claude Scoring
 

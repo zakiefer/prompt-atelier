@@ -1444,6 +1444,111 @@ export type QualityRegressionGateReport = {
   notes: string[];
 };
 
+export type ProductRunwayItem = {
+  id:
+    | "hosted-backend"
+    | "prompt-to-proof"
+    | "dataset-bulk"
+    | "preference-training"
+    | "claude-calibration"
+    | "brief-builder"
+    | "public-demo"
+    | "regression-history"
+    | "security-cleanup"
+    | "narrative-polish";
+  label: string;
+  status: "ready" | "active" | "needs-work" | "blocked";
+  score: number;
+  evidence: string;
+  nextAction: string;
+  target: string;
+};
+
+export type AllInRunwayReport = {
+  score: number;
+  status: "ready" | "in-progress" | "blocked";
+  items: ProductRunwayItem[];
+  nextAction: string;
+  summary: string[];
+  blockers: string[];
+};
+
+export type HostedBackendKitReport = {
+  score: number;
+  status: "ready" | "needs-config" | "blocked";
+  checks: { label: string; ready: boolean; blocking: boolean; detail: string; fix: string }[];
+  command: string;
+  notes: string[];
+};
+
+export type PromptToProofWorkflowReport = {
+  score: number;
+  status: "ready" | "running" | "needs-input" | "blocked";
+  steps: { label: string; status: "done" | "active" | "blocked" | "todo"; detail: string }[];
+  canRun: boolean;
+  primaryAction: string;
+  notes: string[];
+};
+
+export type DatasetBulkToolsReport = {
+  score: number;
+  status: "ready" | "empty" | "blocked";
+  actions: { id: DatasetInboxReport["rows"][number]["recommendation"]; label: string; count: number; enabled: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type PreferenceTrainingReport = {
+  score: number;
+  status: "ready" | "needs-labels" | "empty";
+  reviewCount: number;
+  goldCount: number;
+  avoidCount: number;
+  candidates: { leftId: string; rightId: string; recommendedWinnerId: string; reason: string }[];
+  lessons: string[];
+  notes: string[];
+};
+
+export type ClaudeCalibrationProductReport = {
+  score: number;
+  status: "server-ready" | "local-fallback" | "needs-key" | "divergent";
+  route: string;
+  rows: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type BriefBuilderProductReport = {
+  score: number;
+  status: "ready" | "needs-brief";
+  fields: { key: keyof LearnedGeneratorInput; label: string; ready: boolean; value: string; hint: string }[];
+  suggestedPatch: Partial<LearnedGeneratorInput>;
+  notes: string[];
+};
+
+export type RegressionHistoryProductReport = {
+  score: number;
+  status: "pass" | "watch" | "fail" | "empty";
+  metrics: { label: string; value: string; detail: string }[];
+  rows: { label: string; status: "pass" | "watch" | "fail"; detail: string }[];
+  notes: string[];
+};
+
+export type SecurityCleanupProductReport = {
+  score: number;
+  status: "clean" | "review" | "blocked";
+  checks: { label: string; ready: boolean; blocking: boolean; detail: string; fix: string }[];
+  cleanupActions: string[];
+  notes: string[];
+};
+
+export type NarrativePolishReport = {
+  score: number;
+  status: "clear" | "needs-story";
+  headline: string;
+  subhead: string;
+  beats: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -7538,6 +7643,381 @@ export function buildProductCommandCenterReport({
       "Command Center summarizes the full Import -> Review -> Generate -> Prove -> Calibrate -> Export runway.",
       hosted.notes[0],
     ],
+  };
+}
+
+function boundedProductScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function readyPercent(rows: { ready: boolean }[]): number {
+  return rows.length ? boundedProductScore((rows.filter((row) => row.ready).length / rows.length) * 100) : 0;
+}
+
+export function buildHostedBackendKitReport({
+  admin,
+  backupCount = 0,
+  hardening,
+  hosted,
+  router,
+  setupCheckCount = 0,
+}: {
+  admin: ApiAdminHardeningReport;
+  backupCount?: number;
+  hardening: HostedHardeningReport;
+  hosted: HostedReadinessProductReport;
+  router: ModelProviderRouterReport;
+  setupCheckCount?: number;
+}): HostedBackendKitReport {
+  const checks = [
+    { label: "Reachable API", ready: hosted.checks.some((check) => check.label === "API URL" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "API URL")?.detail || "API reachability is unknown.", fix: "Run the API locally or set PROMPT_LAB_API_URL for hosted verification." },
+    { label: "Bearer auth", ready: hosted.checks.some((check) => check.label === "Token status" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "Token status")?.detail || "Token status unknown.", fix: "Require PROMPT_LAB_API_TOKEN on the API host." },
+    { label: "Persistent storage", ready: hosted.checks.some((check) => check.label === "SQLite writable" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "SQLite writable")?.detail || "SQLite storage unknown.", fix: "Set PROMPT_LAB_DATA_DIR to a persistent directory." },
+    { label: "Server model route", ready: router.route === "server-claude" || hosted.verdict === "hosted-judge-ready" || hosted.verdict === "hosted-proof-ready", blocking: false, detail: `Current route: ${router.route}.`, fix: "Set ANTHROPIC_API_KEY only on the server when live Claude judging is needed." },
+    { label: "Worker sandbox", ready: hosted.checks.some((check) => check.label === "Queue sandbox" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "Queue sandbox")?.detail || "Worker sandbox unknown.", fix: "Run the worker sandbox check before enabling hosted proof builds." },
+    { label: "Admin hardening", ready: admin.readiness === "ready", blocking: false, detail: admin.notes[0] || `Admin readiness: ${admin.readiness}.`, fix: admin.actions[0] || "Finish API admin hardening checks." },
+    { label: "Deployment hardening", ready: hardening.readiness === "production-ready", blocking: false, detail: hardening.notes[0] || `Hosted hardening: ${hardening.readiness}.`, fix: hardening.checklist.find((check) => !check.ready)?.fix || "Finish hosted hardening checklist." },
+    { label: "Restore point", ready: backupCount > 0, blocking: false, detail: `${backupCount} backup snapshot(s), ${setupCheckCount} setup check(s).`, fix: "Create a backup before changing hosted storage or worker settings." },
+  ];
+  const blockingFailures = checks.filter((check) => check.blocking && !check.ready);
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: blockingFailures.length ? "blocked" : score >= 75 ? "ready" : "needs-config",
+    checks,
+    command: "npm run verify:hosted-api -- --url $PROMPT_LAB_API_URL",
+    notes: [
+      hosted.notes[0],
+      "The hosted backend kit keeps keys server-side, checks persistence, and verifies proof-worker safety before real traffic.",
+      blockingFailures.length ? `${blockingFailures.length} hosted blocker(s) remain.` : "Hosted blockers are clear for the configured environment.",
+    ],
+  };
+}
+
+export function buildPromptToProofWorkflowReport({
+  generator,
+  proof,
+  queueJobCount = 0,
+  resultQuality,
+  selectedPromptTitle = "",
+}: {
+  generator: PromptGeneratorV2Report;
+  proof: ProofRunControllerReport;
+  queueJobCount?: number;
+  resultQuality: ResultQualityDashboardReport;
+  selectedPromptTitle?: string;
+}): PromptToProofWorkflowReport {
+  const steps = [
+    { label: "Brief", status: generator.missingInputs.length ? "todo" as const : "done" as const, detail: generator.missingInputs.length ? `Missing ${generator.missingInputs.join(", ")}.` : "Brief has enough detail to generate." },
+    { label: "Generate", status: generator.compiledPrompt ? "done" as const : "todo" as const, detail: generator.compiledPrompt ? `${generator.variant.title} is compiled.` : "Generate a candidate prompt." },
+    { label: "Queue build", status: queueJobCount ? "active" as const : proof.status === "blocked" ? "blocked" as const : "todo" as const, detail: queueJobCount ? `${queueJobCount} queue job(s) tracked.` : proof.nextAction },
+    { label: "Capture proof", status: resultQuality.status === "proven" ? "done" as const : resultQuality.status === "partial" ? "active" as const : "todo" as const, detail: resultQuality.notes[0] || "Capture build, screenshot, and result evidence." },
+    { label: "Repair", status: proof.actions.find((action) => action.id === "repair")?.enabled ? "active" as const : "todo" as const, detail: proof.actions.find((action) => action.id === "repair")?.detail || "Repair only after proof identifies a miss." },
+    { label: "Promote winner", status: proof.currentStage === "winner" ? "done" as const : "todo" as const, detail: proof.currentStage === "winner" ? "Winner proof is ready." : "Promote only after proof and calibration agree." },
+  ];
+  const blocked = steps.some((step) => step.status === "blocked");
+  const running = steps.some((step) => step.status === "active");
+  const doneCount = steps.filter((step) => step.status === "done").length;
+  const canRun = Boolean(generator.compiledPrompt || selectedPromptTitle) && !blocked;
+  return {
+    score: boundedProductScore((doneCount / steps.length) * 100 + (canRun ? 10 : 0)),
+    status: blocked ? "blocked" : running ? "running" : canRun ? "ready" : "needs-input",
+    steps,
+    canRun,
+    primaryAction: canRun ? `Prove ${selectedPromptTitle || generator.variant.title}` : "Finish the brief before proof.",
+    notes: [
+      "This is the one-click prompt-to-proof path: brief, generate, queue, capture, judge, repair, promote.",
+      proof.nextAction,
+    ],
+  };
+}
+
+export function buildDatasetBulkToolsReport({ inbox }: { inbox: DatasetInboxReport }): DatasetBulkToolsReport {
+  const actions = [
+    { id: "learn" as const, label: "Learn all recommended", count: inbox.counts.learn, enabled: inbox.counts.learn > 0, detail: "Promote clean website prompts into the training set." },
+    { id: "gold" as const, label: "Gold all strongest", count: inbox.counts.gold, enabled: inbox.counts.gold > 0, detail: "Mark top rows as gold examples with great outcomes." },
+    { id: "review" as const, label: "Hold review queue", count: inbox.counts.review, enabled: inbox.counts.review > 0, detail: "Keep ambiguous rows out of training until inspected." },
+    { id: "quarantine" as const, label: "Quarantine blockers", count: inbox.counts.quarantine, enabled: inbox.counts.quarantine > 0, detail: "Fence unrelated or unsafe rows." },
+    { id: "remove" as const, label: "Remove delete candidates", count: inbox.counts.remove, enabled: inbox.counts.remove > 0, detail: "Delete user-owned rows that should not train the model." },
+  ];
+  const blocked = inbox.counts.quarantine + inbox.counts.remove;
+  return {
+    score: inbox.score,
+    status: !inbox.rows.length ? "empty" : blocked ? "blocked" : "ready",
+    actions,
+    notes: [
+      `${inbox.rows.length} inbox row(s) can now be handled one-by-one or in bulk.`,
+      blocked ? `${blocked} row(s) should be quarantined or removed before training.` : "No blocking dataset cleanup remains in the inbox.",
+    ],
+  };
+}
+
+export function buildPreferenceTrainingReport({
+  examples = [],
+  outcomes = [],
+  pairwiseReviews = [],
+}: {
+  examples?: PromptExample[];
+  outcomes?: OutcomeRecord[];
+  pairwiseReviews?: PairwiseReviewRecord[];
+}): PreferenceTrainingReport {
+  const goldIds = new Set(outcomes.filter((outcome) => outcome.status === "gold" || outcome.rating === "great").map((outcome) => outcome.promptId));
+  const avoidIds = new Set(outcomes.filter((outcome) => outcome.status === "avoid" || outcome.rating === "bad").map((outcome) => outcome.promptId));
+  const ranked = examples
+    .map((example) => ({ example, score: evaluatePrompt(example.text).score }))
+    .sort((a, b) => b.score - a.score);
+  const strongest = ranked.find((row) => !avoidIds.has(row.example.id))?.example;
+  const challenger = ranked.find((row) => strongest && row.example.id !== strongest.id)?.example;
+  const candidates = strongest && challenger
+    ? [{
+        leftId: strongest.id,
+        rightId: challenger.id,
+        recommendedWinnerId: strongest.id,
+        reason: "Higher prompt quality score and stronger build-ready detail.",
+      }]
+    : [];
+  const lessons = [
+    pairwiseReviews.length ? `${pairwiseReviews.length} pairwise win/loss label(s) captured.` : "No pairwise labels yet.",
+    `${goldIds.size} gold prompt(s) and ${avoidIds.size} avoid prompt(s) shape preference learning.`,
+    candidates.length ? "A next pair is ready for one-click labeling." : "Add at least two examples to label preferences.",
+  ];
+  const signalScore = Math.min(100, pairwiseReviews.length * 18 + goldIds.size * 8 + avoidIds.size * 6);
+  return {
+    score: boundedProductScore(signalScore),
+    status: !examples.length ? "empty" : pairwiseReviews.length || goldIds.size ? "ready" : "needs-labels",
+    reviewCount: pairwiseReviews.length,
+    goldCount: goldIds.size,
+    avoidCount: avoidIds.size,
+    candidates,
+    lessons,
+    notes: [
+      "Preference training converts human taste into gold/avoid labels and pairwise winners.",
+      signalScore >= 60 ? "Preference signal is strong enough to influence generation." : "Add more pairwise labels before trusting preference weighting.",
+    ],
+  };
+}
+
+export function buildClaudeCalibrationProductReport({
+  calibration,
+  hosted,
+  modelCache,
+  router,
+}: {
+  calibration: CalibrationProductReport;
+  hosted: HostedReadinessProductReport;
+  modelCache: ModelEvaluationCacheReport;
+  router: ModelProviderRouterReport;
+}): ClaudeCalibrationProductReport {
+  const serverReady = router.route === "server-claude" || hosted.verdict === "hosted-judge-ready" || hosted.verdict === "hosted-proof-ready";
+  const divergent = calibration.status === "divergent" || modelCache.items.some((item) => item.agreement === "divergent");
+  const rows = [
+    { label: "Server Claude route", ready: serverReady, detail: serverReady ? "Claude judging is available through the server route." : "Live Claude judging is not configured on the server." },
+    { label: "Cached model evidence", ready: modelCache.items.length > 0, detail: `${modelCache.items.length} cached model evaluation(s), ${modelCache.averageDelta} average delta.` },
+    { label: "Local/model agreement", ready: calibration.status === "aligned", detail: calibration.notes[0] },
+    { label: "No browser key exposure", ready: true, detail: "Model keys are represented only as server readiness flags in product reports." },
+  ];
+  const score = boundedProductScore(readyPercent(rows) - (divergent ? 20 : 0));
+  return {
+    score,
+    status: divergent ? "divergent" : serverReady ? "server-ready" : modelCache.items.length ? "local-fallback" : "needs-key",
+    route: router.route,
+    rows,
+    notes: [
+      serverReady ? "Claude calibration can use the hosted server route." : "Claude calibration is currently using cached or local fallback evidence.",
+      calibration.notes[1] || `Calibration recommendation: ${calibration.recommendation}.`,
+    ],
+  };
+}
+
+export function buildBriefBuilderProductReport({ generatorInput, generator }: { generatorInput: LearnedGeneratorInput; generator: PromptGeneratorV2Report }): BriefBuilderProductReport {
+  const fieldSpecs: { key: keyof LearnedGeneratorInput; label: string; fallback: string; hint: string }[] = [
+    { key: "brandName", label: "Brand", fallback: "Name the product or studio.", hint: "Use a concrete brand name instead of a generic label." },
+    { key: "industry", label: "Industry", fallback: "website product category", hint: "Name the market, audience, or vertical." },
+    { key: "audience", label: "Audience", fallback: "design-forward users", hint: "Who is the site trying to persuade?" },
+    { key: "goal", label: "Goal", fallback: "turn a visitor into a qualified lead", hint: "State the conversion or proof objective." },
+    { key: "stack", label: "Stack", fallback: "React + TypeScript + Vite + Tailwind CSS", hint: "Keep the build target explicit." },
+    { key: "siteType", label: "Site type", fallback: "single-page landing hero", hint: "Name page shape and primary section." },
+    { key: "vibe", label: "Vibe", fallback: "cinematic, precise, restrained", hint: "Give visual taste words that map to layout decisions." },
+    { key: "visualStyle", label: "Visual style", fallback: "full-viewport cinematic website with exact typography and assets", hint: "Describe first-viewport composition." },
+    { key: "assets", label: "Assets", fallback: "provide exact image, video, logo, or generated asset instructions", hint: "Name URLs and asset handling." },
+    { key: "constraints", label: "Constraints", fallback: "no decorative filler, no extra sections, verify desktop and mobile", hint: "Tell the builder what to avoid." },
+  ];
+  const fields = fieldSpecs.map((field) => {
+    const value = String(generatorInput[field.key] ?? "").trim();
+    return { key: field.key, label: field.label, ready: value.length > 0, value, hint: field.hint };
+  });
+  const suggestedPatch = fieldSpecs.reduce<Partial<LearnedGeneratorInput>>((patch, field) => {
+    const value = String(generatorInput[field.key] ?? "").trim();
+    if (!value) {
+      (patch as Record<string, string>)[field.key] = field.fallback;
+    }
+    return patch;
+  }, {});
+  const ready = fields.filter((field) => field.ready).length;
+  return {
+    score: boundedProductScore((ready / fields.length) * 100),
+    status: generator.missingInputs.length || Object.keys(suggestedPatch).length ? "needs-brief" : "ready",
+    fields,
+    suggestedPatch,
+    notes: [
+      generator.notes[0],
+      Object.keys(suggestedPatch).length ? "Apply the suggested patch to complete missing brief fields." : "Brief builder has enough detail for a build-ready prompt.",
+    ],
+  };
+}
+
+export function buildRegressionHistoryProductReport({
+  benchmarkRunCount = 0,
+  benchmarkV2RunCount = 0,
+  evaluationHistory,
+  qualityGate,
+}: {
+  benchmarkRunCount?: number;
+  benchmarkV2RunCount?: number;
+  evaluationHistory: EvaluationHistoryReport;
+  qualityGate: QualityRegressionGateReport;
+}): RegressionHistoryProductReport {
+  const metrics = [
+    { label: "Events", value: String(evaluationHistory.items.length), detail: evaluationHistory.summary[0] || "No evaluation events yet." },
+    { label: "Gold rate", value: `${evaluationHistory.trends.goldRate}%`, detail: "Share of outcome labels marked gold." },
+    { label: "Build pass", value: `${evaluationHistory.trends.passRate}%`, detail: "Share of build runs that passed." },
+    { label: "Benchmarks", value: `${benchmarkRunCount}/${benchmarkV2RunCount}`, detail: "Classic and v2 benchmark run counts." },
+    { label: "Gate", value: qualityGate.status, detail: qualityGate.notes[0] },
+  ];
+  const rows = [
+    { label: "Quality gate", status: qualityGate.status === "fail" ? "fail" as const : qualityGate.status === "pass" ? "pass" as const : "watch" as const, detail: qualityGate.notes[0] },
+    { label: "Evaluation history", status: evaluationHistory.items.length ? "pass" as const : "watch" as const, detail: evaluationHistory.summary[0] || "No history yet." },
+    { label: "Benchmark cadence", status: benchmarkRunCount + benchmarkV2RunCount > 0 ? "pass" as const : "watch" as const, detail: benchmarkRunCount + benchmarkV2RunCount > 0 ? "At least one benchmark run exists." : "Run benchmarks before a release." },
+    { label: "Model calibration", status: evaluationHistory.trends.averageModelScore > 0 ? "pass" as const : "watch" as const, detail: `${evaluationHistory.trends.averageModelScore}/100 average model score.` },
+  ];
+  const fail = rows.some((row) => row.status === "fail");
+  const watch = rows.some((row) => row.status === "watch");
+  return {
+    score: boundedProductScore((evaluationHistory.score + qualityGate.score + Math.min(100, (benchmarkRunCount + benchmarkV2RunCount) * 20)) / 3),
+    status: !evaluationHistory.items.length && !benchmarkRunCount && !benchmarkV2RunCount ? "empty" : fail ? "fail" : watch ? "watch" : "pass",
+    metrics,
+    rows,
+    notes: [
+      "Regression history ties quality gates, benchmarks, model evaluations, builds, screenshots, and labels together.",
+      fail ? "A blocking regression gate failed." : watch ? "History is useful but still needs more recurring runs." : "Regression history is release-ready.",
+    ],
+  };
+}
+
+export function buildSecurityCleanupProductReport({
+  firewall,
+  hosted,
+  leakage,
+  qualityGate,
+  sourceSafety,
+}: {
+  firewall: CorpusProvenanceFirewallReport;
+  hosted: HostedReadinessProductReport;
+  leakage: LeakageGuardReport;
+  qualityGate: QualityRegressionGateReport;
+  sourceSafety: SourceSafetyReport;
+}): SecurityCleanupProductReport {
+  const checks = [
+    { label: "Secret leakage", ready: leakage.status === "clean", blocking: true, detail: `${leakage.blockers} blocker(s), ${leakage.warnings} warning(s).`, fix: leakage.recommendations[0] || "Remove secrets and operational transcripts before training." },
+    { label: "Source safety", ready: sourceSafety.unsafeItems.length === 0, blocking: true, detail: `${sourceSafety.unsafeItems.length} unsafe source item(s) detected.`, fix: sourceSafety.recommendations[0] || "Quarantine unsafe sources." },
+    { label: "Provenance firewall", ready: firewall.score >= 70 && firewall.quarantinedCount === 0, blocking: false, detail: firewall.notes[0] || `${firewall.allowedCount} allowed / ${firewall.reviewCount} review / ${firewall.quarantinedCount} quarantined.`, fix: firewall.actions[0] || "Review provenance firewall actions." },
+    { label: "Hosted key posture", ready: hosted.notes.some((note) => /server-side/i.test(note)), blocking: true, detail: "Model keys must remain server-side and never enter browser-visible state.", fix: "Use hosted `/api/model/evaluate`; do not store keys in localStorage or prompt text." },
+    { label: "Regression contamination", ready: qualityGate.rows.find((row) => row.label === "Corpus safety")?.ready ?? false, blocking: true, detail: qualityGate.rows.find((row) => row.label === "Corpus safety")?.detail || "Corpus safety not checked.", fix: "Run corpus safety and quality gate checks." },
+  ];
+  const blockingFailures = checks.filter((check) => check.blocking && !check.ready);
+  return {
+    score: readyPercent(checks),
+    status: blockingFailures.length ? "blocked" : checks.some((check) => !check.ready) ? "review" : "clean",
+    checks,
+    cleanupActions: checks.filter((check) => !check.ready).map((check) => check.fix),
+    notes: [
+      "Security cleanup focuses on secrets, source boundaries, provenance, hosted key posture, and regression contamination.",
+      blockingFailures.length ? `${blockingFailures.length} blocking cleanup item(s) remain.` : "No blocking cleanup items remain.",
+    ],
+  };
+}
+
+export function buildNarrativePolishReport({
+  commandCenter,
+  corpusCount = 0,
+  generator,
+  proof,
+}: {
+  commandCenter: ProductCommandCenterReport;
+  corpusCount?: number;
+  generator: PromptGeneratorV2Report;
+  proof: PromptToProofWorkflowReport;
+}): NarrativePolishReport {
+  const beats = [
+    { label: "Learn", ready: corpusCount > 0, detail: `${corpusCount} prompt(s) feed the corpus.` },
+    { label: "Extract DNA", ready: commandCenter.cards.some((card) => card.id === "review" && card.status !== "blocked"), detail: commandCenter.cards.find((card) => card.id === "review")?.reason || "Review dataset before extracting DNA." },
+    { label: "Generate", ready: generator.readiness === "ready", detail: generator.notes[0] },
+    { label: "Prove", ready: proof.status === "ready" || proof.status === "running", detail: proof.primaryAction },
+    { label: "Calibrate", ready: commandCenter.cards.some((card) => card.id === "calibrate" && card.status !== "blocked"), detail: commandCenter.cards.find((card) => card.id === "calibrate")?.reason || "Calibrate the evaluator." },
+    { label: "Export", ready: commandCenter.cards.some((card) => card.id === "export" && card.status !== "blocked"), detail: commandCenter.cards.find((card) => card.id === "export")?.reason || "Export training packs after proof." },
+  ];
+  const score = readyPercent(beats);
+  return {
+    score,
+    status: score >= 80 ? "clear" : "needs-story",
+    headline: "Learn from great prompts. Generate build-ready website briefs. Prove the result.",
+    subhead: "Prompt Atelier turns a curated corpus into prompt DNA, one-click proof runs, evaluator calibration, and exportable training packs.",
+    beats,
+    notes: [
+      "The product story now follows the visible workflow: corpus, DNA, generation, proof, calibration, export.",
+      score >= 80 ? "Narrative is coherent enough for the public demo." : "Tighten weak beats before treating the page as self-explanatory.",
+    ],
+  };
+}
+
+export function buildAllInRunwayReport({
+  briefBuilder,
+  claudeCalibration,
+  datasetBulk,
+  hostedBackend,
+  narrative,
+  preferenceTraining,
+  promptToProof,
+  publicDemoReady = false,
+  regressionHistory,
+  securityCleanup,
+}: {
+  briefBuilder: BriefBuilderProductReport;
+  claudeCalibration: ClaudeCalibrationProductReport;
+  datasetBulk: DatasetBulkToolsReport;
+  hostedBackend: HostedBackendKitReport;
+  narrative: NarrativePolishReport;
+  preferenceTraining: PreferenceTrainingReport;
+  promptToProof: PromptToProofWorkflowReport;
+  publicDemoReady?: boolean;
+  regressionHistory: RegressionHistoryProductReport;
+  securityCleanup: SecurityCleanupProductReport;
+}): AllInRunwayReport {
+  const items: ProductRunwayItem[] = [
+    { id: "hosted-backend", label: "Hosted backend", status: hostedBackend.status === "ready" ? "ready" : hostedBackend.status === "blocked" ? "blocked" : "needs-work", score: hostedBackend.score, evidence: hostedBackend.notes[0], nextAction: hostedBackend.checks.find((check) => !check.ready)?.fix || "Run hosted API verification.", target: "hosted" },
+    { id: "prompt-to-proof", label: "Prompt-to-proof", status: promptToProof.status === "ready" ? "ready" : promptToProof.status === "running" ? "active" : promptToProof.status === "blocked" ? "blocked" : "needs-work", score: promptToProof.score, evidence: promptToProof.notes[0], nextAction: promptToProof.primaryAction, target: "proof" },
+    { id: "dataset-bulk", label: "Dataset Inbox bulk tools", status: datasetBulk.status === "ready" ? "ready" : datasetBulk.status === "blocked" ? "blocked" : "needs-work", score: datasetBulk.score, evidence: datasetBulk.notes[0], nextAction: datasetBulk.actions.find((action) => action.enabled)?.label || "Paste more prompts.", target: "dataset" },
+    { id: "preference-training", label: "Human preference training", status: preferenceTraining.status === "ready" ? "ready" : preferenceTraining.status === "empty" ? "blocked" : "needs-work", score: preferenceTraining.score, evidence: preferenceTraining.lessons[0], nextAction: preferenceTraining.candidates.length ? "Add recommended pairwise label." : "Add gold and avoid labels.", target: "preferences" },
+    { id: "claude-calibration", label: "Claude calibration dashboard", status: claudeCalibration.status === "server-ready" || claudeCalibration.status === "local-fallback" ? "ready" : claudeCalibration.status === "divergent" ? "blocked" : "needs-work", score: claudeCalibration.score, evidence: claudeCalibration.notes[0], nextAction: claudeCalibration.rows.find((row) => !row.ready)?.detail || "Run Claude calibration.", target: "calibration" },
+    { id: "brief-builder", label: "Prompt generator brief builder", status: briefBuilder.status === "ready" ? "ready" : "needs-work", score: briefBuilder.score, evidence: briefBuilder.notes[0], nextAction: Object.keys(briefBuilder.suggestedPatch).length ? "Apply missing brief fields." : "Generate the prompt.", target: "brief" },
+    { id: "public-demo", label: "Public demo mode", status: publicDemoReady ? "ready" : "needs-work", score: publicDemoReady ? 100 : 35, evidence: publicDemoReady ? "Demo data can be loaded without private state." : "Demo mode needs a seeded public state.", nextAction: publicDemoReady ? "Load demo mode." : "Seed demo data.", target: "demo" },
+    { id: "regression-history", label: "Regression history", status: regressionHistory.status === "pass" ? "ready" : regressionHistory.status === "fail" ? "blocked" : "needs-work", score: regressionHistory.score, evidence: regressionHistory.notes[0], nextAction: regressionHistory.rows.find((row) => row.status !== "pass")?.detail || "Run regression history.", target: "regression" },
+    { id: "security-cleanup", label: "Security cleanup", status: securityCleanup.status === "clean" ? "ready" : securityCleanup.status === "blocked" ? "blocked" : "needs-work", score: securityCleanup.score, evidence: securityCleanup.notes[0], nextAction: securityCleanup.cleanupActions[0] || "Run security cleanup.", target: "security" },
+    { id: "narrative-polish", label: "Narrative polish", status: narrative.status === "clear" ? "ready" : "needs-work", score: narrative.score, evidence: narrative.headline, nextAction: narrative.beats.find((beat) => !beat.ready)?.detail || "Use narrative in public demo.", target: "story" },
+  ];
+  const score = boundedProductScore(items.reduce((sum, item) => sum + item.score, 0) / Math.max(1, items.length));
+  const blockers = items.filter((item) => item.status === "blocked").map((item) => `${item.label}: ${item.nextAction}`);
+  const next = items.find((item) => item.status === "blocked") || items.find((item) => item.status === "needs-work") || items.find((item) => item.status === "active") || items[0];
+  return {
+    score,
+    status: blockers.length ? "blocked" : items.every((item) => item.status === "ready") ? "ready" : "in-progress",
+    items,
+    nextAction: `${next.label}: ${next.nextAction}`,
+    summary: [
+      `${items.filter((item) => item.status === "ready").length}/${items.length} runway upgrades are ready.`,
+      "The all-in runway covers hosted backend, proof automation, bulk dataset tools, preference labels, Claude calibration, brief building, demo mode, regression history, security cleanup, and narrative polish.",
+    ],
+    blockers,
   };
 }
 

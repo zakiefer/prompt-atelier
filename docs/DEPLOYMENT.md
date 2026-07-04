@@ -48,6 +48,15 @@ PROMPT_LAB_BUILD_COMMAND="npm run build" npm run api
 PROMPT_LAB_PREVIEW_PORT=4320 npm run run:queue -- --scaffold --install --capture
 ```
 
+Hosted readiness can be checked without opening the browser:
+
+```bash
+npm run verify:hosted-api -- --url http://127.0.0.1:8787
+PROMPT_LAB_API_TOKEN=replace-me npm run verify:hosted-api -- --url https://your-api.example.com --evaluate
+```
+
+The verifier reports API health, token posture, SQLite persistence, worker allowlists, model-route status, and optional evaluator health while redacting token and model-key values.
+
 Do not commit real API keys. `.env`, `.env.*`, and local data folders are ignored.
 
 ## Render Docker API
@@ -87,6 +96,9 @@ Before merging:
 ```bash
 npm run lint
 npm run test:engine
+npm run check:corpus-safety
+npm run check:quality-gate
+npm run verify:hosted-api -- --url http://127.0.0.1:8787
 npm run test:api
 npm run build
 for file in scripts/*.mjs; do node --check "$file"; done
