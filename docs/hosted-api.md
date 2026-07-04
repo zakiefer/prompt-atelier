@@ -4,7 +4,7 @@ Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labe
 
 The browser also computes deterministic training intelligence locally: corpus provenance, guided step readiness, real build-result learning, Prompt Quality DNA explanations, prompt recipes, benchmark-library coverage, generated-prompt editor guidance, model/local/result comparison, and best-next-action recommendations. These reports do not require a model key, but they become stronger when cached model evaluations, build runs, screenshots, and hosted artifacts are synced through the API.
 
-The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. The all-in runway layer adds hosted backend verification, one-click prompt-to-proof, Dataset Inbox bulk tools, preference training, Claude calibration, brief-builder completion, public demo mode, regression history, security cleanup, and narrative polish. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
+The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. The all-in runway layer adds hosted backend verification, one-click prompt-to-proof, Dataset Inbox bulk tools, preference training, Claude calibration, brief-builder completion, public demo mode, regression history, security cleanup, and narrative polish. The Learning Machine control plane adds the next operating layer: autonomous proof orchestration, Prompt Generator v3 modes, 60+ golden benchmark challenges, result gallery proof, plain-English learning explanations, public demo polish, hosted CI smoke, and real training export readiness. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
 
 ## Render Blueprint
 
@@ -39,9 +39,12 @@ Use the hosted verifier for repeatable smoke checks:
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
 PROMPT_LAB_API_TOKEN=replace-me npm run verify:hosted-api -- --url https://your-api.example.com
 PROMPT_LAB_API_TOKEN=replace-me npm run verify:hosted-api -- --url https://your-api.example.com --evaluate
+npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --train --out output/playwright/hosted-smoke
 ```
 
 The command checks `/api/health` and `/api/model/settings`, then optionally posts a tiny schema-compatible prompt to `/api/model/evaluate` when `--evaluate` is supplied. Output is JSON with booleans, route status, and next actions only. It never prints bearer tokens, Claude keys, or model endpoint secrets.
+
+The hosted app smoke command is frontend-only. It loads the public Pages app, switches to Train, checks the Learning Machine headings, and writes a screenshot artifact so deployment proof is visible even when no hosted API token is present.
 
 Blocking failures are limited to health reachability, bearer auth, SQLite storage, and the model-settings route. Worker enablement, build allowlists, Claude key visibility, and model-route readiness are reported as operational checks because a hosted demo can still run in deterministic fallback mode.
 

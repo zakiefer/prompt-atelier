@@ -1321,6 +1321,7 @@ export type GoldenBenchmarkHarnessReport = {
   cases: {
     id: string;
     title: string;
+    siteType: string;
     coverage: number;
     status: "covered" | "thin" | "missing";
     missingSignals: string[];
@@ -1546,6 +1547,93 @@ export type NarrativePolishReport = {
   headline: string;
   subhead: string;
   beats: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type LearningMachineItem = {
+  id:
+    | "hosted-production"
+    | "autonomous-proof"
+    | "preference-review"
+    | "benchmark-scale"
+    | "generator-v3"
+    | "result-gallery"
+    | "learning-explanations"
+    | "public-demo"
+    | "hosted-ci-smoke"
+    | "training-exports";
+  label: string;
+  score: number;
+  status: "ready" | "active" | "needs-work" | "blocked";
+  evidence: string;
+  nextAction: string;
+  target: string;
+};
+
+export type LearningMachineReport = {
+  score: number;
+  status: "ready" | "in-progress" | "blocked";
+  items: LearningMachineItem[];
+  summary: string[];
+  nextAction: string;
+  blockers: string[];
+};
+
+export type AutonomousProofLoopReport = {
+  score: number;
+  status: "ready" | "running" | "needs-proof" | "blocked";
+  steps: { label: string; ready: boolean; detail: string }[];
+  canRun: boolean;
+  command: string;
+  notes: string[];
+};
+
+export type GeneratorV3Report = {
+  score: number;
+  status: "ready" | "needs-brief" | "needs-proof";
+  modes: { id: string; label: string; ready: boolean; detail: string; patch: Partial<LearnedGeneratorInput> }[];
+  fields: { label: string; ready: boolean; detail: string }[];
+  compiledPreview: string;
+  notes: string[];
+};
+
+export type BenchmarkExpansionReport = {
+  score: number;
+  status: "scaled" | "thin" | "empty";
+  total: number;
+  byType: { label: string; count: number }[];
+  missingTypes: string[];
+  notes: string[];
+};
+
+export type LearningExplanationReport = {
+  score: number;
+  status: "clear" | "needs-proof" | "empty";
+  cards: { label: string; score: number; plainEnglish: string; nextAction: string }[];
+  plainEnglish: string;
+  notes: string[];
+};
+
+export type PublicDemoPolishReport = {
+  score: number;
+  status: "ready" | "needs-polish";
+  checks: { label: string; ready: boolean; detail: string }[];
+  headline: string;
+  notes: string[];
+};
+
+export type HostedCiSmokeReport = {
+  score: number;
+  status: "ready" | "needs-ci";
+  checks: { label: string; ready: boolean; detail: string }[];
+  workflowPatch: string;
+  notes: string[];
+};
+
+export type TrainingExportReadinessReport = {
+  score: number;
+  status: "ready" | "needs-proof";
+  targets: { label: string; ready: boolean; filename: string; detail: string }[];
   notes: string[];
 };
 
@@ -5276,6 +5364,429 @@ export const GOLDEN_BENCHMARK_CASES: GoldenBenchmarkCase[] = [
     screenshotExpectations: ["desktop match", "mobile match"],
     failureModes: ["creative reinterpretation", "missing exact values", "extra sections"],
   },
+  {
+    id: "ecommerce-product-detail",
+    title: "Ecommerce product detail",
+    siteType: "commerce page",
+    goal: "Prompt specifies product media, variants, price, trust badges, shipping states, and purchase CTA.",
+    requiredSignals: ["product", "variants", "price", "shipping", "CTA", "mobile"],
+    screenshotExpectations: ["desktop product detail", "mobile purchase stack"],
+    failureModes: ["no product media", "missing variant controls", "unclear purchase action"],
+  },
+  {
+    id: "pricing-comparison",
+    title: "Pricing comparison",
+    siteType: "pricing page",
+    goal: "Prompt captures plan cards, feature comparison, annual toggle, FAQ, and conversion states.",
+    requiredSignals: ["pricing", "plans", "toggle", "features", "FAQ", "CTA"],
+    screenshotExpectations: ["three-plan desktop", "mobile plan stack"],
+    failureModes: ["fake feature claims", "hidden prices", "no recommended plan"],
+  },
+  {
+    id: "restaurant-booking",
+    title: "Restaurant booking",
+    siteType: "hospitality landing page",
+    goal: "Prompt includes menu proof, reservation flow, hours, location, imagery, and mobile booking.",
+    requiredSignals: ["restaurant", "menu", "reservation", "hours", "location", "mobile"],
+    screenshotExpectations: ["desktop reservation hero", "mobile booking CTA"],
+    failureModes: ["no hours", "no booking path", "stock-like food imagery"],
+  },
+  {
+    id: "real-estate-listing",
+    title: "Real estate listing",
+    siteType: "property page",
+    goal: "Prompt specifies listing gallery, facts, map, contact lead form, and responsive image behavior.",
+    requiredSignals: ["listing", "gallery", "map", "bed", "contact", "responsive"],
+    screenshotExpectations: ["property gallery", "mobile lead form"],
+    failureModes: ["no map", "uninspectable photos", "missing contact action"],
+  },
+  {
+    id: "event-conference",
+    title: "Event conference page",
+    siteType: "event landing page",
+    goal: "Prompt covers date, location, speakers, schedule, ticket CTA, and urgency without clutter.",
+    requiredSignals: ["event", "date", "speakers", "schedule", "tickets", "responsive"],
+    screenshotExpectations: ["desktop agenda preview", "mobile ticket CTA"],
+    failureModes: ["missing event details", "no registration path", "overlapping schedule"],
+  },
+  {
+    id: "nonprofit-campaign",
+    title: "Nonprofit campaign",
+    siteType: "fundraising page",
+    goal: "Prompt balances mission, donation flow, impact proof, accessibility, and trust.",
+    requiredSignals: ["mission", "donation", "impact", "trust", "accessibility", "mobile"],
+    screenshotExpectations: ["donation hero", "mobile impact proof"],
+    failureModes: ["vague cause", "no donation action", "low contrast copy"],
+  },
+  {
+    id: "healthcare-clinic",
+    title: "Healthcare clinic",
+    siteType: "clinic landing page",
+    goal: "Prompt includes services, appointment flow, provider trust, location, and safe medical language.",
+    requiredSignals: ["clinic", "appointment", "provider", "services", "location", "privacy"],
+    screenshotExpectations: ["desktop clinic hero", "mobile appointment button"],
+    failureModes: ["medical overclaims", "no location", "missing privacy language"],
+  },
+  {
+    id: "law-firm-intake",
+    title: "Law firm intake",
+    siteType: "professional services page",
+    goal: "Prompt defines practice areas, consultation CTA, credentials, disclaimers, and intake form states.",
+    requiredSignals: ["law", "consultation", "credentials", "disclaimer", "form", "responsive"],
+    screenshotExpectations: ["desktop intake hero", "mobile form state"],
+    failureModes: ["legal guarantees", "no disclaimer", "unclear intake path"],
+  },
+  {
+    id: "ai-chat-product",
+    title: "AI chat product",
+    siteType: "AI application hero",
+    goal: "Prompt shows the actual chat surface, prompt suggestions, safety states, and onboarding CTA.",
+    requiredSignals: ["chat", "suggestions", "AI", "safety", "onboarding", "states"],
+    screenshotExpectations: ["chat UI desktop", "mobile conversation layout"],
+    failureModes: ["abstract AI copy", "no app surface", "missing safety states"],
+  },
+  {
+    id: "docs-landing-page",
+    title: "Developer docs landing",
+    siteType: "documentation site",
+    goal: "Prompt specifies search, sidebar, quickstart, code samples, versioning, and accessible reading.",
+    requiredSignals: ["docs", "search", "sidebar", "quickstart", "code", "version"],
+    screenshotExpectations: ["desktop docs shell", "mobile docs nav"],
+    failureModes: ["marketing page only", "no code sample", "bad reading width"],
+  },
+  {
+    id: "app-store-page",
+    title: "App store style page",
+    siteType: "mobile app landing page",
+    goal: "Prompt includes screenshots, ratings, platform CTAs, privacy proof, and feature carousel.",
+    requiredSignals: ["app", "screenshots", "rating", "download", "privacy", "carousel"],
+    screenshotExpectations: ["desktop phone previews", "mobile download CTA"],
+    failureModes: ["no app screenshots", "fake ratings", "hidden download"],
+  },
+  {
+    id: "music-artist-release",
+    title: "Music artist release",
+    siteType: "music landing page",
+    goal: "Prompt covers release artwork, audio/play CTA, tour/date details, merch, and responsive media.",
+    requiredSignals: ["music", "artwork", "play", "tour", "merch", "responsive"],
+    screenshotExpectations: ["desktop release hero", "mobile play CTA"],
+    failureModes: ["no music action", "missing artwork", "unreadable event details"],
+  },
+  {
+    id: "fashion-lookbook",
+    title: "Fashion lookbook",
+    siteType: "fashion archive",
+    goal: "Prompt specifies editorial imagery, collection navigation, product labels, scroll behavior, and mobile crops.",
+    requiredSignals: ["fashion", "lookbook", "collection", "labels", "scroll", "mobile"],
+    screenshotExpectations: ["desktop editorial grid", "mobile image crop"],
+    failureModes: ["generic model photos", "no collection structure", "bad crop"],
+  },
+  {
+    id: "interactive-map",
+    title: "Interactive map surface",
+    siteType: "map application",
+    goal: "Prompt includes map library, markers, filters, list sync, empty states, and touch behavior.",
+    requiredSignals: ["map", "markers", "filters", "list", "empty", "touch"],
+    screenshotExpectations: ["desktop split map", "mobile map drawer"],
+    failureModes: ["static map image", "no marker states", "unusable mobile map"],
+  },
+  {
+    id: "kanban-productivity",
+    title: "Kanban productivity tool",
+    siteType: "project management app",
+    goal: "Prompt describes columns, cards, drag affordances, filters, empty states, and keyboard-safe controls.",
+    requiredSignals: ["kanban", "cards", "drag", "filters", "empty", "keyboard"],
+    screenshotExpectations: ["desktop board", "mobile column stack"],
+    failureModes: ["marketing hero only", "no task states", "unstable card sizing"],
+  },
+  {
+    id: "calendar-scheduler",
+    title: "Calendar scheduler",
+    siteType: "scheduling tool",
+    goal: "Prompt captures availability grid, time zones, attendee states, confirmation, and responsive picker.",
+    requiredSignals: ["calendar", "availability", "timezone", "attendee", "confirmation", "mobile"],
+    screenshotExpectations: ["desktop calendar", "mobile time picker"],
+    failureModes: ["no time zone", "missing confirmation state", "tiny tap targets"],
+  },
+  {
+    id: "ai-image-generator",
+    title: "AI image generator",
+    siteType: "creative AI tool",
+    goal: "Prompt specifies prompt input, style controls, gallery results, safety copy, and export/download.",
+    requiredSignals: ["image", "prompt", "style", "gallery", "safety", "download"],
+    screenshotExpectations: ["generator workspace", "mobile result grid"],
+    failureModes: ["no generation controls", "unsafe claims", "missing gallery state"],
+  },
+  {
+    id: "newsletter-subscription",
+    title: "Newsletter subscription",
+    siteType: "content landing page",
+    goal: "Prompt includes editorial value, archive preview, subscribe form, consent, and typography rhythm.",
+    requiredSignals: ["newsletter", "archive", "subscribe", "consent", "typography", "mobile"],
+    screenshotExpectations: ["desktop editorial hero", "mobile subscribe form"],
+    failureModes: ["no archive proof", "missing consent", "oversized type"],
+  },
+  {
+    id: "course-catalog",
+    title: "Course catalog",
+    siteType: "education platform",
+    goal: "Prompt covers courses, levels, instructors, syllabus preview, enrollment CTA, and progress states.",
+    requiredSignals: ["course", "level", "instructor", "syllabus", "enroll", "progress"],
+    screenshotExpectations: ["catalog grid", "mobile course cards"],
+    failureModes: ["no curriculum proof", "unclear enrollment", "generic learning copy"],
+  },
+  {
+    id: "banking-dashboard",
+    title: "Banking dashboard",
+    siteType: "finance application",
+    goal: "Prompt specifies account cards, transactions, spending chart, security states, and privacy-safe data.",
+    requiredSignals: ["banking", "accounts", "transactions", "chart", "security", "privacy"],
+    screenshotExpectations: ["desktop finance dashboard", "mobile account cards"],
+    failureModes: ["fake financial promises", "no transaction state", "exposed sensitive data"],
+  },
+  {
+    id: "logistics-tracking",
+    title: "Logistics tracking",
+    siteType: "operations dashboard",
+    goal: "Prompt includes shipment table, map/status timeline, filters, exceptions, and dense responsive layout.",
+    requiredSignals: ["logistics", "shipment", "timeline", "filters", "exceptions", "map"],
+    screenshotExpectations: ["desktop operations view", "mobile shipment detail"],
+    failureModes: ["hero instead of ops UI", "no exception states", "table overflow"],
+  },
+  {
+    id: "crm-pipeline",
+    title: "CRM pipeline",
+    siteType: "sales dashboard",
+    goal: "Prompt specifies pipeline stages, deal cards, owner filters, activity feed, and empty/loading states.",
+    requiredSignals: ["CRM", "pipeline", "deals", "filters", "activity", "loading"],
+    screenshotExpectations: ["desktop pipeline", "mobile deal stack"],
+    failureModes: ["missing sales data", "no filters", "horizontal overflow"],
+  },
+  {
+    id: "support-helpdesk",
+    title: "Support helpdesk",
+    siteType: "customer support app",
+    goal: "Prompt covers ticket queue, priority filters, customer detail, SLA status, and response composer.",
+    requiredSignals: ["support", "tickets", "priority", "SLA", "composer", "filters"],
+    screenshotExpectations: ["desktop support queue", "mobile ticket detail"],
+    failureModes: ["no ticket states", "unclear priority", "missing composer"],
+  },
+  {
+    id: "onboarding-checklist",
+    title: "Onboarding checklist",
+    siteType: "product onboarding flow",
+    goal: "Prompt includes progress, tasks, completion states, helpful copy, and resume behavior.",
+    requiredSignals: ["onboarding", "checklist", "progress", "complete", "resume", "mobile"],
+    screenshotExpectations: ["desktop onboarding panel", "mobile task list"],
+    failureModes: ["no progress state", "unclear next step", "decorative checklist"],
+  },
+  {
+    id: "settings-preferences",
+    title: "Settings preferences",
+    siteType: "application settings",
+    goal: "Prompt captures navigation, toggles, save/cancel behavior, danger zone, and responsive forms.",
+    requiredSignals: ["settings", "toggles", "save", "cancel", "danger", "forms"],
+    screenshotExpectations: ["desktop settings layout", "mobile settings stack"],
+    failureModes: ["no save states", "hidden danger action", "unlabeled toggles"],
+  },
+  {
+    id: "file-upload-flow",
+    title: "File upload flow",
+    siteType: "utility workflow",
+    goal: "Prompt specifies dropzone, progress, error handling, preview, accepted types, and mobile fallback.",
+    requiredSignals: ["upload", "dropzone", "progress", "error", "preview", "types"],
+    screenshotExpectations: ["desktop upload state", "mobile file picker fallback"],
+    failureModes: ["no error state", "ambiguous file types", "progress shifts layout"],
+  },
+  {
+    id: "search-results-page",
+    title: "Search results page",
+    siteType: "search interface",
+    goal: "Prompt includes query box, filters, sorting, result cards, empty state, and pagination.",
+    requiredSignals: ["search", "filters", "sort", "results", "empty", "pagination"],
+    screenshotExpectations: ["desktop results page", "mobile filters drawer"],
+    failureModes: ["no empty state", "filters unusable", "bad result density"],
+  },
+  {
+    id: "data-table-admin",
+    title: "Data table admin",
+    siteType: "admin interface",
+    goal: "Prompt covers columns, sorting, bulk actions, row details, pagination, and loading/error states.",
+    requiredSignals: ["table", "sort", "bulk", "details", "pagination", "loading"],
+    screenshotExpectations: ["desktop admin table", "mobile stacked rows"],
+    failureModes: ["table overflow", "no bulk affordance", "missing loading state"],
+  },
+  {
+    id: "wizard-multistep",
+    title: "Multistep wizard",
+    siteType: "guided workflow",
+    goal: "Prompt specifies stepper, form validation, back/next behavior, review step, and mobile controls.",
+    requiredSignals: ["wizard", "stepper", "validation", "back", "review", "mobile"],
+    screenshotExpectations: ["desktop wizard step", "mobile review step"],
+    failureModes: ["no validation", "cannot go back", "unclear current step"],
+  },
+  {
+    id: "compare-plans-tool",
+    title: "Compare plans tool",
+    siteType: "comparison interface",
+    goal: "Prompt includes selectable items, pinned comparison rows, differences, CTA, and responsive handling.",
+    requiredSignals: ["compare", "select", "pinned", "differences", "CTA", "responsive"],
+    screenshotExpectations: ["desktop comparison table", "mobile comparison cards"],
+    failureModes: ["unreadable table", "no selected state", "unclear differences"],
+  },
+  {
+    id: "testimonial-proof-section",
+    title: "Testimonial proof section",
+    siteType: "social proof section",
+    goal: "Prompt specifies real-looking quote cards, attribution, metrics, carousel/static behavior, and accessibility.",
+    requiredSignals: ["testimonial", "quote", "attribution", "metrics", "carousel", "accessibility"],
+    screenshotExpectations: ["desktop testimonial grid", "mobile carousel"],
+    failureModes: ["anonymous fake quotes", "no attribution", "autoplay-only carousel"],
+  },
+  {
+    id: "faq-accordion",
+    title: "FAQ accordion",
+    siteType: "support section",
+    goal: "Prompt covers question groups, open/closed states, keyboard behavior, deep links, and mobile width.",
+    requiredSignals: ["FAQ", "accordion", "keyboard", "open", "deep", "mobile"],
+    screenshotExpectations: ["desktop FAQ", "mobile expanded item"],
+    failureModes: ["all content hidden", "no keyboard focus", "bad text wrapping"],
+  },
+  {
+    id: "contact-lead-form",
+    title: "Contact lead form",
+    siteType: "lead capture page",
+    goal: "Prompt defines fields, validation, consent, success/error states, trust copy, and responsive layout.",
+    requiredSignals: ["contact", "fields", "validation", "consent", "success", "error"],
+    screenshotExpectations: ["desktop contact form", "mobile validation state"],
+    failureModes: ["no consent", "missing success state", "unlabeled fields"],
+  },
+  {
+    id: "media-gallery",
+    title: "Media gallery",
+    siteType: "gallery interface",
+    goal: "Prompt specifies grid, lightbox, captions, filters, keyboard navigation, and image loading behavior.",
+    requiredSignals: ["gallery", "lightbox", "captions", "filters", "keyboard", "loading"],
+    screenshotExpectations: ["desktop gallery grid", "mobile lightbox"],
+    failureModes: ["no captions", "trapped keyboard", "layout jump"],
+  },
+  {
+    id: "before-after-slider",
+    title: "Before after slider",
+    siteType: "visual comparison section",
+    goal: "Prompt includes draggable handle, labels, keyboard/touch support, and fallback static state.",
+    requiredSignals: ["before", "after", "slider", "drag", "touch", "fallback"],
+    screenshotExpectations: ["desktop split image", "mobile handle state"],
+    failureModes: ["no touch support", "unlabeled images", "broken fallback"],
+  },
+  {
+    id: "audio-player",
+    title: "Audio player page",
+    siteType: "media product page",
+    goal: "Prompt specifies playback controls, playlist, progress, transcript, and responsive audio states.",
+    requiredSignals: ["audio", "playback", "playlist", "progress", "transcript", "mobile"],
+    screenshotExpectations: ["desktop player", "mobile compact player"],
+    failureModes: ["missing controls", "no transcript", "tiny touch targets"],
+  },
+  {
+    id: "video-library",
+    title: "Video library",
+    siteType: "streaming/catalog page",
+    goal: "Prompt covers hero preview, catalog rows, filters, playback CTA, loading skeleton, and mobile browsing.",
+    requiredSignals: ["video", "catalog", "filters", "playback", "skeleton", "mobile"],
+    screenshotExpectations: ["desktop catalog rows", "mobile video cards"],
+    failureModes: ["no playback CTA", "slow layout shift", "missing loading state"],
+  },
+  {
+    id: "accessibility-first-page",
+    title: "Accessibility first page",
+    siteType: "public information page",
+    goal: "Prompt requires semantic structure, focus states, contrast, reduced motion, alt text, and keyboard paths.",
+    requiredSignals: ["semantic", "focus", "contrast", "reduced motion", "alt", "keyboard"],
+    screenshotExpectations: ["visible focus state", "mobile readable layout"],
+    failureModes: ["low contrast", "motion-only affordance", "missing labels"],
+  },
+  {
+    id: "localized-language-toggle",
+    title: "Localized language toggle",
+    siteType: "localized landing page",
+    goal: "Prompt specifies language switcher, copy expansion, RTL-safe spacing, route/state behavior, and mobile menu.",
+    requiredSignals: ["language", "switcher", "localized", "RTL", "spacing", "mobile"],
+    screenshotExpectations: ["desktop language switcher", "mobile localized menu"],
+    failureModes: ["text overflow", "broken switcher", "hard-coded locale"],
+  },
+  {
+    id: "dark-light-theme-toggle",
+    title: "Dark light theme toggle",
+    siteType: "themed application",
+    goal: "Prompt covers theme tokens, toggle control, persisted state, contrast in both themes, and screenshots.",
+    requiredSignals: ["theme", "toggle", "tokens", "persisted", "contrast", "screenshots"],
+    screenshotExpectations: ["light theme", "dark theme"],
+    failureModes: ["only one theme works", "bad contrast", "state not persisted"],
+  },
+  {
+    id: "mobile-bottom-navigation",
+    title: "Mobile bottom navigation",
+    siteType: "mobile-first app",
+    goal: "Prompt specifies tab bar icons, labels, active state, safe area handling, and desktop alternate nav.",
+    requiredSignals: ["bottom", "navigation", "icons", "active", "safe area", "desktop"],
+    screenshotExpectations: ["mobile tab bar", "desktop alternate nav"],
+    failureModes: ["covered by safe area", "no active state", "desktop nav missing"],
+  },
+  {
+    id: "notification-center",
+    title: "Notification center",
+    siteType: "application panel",
+    goal: "Prompt includes unread states, filters, grouped dates, actions, empty state, and keyboard accessible panel.",
+    requiredSignals: ["notifications", "unread", "filters", "groups", "actions", "empty"],
+    screenshotExpectations: ["desktop notification panel", "mobile notification drawer"],
+    failureModes: ["no unread state", "no action affordance", "panel clips content"],
+  },
+  {
+    id: "analytics-report-page",
+    title: "Analytics report page",
+    siteType: "report dashboard",
+    goal: "Prompt specifies KPI cards, chart captions, time range, export action, annotations, and mobile chart layout.",
+    requiredSignals: ["analytics", "KPI", "chart", "range", "export", "annotations"],
+    screenshotExpectations: ["desktop report", "mobile charts"],
+    failureModes: ["charts without labels", "no export action", "fake insights only"],
+  },
+  {
+    id: "empty-state-first-run",
+    title: "Empty state first run",
+    siteType: "SaaS empty state",
+    goal: "Prompt designs a useful empty state with sample action, import/create CTA, illustration/media, and help link.",
+    requiredSignals: ["empty", "sample", "import", "create", "help", "responsive"],
+    screenshotExpectations: ["desktop empty state", "mobile empty state"],
+    failureModes: ["dead end", "no sample action", "too much explanatory text"],
+  },
+  {
+    id: "error-recovery-flow",
+    title: "Error recovery flow",
+    siteType: "application error state",
+    goal: "Prompt covers retry, diagnostics, support link, partial content, and non-scary copy.",
+    requiredSignals: ["error", "retry", "diagnostics", "support", "partial", "copy"],
+    screenshotExpectations: ["desktop error state", "mobile retry state"],
+    failureModes: ["dead end error", "leaks stack traces", "no retry path"],
+  },
+  {
+    id: "offline-state",
+    title: "Offline state",
+    siteType: "resilient application state",
+    goal: "Prompt includes offline banner, cached content, disabled actions, retry, and restoration feedback.",
+    requiredSignals: ["offline", "cached", "disabled", "retry", "restore", "banner"],
+    screenshotExpectations: ["offline banner", "mobile offline state"],
+    failureModes: ["silent failure", "enabled broken actions", "no recovery copy"],
+  },
+  {
+    id: "privacy-consent-flow",
+    title: "Privacy consent flow",
+    siteType: "compliance UI",
+    goal: "Prompt specifies consent choices, details drawer, accept/decline parity, persistence, and accessibility.",
+    requiredSignals: ["privacy", "consent", "accept", "decline", "persist", "accessibility"],
+    screenshotExpectations: ["desktop consent banner", "mobile preferences drawer"],
+    failureModes: ["dark patterns", "no decline", "inaccessible controls"],
+  },
 ];
 
 export const CLAUDE_CALIBRATION_FIXTURES = [
@@ -6982,6 +7493,7 @@ export function buildGoldenBenchmarkHarnessReport(
     return {
       id: benchmarkCase.id,
       title: benchmarkCase.title,
+      siteType: benchmarkCase.siteType,
       coverage,
       status: coverage >= 80 ? "covered" as const : coverage >= 40 ? "thin" as const : "missing" as const,
       missingSignals,
@@ -8017,6 +8529,327 @@ export function buildAllInRunwayReport({
       `${items.filter((item) => item.status === "ready").length}/${items.length} runway upgrades are ready.`,
       "The all-in runway covers hosted backend, proof automation, bulk dataset tools, preference labels, Claude calibration, brief building, demo mode, regression history, security cleanup, and narrative polish.",
     ],
+    blockers,
+  };
+}
+
+export function buildAutonomousProofLoopReport({
+  hostedWorker,
+  promptToProof,
+  proofArtifacts,
+  proofController,
+  queueJobCount = 0,
+  resultQuality,
+  screenshotCount = 0,
+}: {
+  hostedWorker: HostedWorkerOpsReport;
+  promptToProof: PromptToProofWorkflowReport;
+  proofArtifacts: ProofArtifactStorageReport;
+  proofController: ProofRunControllerReport;
+  queueJobCount?: number;
+  resultQuality: ResultQualityDashboardReport;
+  screenshotCount?: number;
+}): AutonomousProofLoopReport {
+  const steps = [
+    { label: "Generate", ready: promptToProof.steps.some((step) => step.label === "Generator" && step.status !== "blocked"), detail: promptToProof.steps.find((step) => step.label === "Generator")?.detail || "Generate a benchmark-aware prompt." },
+    { label: "Queue proof", ready: queueJobCount > 0 || proofController.stages.some((stage) => stage.id === "queue" && stage.status !== "todo"), detail: queueJobCount ? `${queueJobCount} queue job(s) available.` : "Queue a proof job for the generated prompt." },
+    { label: "Build", ready: proofController.stages.some((stage) => stage.id === "build" && stage.status === "done"), detail: proofController.stages.find((stage) => stage.id === "build")?.detail || "Run scaffold, install, and build." },
+    { label: "Screenshot", ready: screenshotCount > 0 || proofController.stages.some((stage) => stage.id === "screenshot" && stage.status === "done"), detail: screenshotCount ? `${screenshotCount} screenshot(s) captured.` : "Capture desktop and mobile screenshots." },
+    { label: "Judge", ready: resultQuality.status !== "unproven", detail: resultQuality.notes[0] || "Score prompt, result, visual evidence, and model cache." },
+    { label: "Persist artifacts", ready: proofArtifacts.score >= 70, detail: proofArtifacts.notes[0] || "Save proof artifacts for regression." },
+    { label: "Operate worker", ready: hostedWorker.status !== "needs-attention", detail: hostedWorker.notes[0] || "Worker queue can retry, cancel, and retain proof runs." },
+  ];
+  const score = readyPercent(steps);
+  const blocked = proofController.status === "blocked" || hostedWorker.status === "needs-attention";
+  return {
+    score,
+    status: blocked ? "blocked" : proofController.status === "running" ? "running" : score >= 80 ? "ready" : "needs-proof",
+    steps,
+    canRun: promptToProof.canRun && !blocked,
+    command: "npm run smoke:hosted -- --url http://127.0.0.1:4173 --train --out output/playwright/learning-machine-local",
+    notes: [
+      "Autonomous proof loop chains generated prompt, queue job, build proof, screenshot judge, repair signal, and artifact retention.",
+      score >= 80 ? "The loop has enough evidence to run as an operator workflow." : "Run the proof action and screenshot judge to close the loop.",
+    ],
+  };
+}
+
+export function buildGeneratorV3Report({
+  benchmark,
+  briefBuilder,
+  generator,
+  preferenceTraining,
+  promptMemory,
+}: {
+  benchmark: GoldenBenchmarkHarnessReport;
+  briefBuilder: BriefBuilderProductReport;
+  generator: PromptGeneratorV2Report;
+  preferenceTraining: PreferenceTrainingReport;
+  promptMemory: PromptMemoryExport;
+}): GeneratorV3Report {
+  const modes: GeneratorV3Report["modes"] = [
+    { id: "cinematic", label: "Cinematic hero", ready: benchmark.cases.some((row) => /video|cinematic|hero/i.test(row.title) && row.status !== "missing"), detail: "Video background, typography, focal point, nav, CTA, and screenshot proof.", patch: { siteType: "fullscreen cinematic hero", vibe: "cinematic, exact, premium", visualStyle: "full-viewport video hero with precise typography and responsive focal points" } },
+    { id: "saas", label: "SaaS landing", ready: benchmark.cases.some((row) => /saas|product/i.test(row.siteType + row.title) && row.status !== "missing"), detail: "Clear product promise, product UI, proof, pricing/contact CTA, and states.", patch: { siteType: "SaaS landing page", vibe: "product-led, clear, polished", visualStyle: "product interface hero with proof cards and restrained marketing layout" } },
+    { id: "dashboard", label: "Dashboard/tool", ready: benchmark.cases.some((row) => /dashboard|tool|workbench/i.test(row.title + row.siteType) && row.status !== "missing"), detail: "Dense application surface, filters, tables, empty states, and repeated-action ergonomics.", patch: { siteType: "dashboard product surface", vibe: "quiet, operational, scannable", visualStyle: "dense dashboard with realistic data, filters, tables, charts, and empty states" } },
+    { id: "agency", label: "Agency/portfolio", ready: benchmark.cases.some((row) => /agency|portfolio|studio/i.test(row.title + row.siteType) && row.status !== "missing"), detail: "Brand signal, work/reel CTA, motion, responsive nav, and distinctive typography.", patch: { siteType: "creative agency landing page", vibe: "editorial, confident, motion-aware", visualStyle: "portfolio hero with video or visual proof, mobile menu, reel and case-study CTAs" } },
+    { id: "auth", label: "Auth/signup", ready: benchmark.cases.some((row) => /signup|auth|registration/i.test(row.title + row.siteType) && row.status !== "missing"), detail: "Forms, validation, helper text, password affordance, social buttons, and mobile stacking.", patch: { siteType: "registration interface", vibe: "focused, premium, low-friction", visualStyle: "two-column sign-up page with form states and accessible controls" } },
+    { id: "ecommerce", label: "Commerce/product", ready: benchmark.cases.some((row) => /commerce|product|retail/i.test(row.title + row.siteType) && row.status !== "missing"), detail: "Inspectable product media, price/offer, variant controls, trust, and responsive purchase flow.", patch: { siteType: "product commerce hero", vibe: "premium, tactile, conversion-aware", visualStyle: "product-first layout with variant controls, trust details, and direct CTA" } },
+    { id: "editorial", label: "Editorial/content", ready: benchmark.cases.some((row) => /editorial|email|newsletter|content/i.test(row.title + row.siteType) && row.status !== "missing"), detail: "Constrained reading rhythm, proof artifact, subscription or archive action, and mobile type scale.", patch: { siteType: "editorial landing page", vibe: "quiet, typographic, credible", visualStyle: "content-first layout with tight line lengths, proof modules, and polished subscription CTA" } },
+  ];
+  const fields = [
+    { label: "Brief", ready: briefBuilder.status === "ready", detail: briefBuilder.notes[0] || "Complete the generator brief fields." },
+    { label: "Benchmarks", ready: benchmark.total >= 60, detail: `${benchmark.total} golden cases available.` },
+    { label: "Preferences", ready: preferenceTraining.status === "ready", detail: preferenceTraining.lessons[0] || "Add pairwise labels to steer taste." },
+    { label: "Memory", ready: promptMemory.sections.length >= 4, detail: `${promptMemory.sections.length} learned memory section(s).` },
+    { label: "Verification", ready: /verification ladder/i.test(generator.compiledPrompt), detail: generator.notes[0] || "Generator includes acceptance gates." },
+  ];
+  const score = readyPercent([...fields, ...modes]);
+  const modeSummary = modes.map((mode) => `- ${mode.label}: ${mode.detail}`).join("\n");
+  const compiledPreview = [
+    "Generator v3 control layer:",
+    modeSummary,
+    "",
+    "Selected benchmark contract:",
+    `${benchmark.covered}/${benchmark.total} golden cases covered.`,
+    "",
+    generator.compiledPrompt,
+  ].join("\n");
+  return {
+    score,
+    status: !fields[0].ready ? "needs-brief" : score >= 80 ? "ready" : "needs-proof",
+    modes,
+    fields,
+    compiledPreview,
+    notes: [
+      "Generator v3 adds mode-specific control patches on top of the measured generator.",
+      "Use the mode buttons to reshape the brief without discarding learned memory or benchmark gates.",
+    ],
+  };
+}
+
+export function buildBenchmarkExpansionReport(
+  harness: GoldenBenchmarkHarnessReport,
+): BenchmarkExpansionReport {
+  const byTypeMap = new Map<string, number>();
+  harness.cases.forEach((row) => {
+    const normalized = row.title
+      .replace(/\b(hero|page|section|landing|spec|surface|flow|interface|prompt)\b/gi, "")
+      .trim()
+      .split(/\s+/)
+      .slice(-2)
+      .join(" ") || "general";
+    byTypeMap.set(normalized, (byTypeMap.get(normalized) || 0) + 1);
+  });
+  const byType = Array.from(byTypeMap.entries())
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  const requiredTypes = ["video", "liquid glass", "dashboard", "signup", "agency", "feature cards", "HLS", "AI tool", "fintech", "wellness", "travel", "education", "crypto", "404", "marquee", "3D", "mobile menu", "security", "ecommerce", "editorial", "SaaS", "form", "map", "portfolio", "pricing"];
+  const corpusLabels = harness.cases.map((row) => `${row.title} ${row.id} ${row.missingSignals.join(" ")}`).join(" ").toLowerCase();
+  const missingTypes = requiredTypes.filter((type) => !corpusLabels.includes(type.toLowerCase().split(/\s+/)[0]));
+  return {
+    score: boundedProductScore((Math.min(harness.total, 60) / 60) * 70 + (harness.covered / Math.max(1, harness.total)) * 30),
+    status: harness.total >= 60 ? "scaled" : harness.total ? "thin" : "empty",
+    total: harness.total,
+    byType,
+    missingTypes,
+    notes: [
+      `${harness.total} canonical website prompt challenge(s) are available in the golden harness.`,
+      harness.total >= 60 ? "Benchmark suite has crossed the 60-case scale target." : "Add more golden cases until the suite reaches 60+.",
+    ],
+  };
+}
+
+export function buildLearningExplanationReport({
+  promptCoach,
+  promptMemoryDiff,
+  promptQualityDna,
+  selectedPrompt,
+  winExplanation,
+}: {
+  promptCoach: PromptCoachReport;
+  promptMemoryDiff: PromptMemoryDiffReport;
+  promptQualityDna: PromptQualityDnaReport;
+  selectedPrompt?: PromptExample;
+  winExplanation: PromptWinExplanationReport;
+}): LearningExplanationReport {
+  const cards = [
+    ...promptQualityDna.dimensions.slice(0, 4).map((dimension) => ({
+      label: dimension.label,
+      score: dimension.score,
+      plainEnglish: dimension.plainEnglish,
+      nextAction: dimension.fix,
+    })),
+    {
+      label: "Prompt coach",
+      score: promptCoach.score,
+      plainEnglish: promptCoach.diagnosis[0] || "The coach has no diagnosis yet.",
+      nextAction: promptCoach.questions[0] || "Select a prompt and ask for a coaching pass.",
+    },
+    {
+      label: "Memory drift",
+      score: promptMemoryDiff.score,
+      plainEnglish: promptMemoryDiff.summary[0] || "Memory diff has no notes yet.",
+      nextAction: promptMemoryDiff.staleSections[0] ? `Add more proof-backed rules to ${promptMemoryDiff.staleSections[0]}.` : "Create a dataset snapshot before comparing memory.",
+    },
+    {
+      label: "Win reason",
+      score: Math.min(100, winExplanation.likelyWinningSignals.reduce((sum, signal) => sum + signal.impact, 0)),
+      plainEnglish: winExplanation.summary[0] || "Compare two prompts to explain why one wins.",
+      nextAction: winExplanation.nextExperiment || "Run a prompt comparison.",
+    },
+  ];
+  const score = Math.round(cards.reduce((sum, card) => sum + card.score, 0) / Math.max(1, cards.length));
+  return {
+    score,
+    status: !selectedPrompt ? "empty" : score >= 70 ? "clear" : "needs-proof",
+    cards,
+    plainEnglish: selectedPrompt
+      ? `${selectedPrompt.title} is being explained through DNA, coach feedback, memory drift, and win/loss reasoning.`
+      : "Select a prompt to see why the learner thinks it is strong, weak, or ready for proof.",
+    notes: [
+      "Learning explanations convert scores into plain-language reasons and next actions.",
+      "These cards are designed for public demo trust: users can see what changed and why.",
+    ],
+  };
+}
+
+export function buildPublicDemoPolishReport({
+  allInRunway,
+  exportPresetCount,
+  learningExampleCount,
+  narrative,
+  resultGalleryCount,
+}: {
+  allInRunway: AllInRunwayReport;
+  exportPresetCount?: number;
+  learningExampleCount?: number;
+  narrative: NarrativePolishReport;
+  resultGalleryCount?: number;
+}): PublicDemoPolishReport {
+  const checks = [
+    { label: "Demo corpus", ready: (learningExampleCount || 0) >= 5, detail: `${learningExampleCount || 0} public learning example(s).` },
+    { label: "Narrative", ready: narrative.status === "clear", detail: narrative.headline },
+    { label: "Result gallery", ready: (resultGalleryCount || 0) >= 3, detail: `${resultGalleryCount || 0} gallery proof item(s).` },
+    { label: "Exports", ready: (exportPresetCount || 0) >= 6, detail: `${exportPresetCount || 0} export target(s).` },
+    { label: "Runway", ready: allInRunway.score >= 70, detail: `${allInRunway.score} all-in product score.` },
+  ];
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: score >= 80 ? "ready" : "needs-polish",
+    checks,
+    headline: "Learn from great prompts. Generate, prove, explain, and export the next one.",
+    notes: [
+      "Public demo polish checks whether a new visitor can understand the learning loop without private state.",
+      checks.every((check) => check.ready) ? "Demo is self-explanatory enough for Pages." : "Load demo mode and add proof artifacts to strengthen the public view.",
+    ],
+  };
+}
+
+export function buildHostedCiSmokeReport({
+  expectedHeadings = [],
+  hasWorkflow = false,
+  publicUrl = "",
+}: {
+  expectedHeadings?: string[];
+  hasWorkflow?: boolean;
+  publicUrl?: string;
+}): HostedCiSmokeReport {
+  const checks = [
+    { label: "Pages workflow", ready: hasWorkflow, detail: hasWorkflow ? "GitHub Pages workflow is present." : "Add a Pages workflow smoke job." },
+    { label: "Public URL", ready: Boolean(publicUrl), detail: publicUrl || "Set the hosted app URL for smoke tests." },
+    { label: "Train route smoke", ready: expectedHeadings.length >= 5, detail: `${expectedHeadings.length} heading(s) are asserted by the smoke script.` },
+    { label: "Screenshot artifact", ready: true, detail: "Smoke script writes a screenshot artifact for local and CI review." },
+  ];
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: score >= 80 ? "ready" : "needs-ci",
+    checks,
+    workflowPatch: "npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --train --out output/playwright/hosted-smoke",
+    notes: [
+      "Hosted CI smoke loads the public app, switches to Train, asserts the new learning-machine headings, and captures proof.",
+      hasWorkflow ? "Workflow support is wired." : "Add the smoke job to Pages deployment.",
+    ],
+  };
+}
+
+export function buildTrainingExportReadinessReport({
+  exportPresets = [],
+  oneClickExportPack = "",
+  projectExportPack,
+  reusableMemoryPack,
+}: {
+  exportPresets?: ExportPreset[];
+  oneClickExportPack?: string;
+  projectExportPack: ProjectExportPack;
+  reusableMemoryPack: ReusableMemoryPack;
+}): TrainingExportReadinessReport {
+  const targets = [
+    ...exportPresets.map((preset) => ({ label: preset.title, ready: preset.content.trim().length > 0, filename: preset.filename, detail: preset.summary })),
+    { label: "One-click training pack", ready: oneClickExportPack.trim().length > 0, filename: "prompt-atelier-training-pack.md", detail: "Full model-ready training context bundle." },
+    { label: "Project export pack", ready: projectExportPack.markdown.trim().length > 0, filename: "prompt-atelier-project-pack.md", detail: `${projectExportPack.sections.length} project section(s).` },
+    { label: "Reusable memory pack", ready: reusableMemoryPack.markdown.trim().length > 0, filename: "prompt-atelier-memory-pack.md", detail: `${reusableMemoryPack.sections.length} memory section(s).` },
+  ];
+  const score = readyPercent(targets);
+  return {
+    score,
+    status: score >= 80 ? "ready" : "needs-proof",
+    targets,
+    notes: [
+      `${targets.filter((target) => target.ready).length}/${targets.length} export target(s) are ready.`,
+      "Exports cover model training JSONL, project memory, Codex skills, generic specs, and user-facing build prompts.",
+    ],
+  };
+}
+
+export function buildLearningMachineReport({
+  autonomousProof,
+  benchmarkExpansion,
+  explanations,
+  exports,
+  generatorV3,
+  hostedBackend,
+  hostedCi,
+  preferenceTraining,
+  publicDemo,
+  resultGalleryCount = 0,
+}: {
+  autonomousProof: AutonomousProofLoopReport;
+  benchmarkExpansion: BenchmarkExpansionReport;
+  explanations: LearningExplanationReport;
+  exports: TrainingExportReadinessReport;
+  generatorV3: GeneratorV3Report;
+  hostedBackend: HostedBackendKitReport;
+  hostedCi: HostedCiSmokeReport;
+  preferenceTraining: PreferenceTrainingReport;
+  publicDemo: PublicDemoPolishReport;
+  resultGalleryCount?: number;
+}): LearningMachineReport {
+  const items: LearningMachineItem[] = [
+    { id: "hosted-production", label: "Real hosted backend", score: hostedBackend.score, status: hostedBackend.status === "ready" ? "ready" : hostedBackend.status === "blocked" ? "blocked" : "needs-work", evidence: hostedBackend.notes[0], nextAction: hostedBackend.checks.find((check) => !check.ready)?.fix || "Run hosted API verification.", target: "hosted" },
+    { id: "autonomous-proof", label: "True autonomous proof loop", score: autonomousProof.score, status: autonomousProof.status === "ready" ? "ready" : autonomousProof.status === "running" ? "active" : autonomousProof.status === "blocked" ? "blocked" : "needs-work", evidence: autonomousProof.notes[0], nextAction: autonomousProof.steps.find((step) => !step.ready)?.detail || "Run autonomous proof loop.", target: "autonomous" },
+    { id: "preference-review", label: "Preference training mode", score: preferenceTraining.score, status: preferenceTraining.status === "ready" ? "ready" : preferenceTraining.status === "empty" ? "blocked" : "needs-work", evidence: preferenceTraining.lessons[0] || "Pairwise taste labels teach the generator.", nextAction: preferenceTraining.candidates.length ? "Add recommended pairwise label." : "Label gold and avoid examples.", target: "preferences" },
+    { id: "benchmark-scale", label: "Expanded benchmark suite", score: benchmarkExpansion.score, status: benchmarkExpansion.status === "scaled" ? "ready" : "needs-work", evidence: `${benchmarkExpansion.total} golden benchmark cases.`, nextAction: benchmarkExpansion.missingTypes[0] ? `Add ${benchmarkExpansion.missingTypes[0]} case.` : "Run benchmark harness.", target: "benchmark-scale" },
+    { id: "generator-v3", label: "Prompt generator v3", score: generatorV3.score, status: generatorV3.status === "ready" ? "ready" : "needs-work", evidence: generatorV3.notes[0], nextAction: generatorV3.fields.find((field) => !field.ready)?.detail || "Apply a generator mode.", target: "generator-v3" },
+    { id: "result-gallery", label: "Result gallery", score: Math.min(100, resultGalleryCount * 25), status: resultGalleryCount >= 3 ? "ready" : "needs-work", evidence: `${resultGalleryCount} proof item(s) in gallery.`, nextAction: resultGalleryCount >= 3 ? "Review result gallery." : "Capture or import more result proof.", target: "demo" },
+    { id: "learning-explanations", label: "Learning explanations", score: explanations.score, status: explanations.status === "clear" ? "ready" : explanations.status === "empty" ? "needs-work" : "active", evidence: explanations.plainEnglish, nextAction: explanations.cards.find((card) => card.score < 70)?.nextAction || "Open explanation cards.", target: "explain" },
+    { id: "public-demo", label: "Public demo polish", score: publicDemo.score, status: publicDemo.status === "ready" ? "ready" : "needs-work", evidence: publicDemo.headline, nextAction: publicDemo.checks.find((check) => !check.ready)?.detail || "Load public demo mode.", target: "public-demo" },
+    { id: "hosted-ci-smoke", label: "Hosted CI smoke", score: hostedCi.score, status: hostedCi.status === "ready" ? "ready" : "needs-work", evidence: hostedCi.notes[0], nextAction: hostedCi.workflowPatch, target: "hosted-smoke" },
+    { id: "training-exports", label: "Real training exports", score: exports.score, status: exports.status === "ready" ? "ready" : "needs-work", evidence: exports.notes[0], nextAction: exports.targets.find((target) => !target.ready)?.detail || "Export training formats.", target: "training-exports" },
+  ];
+  const score = boundedProductScore(items.reduce((sum, item) => sum + item.score, 0) / Math.max(1, items.length));
+  const blockers = items.filter((item) => item.status === "blocked").map((item) => `${item.label}: ${item.nextAction}`);
+  const next = items.find((item) => item.status === "blocked") || items.find((item) => item.status === "needs-work") || items.find((item) => item.status === "active") || items[0];
+  return {
+    score,
+    status: blockers.length ? "blocked" : items.every((item) => item.status === "ready") ? "ready" : "in-progress",
+    items,
+    summary: [
+      `${items.filter((item) => item.status === "ready").length}/${items.length} learning-machine upgrade(s) are ready.`,
+      "The learning machine now covers hosted backend, autonomous proof, preferences, benchmark scale, generator v3, gallery proof, explanations, public demo, CI smoke, and training exports.",
+    ],
+    nextAction: `${next.label}: ${next.nextAction}`,
     blockers,
   };
 }

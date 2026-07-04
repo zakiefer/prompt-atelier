@@ -20,6 +20,7 @@
     "check:corpus-safety": "node scripts/checkCorpusSafety.mjs",
     "check:quality-gate": "node scripts/checkQualityGate.mjs",
     "verify:hosted-api": "node scripts/verifyHostedApi.mjs",
+    "smoke:hosted": "node scripts/smokeHostedApp.mjs",
     "test:engine": "tsx scripts/testEngine.ts",
     "test:api": "node scripts/testApiRoutes.mjs"
   },

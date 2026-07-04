@@ -8,6 +8,7 @@ Prompt Atelier is split into two deployment surfaces:
 ## GitHub Pages
 
 The `Deploy Pages` workflow builds the app on pushes to `main` and uploads `dist/` through GitHub Pages.
+After deployment, a smoke job opens the public Pages URL, switches to the Train view, asserts the Learning Machine headings, and captures a screenshot artifact.
 
 Repository settings:
 
@@ -53,6 +54,7 @@ Hosted readiness can be checked without opening the browser:
 ```bash
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
 PROMPT_LAB_API_TOKEN=replace-me npm run verify:hosted-api -- --url https://your-api.example.com --evaluate
+npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --train --out output/playwright/hosted-smoke
 ```
 
 The verifier reports API health, token posture, SQLite persistence, worker allowlists, model-route status, and optional evaluator health while redacting token and model-key values.
@@ -99,6 +101,7 @@ npm run test:engine
 npm run check:corpus-safety
 npm run check:quality-gate
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
+npm run smoke:hosted -- --url http://127.0.0.1:4173 --train --out output/playwright/learning-machine-local
 npm run test:api
 npm run build
 for file in scripts/*.mjs; do node --check "$file"; done

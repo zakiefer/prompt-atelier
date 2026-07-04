@@ -5,7 +5,9 @@ import {
   analyzeCorpus,
   analyzeArchetypeClusters,
   buildAllInRunwayReport,
+  buildAutonomousProofLoopReport,
   buildGeneratorPresets,
+  buildBenchmarkExpansionReport,
   buildBenchmarkV2Report,
   buildBenchmarkLibraryReport,
   buildBestNextActionReport,
@@ -36,6 +38,8 @@ import {
   buildFailureMemory,
   buildGoldenDatasetV1LockReport,
   buildGoldenBenchmarkHarnessReport,
+  buildGeneratorV3Report,
+  buildHostedCiSmokeReport,
   buildHostedBackendKitReport,
   buildGuidedPromptWizardReport,
   buildHostedSyncReport,
@@ -47,6 +51,8 @@ import {
   buildFailureMemoryAutopilotReport,
   buildLearnedGeneratorVariants,
   buildLeakageGuardReport,
+  buildLearningExplanationReport,
+  buildLearningMachineReport,
   buildPatternDashboard,
   buildMeasuredQualitySprintReport,
   buildProjectExportPack,
@@ -70,6 +76,7 @@ import {
   buildRegressionHistoryProductReport,
   buildDatasetReviewQueueReport,
   buildReusableMemoryPack,
+  buildPublicDemoPolishReport,
   buildSecurityCleanupProductReport,
   buildSourceSafetyReport,
   buildSafeToTrainReport,
@@ -81,6 +88,7 @@ import {
   buildProviderPluginLayerReport,
   buildQueueObservabilityReport,
   buildSimpleModeReport,
+  buildTrainingExportReadinessReport,
   buildTrainingRunSummary,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
@@ -98,6 +106,7 @@ import {
   redactSensitiveText,
   extractReusablePatterns,
   explainDnaScore,
+  explainPromptWin,
   BENCHMARK_FIXTURES,
   auditPromptImportBatch,
   parsePromptBatch,
@@ -820,7 +829,7 @@ assert.ok(calibrationWorkflow.rows.some((row) => row.label === "Manual review qu
 assert.ok(["aligned", "review", "needs-runs"].includes(calibrationWorkflow.status), "Evaluator calibration workflow should classify readiness.");
 
 const goldenBenchmarkHarness = buildGoldenBenchmarkHarnessReport(curatedSeedPrompts);
-assert.equal(goldenBenchmarkHarness.total, 20, "Golden benchmark harness should cover the full measured case set.");
+assert.ok(goldenBenchmarkHarness.total >= 60, "Golden benchmark harness should cover 60+ measured case challenges.");
 assert.equal(goldenBenchmarkHarness.cases.length, goldenBenchmarkHarness.total, "Golden benchmark harness should expose one row per case.");
 assert.ok(goldenBenchmarkHarness.notes.some((note) => /golden benchmark/i.test(note)), "Golden benchmark harness should explain coverage.");
 
@@ -1074,4 +1083,91 @@ const allInRunway = buildAllInRunwayReport({
 assert.equal(allInRunway.items.length, 10, "All-in runway should track all ten requested product upgrades.");
 assert.ok(allInRunway.summary.some((item) => /all-in runway/i.test(item)), "All-in runway should summarize the complete upgrade set.");
 
-console.log(JSON.stringify({ ok: true, assertions: 217, score: score.score, snapshot: snapshot.label }, null, 2));
+const autonomousProofLoop = buildAutonomousProofLoopReport({
+  hostedWorker: hostedWorkerOps,
+  promptToProof: promptToProofWorkflow,
+  proofArtifacts: buildProofArtifactStorageReport({ buildRuns, proofArtifacts: [{ id: "artifact-1", title: "Proof", kind: "screenshot", url: "https://example.com/proof.png" }], screenshots }),
+  proofController: proofRunController,
+  queueJobCount: hostedOpsQueueJobs.length,
+  resultQuality: resultQualityDashboard,
+  screenshotCount: screenshots.length,
+});
+assert.equal(autonomousProofLoop.steps.length, 7, "Autonomous proof loop should expose the full generate-to-artifact chain.");
+assert.ok(autonomousProofLoop.command.includes("smoke:hosted"), "Autonomous proof loop should expose hosted smoke verification.");
+
+const generatorV3 = buildGeneratorV3Report({
+  benchmark: goldenBenchmarkHarness,
+  briefBuilder: buildBriefBuilderProductReport({ generator: promptGeneratorV2, generatorInput: {
+    brandName: "Atlas",
+    industry: "AI research",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    siteType: "single-page hero",
+    visualStyle: "cinematic video hero with exact typography",
+    assets: "exact video URL and logo SVG",
+    constraints: "no vague placeholders",
+    strictness: 9,
+  } }),
+  generator: promptGeneratorV2,
+  preferenceTraining,
+  promptMemory,
+});
+assert.ok(generatorV3.modes.length >= 7, "Generator v3 should expose mode-specific prompt controls.");
+assert.ok(generatorV3.compiledPreview.includes("Generator v3 control layer"), "Generator v3 should compile a layered preview.");
+
+const benchmarkExpansion = buildBenchmarkExpansionReport(goldenBenchmarkHarness);
+assert.equal(benchmarkExpansion.status, "scaled", "Benchmark expansion should classify the 60+ case harness as scaled.");
+assert.ok(benchmarkExpansion.total >= 60, "Benchmark expansion should report the expanded case count.");
+
+const promptMemoryDiff = buildPromptMemoryDiffReport({ current: promptMemory, datasetVersions: [] });
+const winExplanation = explainPromptWin(examples[0], examples[1], outcomes, buildRuns, screenshots);
+const learningExplanation = buildLearningExplanationReport({
+  promptCoach: coach,
+  promptMemoryDiff,
+  promptQualityDna,
+  selectedPrompt: examples[0],
+  winExplanation,
+});
+assert.ok(learningExplanation.cards.length >= 6, "Learning explanations should include DNA, coach, memory, and win cards.");
+assert.ok(learningExplanation.plainEnglish.includes(examples[0].title), "Learning explanations should name the selected prompt.");
+
+const publicDemoPolish = buildPublicDemoPolishReport({
+  allInRunway,
+  exportPresetCount: exportPresets.length,
+  learningExampleCount: examples.length,
+  narrative: narrativePolish,
+  resultGalleryCount: 3,
+});
+assert.ok(publicDemoPolish.checks.some((check) => check.label === "Result gallery" && check.ready), "Public demo polish should require gallery proof.");
+
+const hostedCiSmoke = buildHostedCiSmokeReport({
+  expectedHeadings: ["All-in product runway", "Learning machine control plane", "Autonomous proof loop", "Prompt generator v3", "Training export readiness"],
+  hasWorkflow: true,
+  publicUrl: "https://zakiefer.github.io/prompt-atelier/",
+});
+assert.equal(hostedCiSmoke.status, "ready", "Hosted CI smoke should be ready with workflow, URL, headings, and screenshot artifact.");
+
+const trainingExportReadiness = buildTrainingExportReadinessReport({
+  exportPresets,
+  oneClickExportPack: "# Training pack",
+  projectExportPack: projectPack,
+  reusableMemoryPack: pack,
+});
+assert.ok(trainingExportReadiness.targets.length >= exportPresets.length + 3, "Training export readiness should include presets plus aggregate packs.");
+assert.equal(trainingExportReadiness.status, "ready", "Training export readiness should pass fixture exports.");
+
+const learningMachine = buildLearningMachineReport({
+  autonomousProof: autonomousProofLoop,
+  benchmarkExpansion,
+  explanations: learningExplanation,
+  exports: trainingExportReadiness,
+  generatorV3,
+  hostedBackend: hostedBackendKit,
+  hostedCi: hostedCiSmoke,
+  preferenceTraining,
+  publicDemo: publicDemoPolish,
+  resultGalleryCount: 3,
+});
+assert.equal(learningMachine.items.length, 10, "Learning machine should track the ten requested upgrades.");
+assert.ok(learningMachine.summary.some((item) => /learning-machine/i.test(item)), "Learning machine should summarize the full upgrade set.");
+
+console.log(JSON.stringify({ ok: true, assertions: 240, score: score.score, snapshot: snapshot.label }, null, 2));
