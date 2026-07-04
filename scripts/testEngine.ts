@@ -16,10 +16,12 @@ import {
   buildBulkImportPipelineReport,
   buildCorpusProvenanceFirewallReport,
   buildCalibrationDashboardReport,
+  buildCalibrationProductReport,
   buildClaudeCalibrationSetReport,
   buildClosedLoopRunDetailReport,
   buildCorpusIntelligenceReport,
   buildDatasetGovernanceReport,
+  buildDatasetInboxReport,
   buildEvaluationArtifact,
   buildEvaluatorCalibrationWorkflowReport,
   buildEvaluationHistoryReport,
@@ -34,6 +36,7 @@ import {
   buildHostedSyncReport,
   buildHostedHardeningReport,
   buildHostedBuildWorkerReport,
+  buildHostedReadinessProductReport,
   buildHostedWorkerOpsReport,
   buildImportWizardReport,
   buildFailureMemoryAutopilotReport,
@@ -49,8 +52,11 @@ import {
   buildPromptCoachReport,
   buildPromptEditorGuidance,
   buildPromptGeneratorV2Report,
+  buildProductCommandCenterReport,
   buildPromptQualityDnaReport,
   buildPromptRecipeDistillerReport,
+  buildProofRunControllerReport,
+  buildQualityRegressionGateReport,
   buildQueueProgressReport,
   buildQualityGateReport,
   buildResultQualityDashboardReport,
@@ -906,4 +912,59 @@ const measuredQualitySprint = buildMeasuredQualitySprintReport({
 assert.equal(measuredQualitySprint.cards.length, 7, "Measured quality sprint should summarize all seven product upgrades.");
 assert.ok(measuredQualitySprint.score > 0, "Measured quality sprint should compute sprint readiness.");
 
-console.log(JSON.stringify({ ok: true, assertions: 179, score: score.score, snapshot: snapshot.label }, null, 2));
+const datasetInbox = buildDatasetInboxReport({ curation, examples, outcomes });
+assert.ok(datasetInbox.rows.length > 0, "Dataset inbox should expose reviewable prompt rows.");
+assert.ok(["ready", "review", "blocked", "empty"].includes(datasetInbox.status), "Dataset inbox should classify product readiness.");
+
+const proofRunController = buildProofRunControllerReport({
+  generatedPrompt: promptGeneratorV2.compiledPrompt,
+  hostedWorker: hostedWorkerOps,
+  proofLearningRuns: [{ phase: "complete", learnedStatus: "proof-ready", resultScore: 88, visualScore: 84 }],
+  queueJobs: hostedOpsQueueJobs,
+  resultQuality: resultQualityDashboard,
+  screenshotJudgeRuns: [{ score: 83, verdict: "ready", promptPatch: "No patch needed." }],
+  screenshots,
+  selectedPrompt: examples[0],
+});
+assert.equal(proofRunController.stages.length, 7, "Proof controller should expose the full prompt-to-winner chain.");
+assert.ok(proofRunController.actions.some((action) => action.id === "retry" && action.enabled), "Proof controller should surface retry when a failed job exists.");
+assert.ok(proofRunController.actions.some((action) => action.id === "cancel" && action.enabled), "Proof controller should surface cancel when an active job exists.");
+
+const calibrationProduct = buildCalibrationProductReport({ calibrationDashboard, modelComparison, resultQuality: resultQualityDashboard });
+assert.ok(calibrationProduct.rows.length >= 2, "Calibration product view should compare local, model, and result evidence.");
+assert.ok(["trust-local", "trust-model", "run-proof", "manual-review"].includes(calibrationProduct.recommendation), "Calibration product view should recommend a trust posture.");
+
+const hostedReadinessProduct = buildHostedReadinessProductReport({
+  apiOnline: true,
+  authRequired: true,
+  backupCount: 1,
+  buildCommands: ["npm run build", "true"],
+  claudeConfigured: true,
+  queueSandboxed: true,
+  sqliteWritable: true,
+  workerEnabled: true,
+});
+assert.equal(hostedReadinessProduct.verdict, "hosted-proof-ready", "Hosted readiness should identify a fully trusted proof setup.");
+assert.ok(hostedReadinessProduct.checks.every((check) => check.fix), "Hosted readiness checks should include actionable fixes.");
+
+const qualityRegressionGate = buildQualityRegressionGateReport({
+  benchmark: goldenBenchmarkHarness,
+  corpusSafetyClean: true,
+  generator: promptGeneratorV2,
+  leakage: leakageGuard,
+});
+assert.ok(qualityRegressionGate.rows.some((row) => row.label === "Verification contract" && row.ready), "Quality gate should check generator verification contract.");
+assert.notEqual(qualityRegressionGate.status, "fail", "Quality gate should pass blocking checks for clean fixtures.");
+
+const productCommandCenter = buildProductCommandCenterReport({
+  calibration: calibrationProduct,
+  curation,
+  exportsReady: true,
+  generator: promptGeneratorV2,
+  hosted: hostedReadinessProduct,
+  proof: proofRunController,
+});
+assert.equal(productCommandCenter.cards.length, 6, "Product command center should expose six product runway cards.");
+assert.ok(productCommandCenter.nextAction.length > 0, "Product command center should pick an obvious next action.");
+
+console.log(JSON.stringify({ ok: true, assertions: 197, score: score.score, snapshot: snapshot.label }, null, 2));
