@@ -1115,14 +1115,43 @@ function formatPromptForTarget(prompt: PromptExample | undefined, target: string
   if (target === "JSON training dataset") {
     return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), prompt, memory: memory.markdown }, null, 2);
   }
+  if (target === "JSONL training data") {
+    const rows = [
+      {
+        messages: [
+          { role: "system", content: "Write high-fidelity, build-ready website prompts with exact stack, assets, layout, motion, responsive rules, constraints, and verification." },
+          { role: "user", content: prompt ? `Create a prompt like ${prompt.title}.` : "Create a high-quality website prompt." },
+          { role: "assistant", content: source },
+        ],
+        metadata: { source: prompt?.source ?? "memory", title: prompt?.title ?? "memory", exportedAt: new Date().toISOString() },
+      },
+    ];
+    return rows.map((row) => JSON.stringify(row)).join("\n");
+  }
   const headers: Record<string, string> = {
-    "Codex prompt": "Use this as a Codex implementation task. Build the app, verify it locally, and report exact files changed.",
-    "Claude prompt": "Use this with Claude. Preserve exact implementation details, ask only blocking questions, and return the improved build prompt.",
-    "v0 prompt": "Use this with v0. Return clean React/Tailwind components and preserve asset/layout constraints.",
-    "Cursor task": "Use this as a Cursor task. Edit the existing app, keep changes scoped, and run lint/build.",
-    "Markdown prompt pack": "Use this as a portable prompt pack entry.",
+    "Codex prompt": "Use this as a Codex implementation task. Build the app, verify locally, attach desktop/mobile screenshots, and report exact files changed.",
+    "Claude prompt": "Use this with Claude. Preserve exact implementation details, ask only blocking questions, and return an improved build prompt plus missing-proof checklist.",
+    "v0 prompt": "Use this with v0. Return clean React/Tailwind components and preserve asset/layout constraints. Do not add unrelated sections.",
+    "Cursor task": "Use this as a Cursor task. Edit the existing app, keep changes scoped, and run lint/build/browser proof.",
+    "Markdown prompt pack": "Use this as a portable prompt pack entry with learned memory and acceptance gates.",
   };
-  return [`# ${target}`, "", headers[target] ?? "Use this prompt.", "", source].join("\n");
+  const memoryBlock = memory.sections.slice(0, 4).map((section) => [`## ${section.title}`, ...section.items.slice(0, 6).map((item) => `- ${item}`)].join("\n")).join("\n\n");
+  return [
+    `# ${target}`,
+    "",
+    headers[target] ?? "Use this prompt.",
+    "",
+    "## Source Prompt",
+    source,
+    "",
+    "## Acceptance Gates",
+    "- Preserve exact stack, asset URLs, typography, colors, layout, and interaction constraints.",
+    "- Verify desktop and mobile screenshots, console health, no horizontal overflow, text fit, and media readiness.",
+    "- Report any deviation from the prompt instead of silently improvising.",
+    "",
+    "## Learned Prompt Memory",
+    memoryBlock || "No learned memory exported yet.",
+  ].join("\n");
 }
 
 function buildGoldenChallengeBoard(runs: BenchmarkRun[]) {
@@ -1143,6 +1172,255 @@ function buildGoldenChallengeBoard(runs: BenchmarkRun[]) {
       finding: latestRow?.findings[0] ?? brief.constraints,
     };
   });
+}
+
+type QualityGraderV2 = {
+  score: number;
+  verdict: "proof-ready" | "nearly-ready" | "needs-detail" | "blocked";
+  dimensions: {
+    key: string;
+    label: string;
+    score: number;
+    evidence: string[];
+    fix: string;
+  }[];
+  penalties: string[];
+  nextActions: string[];
+};
+
+function buildQualityGraderV2(
+  prompt: PromptExample | undefined,
+  dnaV2: PromptDnaV2,
+  resultScore: ResultScore,
+  screenshotQa: ScreenshotQaReport,
+): QualityGraderV2 {
+  const text = prompt?.text ?? "";
+  const lower = text.toLowerCase();
+  const evaluation = evaluatePrompt(text);
+  const analysis = analyzePrompt(text);
+  const vagueTerms = ["beautiful", "modern", "clean", "premium", "sleek", "nice", "stunning"].filter((term) => lower.includes(term));
+  const evidenceFor = (terms: string[], fallback: string) => terms.filter((term) => lower.includes(term)).slice(0, 6).length ? terms.filter((term) => lower.includes(term)).slice(0, 6) : [fallback];
+  const urlCount = (text.match(/https?:\/\/\S+/g) || []).length;
+  const exactness = Math.min(100, Math.round((evaluation.categoryScores.constraints + evaluation.categoryScores.layout + evaluation.categoryScores.color) / 3 + Math.min(18, urlCount * 3)));
+  const dimensions = [
+    {
+      key: "exactness",
+      label: "Exactness",
+      score: exactness,
+      evidence: [
+        `${countWords(text)} words`,
+        `${urlCount} exact URL(s)`,
+        `${analysis.colors.length} color value(s)`,
+        ...evidenceFor(["exact", "specific", "must", "do not", "no ", "only"], "Few explicit boundaries detected."),
+      ],
+      fix: "Replace taste words with exact copy, asset URLs, dimensions, states, and no-go rules.",
+    },
+    {
+      key: "visual",
+      label: "Visual specificity",
+      score: Math.round((evaluation.categoryScores.layout + evaluation.categoryScores.typography + evaluation.categoryScores.color) / 3),
+      evidence: [...analysis.archetypes.slice(0, 2).map((item) => item.label), ...analysis.fonts.slice(0, 3), ...analysis.colors.slice(0, 3)],
+      fix: "Name the first-viewport composition, typography roles, colors, and visual signature.",
+    },
+    {
+      key: "implementation",
+      label: "Implementation readiness",
+      score: Math.round((evaluation.categoryScores.stack + evaluation.categoryScores.state + evaluation.categoryScores.qa) / 3),
+      evidence: analysis.stack.length ? analysis.stack.slice(0, 6) : ["No explicit stack or library boundary detected."],
+      fix: "Declare framework, dependency boundaries, file structure, interactions, and verification commands.",
+    },
+    {
+      key: "assets",
+      label: "Asset clarity",
+      score: dnaV2.dimensions.find((item) => item.key === "exactAssets")?.score ?? evaluation.categoryScores.assets,
+      evidence: urlCount ? (text.match(/https?:\/\/\S+/g) || []).slice(0, 5) : ["No exact media URL or local asset slot detected."],
+      fix: "Add exact image/video/SVG URLs, local asset names, object-fit, focal point, loading, and fallback rules.",
+    },
+    {
+      key: "responsive",
+      label: "Responsive behavior",
+      score: Math.round((evaluation.categoryScores.responsive + screenshotQa.score) / 2),
+      evidence: evidenceFor(["mobile", "desktop", "tablet", "sm:", "md:", "lg:", "breakpoint", "responsive"], "No mobile/desktop behavior found."),
+      fix: "Lock mobile navigation, wrapping, breakpoints, stable dimensions, and viewport screenshot checks.",
+    },
+    {
+      key: "proof",
+      label: "Proof instructions",
+      score: Math.round((evaluation.categoryScores.qa + resultScore.score + screenshotQa.score) / 3),
+      evidence: evidenceFor(["screenshot", "verify", "lint", "build", "console", "overflow", "text overlap", "qa"], "No explicit proof or QA ladder found."),
+      fix: "Require lint/build, browser console checks, desktop/mobile screenshots, media readiness, and no-overflow proof.",
+    },
+  ].map((dimension) => ({ ...dimension, score: Math.max(0, Math.min(100, dimension.score)), evidence: dimension.evidence.filter(Boolean).slice(0, 6) }));
+  const antiVaguePenalty = Math.min(12, vagueTerms.length * 3);
+  const score = Math.max(0, Math.round(dimensions.reduce((sum, item) => sum + item.score, 0) / dimensions.length - antiVaguePenalty));
+  const verdict = score >= 86 ? "proof-ready" : score >= 74 ? "nearly-ready" : score >= 56 ? "needs-detail" : "blocked";
+  const weak = dimensions.filter((item) => item.score < 72).sort((a, b) => a.score - b.score);
+  return {
+    score,
+    verdict,
+    dimensions,
+    penalties: [
+      vagueTerms.length ? `Vague taste terms detected: ${vagueTerms.join(", ")}.` : "",
+      urlCount === 0 ? "No exact URL or local asset slot detected." : "",
+      evaluation.categoryScores.qa < 60 ? "QA/proof ladder is too thin for reliable build learning." : "",
+    ].filter(Boolean),
+    nextActions: weak.slice(0, 4).map((item) => item.fix),
+  };
+}
+
+type ProjectBoundaryReport = {
+  activeLabel: string;
+  mode: "global" | "isolated";
+  inScopeCount: number;
+  outOfScopeCount: number;
+  reviewedCount: number;
+  quarantineCount: number;
+  sourceCounts: Record<string, number>;
+  warnings: string[];
+  outOfScope: PromptExample[];
+};
+
+function buildProjectBoundaryReport(
+  activeWorkspace: WorkspaceKey,
+  activeWorkspacePreset: (typeof workspacePresets)[number],
+  examples: PromptExample[],
+  workspaceExamples: PromptExample[],
+  curationReport: CorpusCurationReport,
+): ProjectBoundaryReport {
+  const workspaceIds = new Set(workspaceExamples.map((example) => example.id));
+  const outOfScope = activeWorkspace === "all" ? [] : examples.filter((example) => !workspaceIds.has(example.id));
+  const sourceCounts = examples.reduce<Record<string, number>>((counts, example) => {
+    counts[example.source] = (counts[example.source] || 0) + 1;
+    return counts;
+  }, {});
+  const warnings = [
+    activeWorkspace === "all" ? "Global workspace mixes every prompt source. Use an isolated workspace before model calibration." : "",
+    outOfScope.length ? `${outOfScope.length} prompt(s) do not match ${activeWorkspacePreset.label}. Keep them out of this training pass.` : "",
+    curationReport.counts.quarantine ? `${curationReport.counts.quarantine} prompt(s) already marked quarantine.` : "",
+  ].filter(Boolean);
+  return {
+    activeLabel: activeWorkspacePreset.label,
+    mode: activeWorkspace === "all" ? "global" : "isolated",
+    inScopeCount: workspaceExamples.length,
+    outOfScopeCount: outOfScope.length,
+    reviewedCount: curationReport.counts.review,
+    quarantineCount: curationReport.counts.quarantine,
+    sourceCounts,
+    warnings,
+    outOfScope: outOfScope.slice(0, 8),
+  };
+}
+
+type BenchmarkRegressionReport = {
+  latestAverage: number;
+  previousAverage: number;
+  delta: number;
+  improved: number;
+  regressed: number;
+  rows: {
+    title: string;
+    latest: number;
+    previous: number;
+    delta: number;
+    finding: string;
+  }[];
+};
+
+function buildBenchmarkRegressionReport(runs: BenchmarkRun[]): BenchmarkRegressionReport {
+  const latest = runs[0];
+  const previous = runs[1];
+  const rows = benchmarkBriefs.map((brief) => {
+    const latestRow = latest?.rows.find((row) => row.briefId === brief.id);
+    const previousRow = previous?.rows.find((row) => row.briefId === brief.id);
+    const latestScore = latestRow?.score ?? 0;
+    const previousScore = previousRow?.score ?? 0;
+    return {
+      title: brief.title,
+      latest: latestScore,
+      previous: previousScore,
+      delta: latestScore - previousScore,
+      finding: latestRow?.findings[0] ?? brief.constraints,
+    };
+  });
+  return {
+    latestAverage: latest?.averageScore ?? 0,
+    previousAverage: previous?.averageScore ?? 0,
+    delta: (latest?.averageScore ?? 0) - (previous?.averageScore ?? 0),
+    improved: rows.filter((row) => row.delta > 0).length,
+    regressed: rows.filter((row) => row.delta < 0).length,
+    rows,
+  };
+}
+
+type PromptEvolutionStep = {
+  label: string;
+  title: string;
+  score: number;
+  detail: string;
+};
+
+function buildPromptEvolutionSteps({
+  selectedPrompt,
+  closedLoopRuns,
+  screenshotJudgeRuns,
+  mutationTournamentRuns,
+  proofLearningRuns,
+  benchmarkRuns,
+  history,
+}: {
+  selectedPrompt?: PromptExample;
+  closedLoopRuns: ClosedLoopRun[];
+  screenshotJudgeRuns: ScreenshotJudgeRun[];
+  mutationTournamentRuns: MutationTournamentRun[];
+  proofLearningRuns: ProofLearningRun[];
+  benchmarkRuns: BenchmarkRun[];
+  history: PromptVersion[];
+}): PromptEvolutionStep[] {
+  const sourceScore = selectedPrompt ? evaluatePrompt(selectedPrompt.text).score : 0;
+  const latestJudge = screenshotJudgeRuns.find((run) => !selectedPrompt || run.promptId === selectedPrompt.id) ?? screenshotJudgeRuns[0];
+  const latestProof = proofLearningRuns.find((run) => !selectedPrompt || run.promptId === selectedPrompt.id) ?? proofLearningRuns[0];
+  const latestClosedLoop = closedLoopRuns[0];
+  const latestTournament = mutationTournamentRuns[0];
+  const latestVersion = history[0];
+  const latestBenchmark = benchmarkRuns[0];
+  return [
+    {
+      label: "Original",
+      title: selectedPrompt?.title ?? "No prompt selected",
+      score: sourceScore,
+      detail: selectedPrompt ? `${countWords(selectedPrompt.text)} words in source prompt.` : "Select a prompt to see its evolution.",
+    },
+    {
+      label: "Mutation",
+      title: latestTournament?.winnerTitle ?? "No tournament winner yet",
+      score: latestTournament?.winnerScore ?? 0,
+      detail: latestTournament ? latestTournament.notes.join(" ") : "Run a mutation tournament before spending build time.",
+    },
+    {
+      label: "Screenshot judge",
+      title: latestJudge?.verdict ?? "No judge run yet",
+      score: latestJudge?.score ?? 0,
+      detail: latestJudge?.fixes[0] ?? "Attach screenshots or run the screenshot judge to generate repair patches.",
+    },
+    {
+      label: "Closed-loop",
+      title: latestClosedLoop?.winnerTitle ?? latestVersion?.title ?? "No saved winner yet",
+      score: latestClosedLoop?.improvedScore ?? latestVersion?.score ?? 0,
+      detail: latestClosedLoop ? `${latestClosedLoop.originalScore} -> ${latestClosedLoop.improvedScore}.` : "Save generated, improved, or tournament winners to build an evolution trail.",
+    },
+    {
+      label: "Proof",
+      title: latestProof?.learnedStatus ?? "No proof run yet",
+      score: latestProof ? Math.round((latestProof.promptScore + latestProof.resultScore + latestProof.visualScore + latestProof.dnaScore) / 4) : 0,
+      detail: latestProof?.notes[0] ?? "Run proof now to tie prompt quality to build evidence.",
+    },
+    {
+      label: "Benchmark",
+      title: latestBenchmark?.suite ?? "No benchmark run yet",
+      score: latestBenchmark?.averageScore ?? 0,
+      detail: latestBenchmark ? `${latestBenchmark.count} challenge(s), ${latestBenchmark.modelMode}.` : "Run the canonical suite to detect regressions.",
+    },
+  ];
 }
 
 type ModelBatchEvaluation = {
@@ -1600,6 +1878,28 @@ export default function App() {
     [learningExamples, outcomes],
   );
   const goldenChallengeBoard = useMemo(() => buildGoldenChallengeBoard(benchmarkRuns), [benchmarkRuns]);
+  const qualityGraderV2 = useMemo(
+    () => buildQualityGraderV2(selectedPrompt, dnaV2, resultScore, screenshotQa),
+    [dnaV2, resultScore, screenshotQa, selectedPrompt],
+  );
+  const projectBoundaryReport = useMemo(
+    () => buildProjectBoundaryReport(activeWorkspace, activeWorkspacePreset, examples, workspaceExamples, curationReport),
+    [activeWorkspace, activeWorkspacePreset, curationReport, examples, workspaceExamples],
+  );
+  const benchmarkRegression = useMemo(() => buildBenchmarkRegressionReport(benchmarkRuns), [benchmarkRuns]);
+  const promptEvolutionSteps = useMemo(
+    () =>
+      buildPromptEvolutionSteps({
+        selectedPrompt,
+        closedLoopRuns,
+        screenshotJudgeRuns,
+        mutationTournamentRuns,
+        proofLearningRuns,
+        benchmarkRuns,
+        history,
+      }),
+    [benchmarkRuns, closedLoopRuns, history, mutationTournamentRuns, proofLearningRuns, screenshotJudgeRuns, selectedPrompt],
+  );
   const rewriteComparison = useMemo(
     () => comparePromptImprovement(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
     [coachInput, generatedPrompt, outcomes, profile, resultScore, selectedPrompt],
@@ -3933,6 +4233,139 @@ export default function App() {
     }
   }
 
+  async function runOneClickBuildProof() {
+    if (!selectedPrompt) {
+      setApiNotice("Select a prompt before running one-click proof.");
+      return;
+    }
+    const job = createBuildQueueJob(selectedPrompt, undefined, selectedBuildRun?.resultUrl || "");
+    const queue = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      jobs: [job],
+    };
+    setQueueJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 140));
+    setApiNotice("Running one-click proof: scaffold, install, build, preview, and capture screenshots...");
+    try {
+      const result = await runQueue(queue, job.id, {
+        buildCommand: modelSettings.buildCommand || "npm run build",
+        capture: true,
+        install: true,
+        scaffold: true,
+      });
+      const parsed = result.parsed as
+        | {
+            results?: Array<Partial<BuildQueueJob> & {
+              promptTitle?: string;
+              promptText?: string;
+              variantTitle?: string;
+              screenshotUrl?: string;
+              runFolder?: string;
+              filesChanged?: string;
+              errors?: string;
+              notes?: string;
+              status?: string;
+              score?: number;
+              resultUrl?: string;
+              updatedAt?: string;
+            }>;
+          }
+        | undefined;
+      const first = parsed?.results?.[0];
+      if (!first) {
+        setApiNotice("One-click proof runner finished but did not return a queue result. Check API events.");
+        return;
+      }
+      const normalized = await importResult<BuildRunRecord, ScreenshotRecord, PromptLineageNode>({
+        ...first,
+        promptId: selectedPrompt.id,
+        promptTitle: selectedPrompt.title,
+        promptText: selectedPrompt.text,
+      });
+      setBuildRuns((current) => [normalized.buildRun, ...current.filter((run) => run.id !== normalized.buildRun.id)].slice(0, 100));
+      const screenshotsToAdd = normalized.screenshot ? [normalized.screenshot] : [];
+      const mobilePath = first.runFolder ? `${first.runFolder}/screenshots/mobile.png` : "";
+      if (mobilePath) {
+        screenshotsToAdd.push({
+          id: `screenshot-mobile-${Date.now()}`,
+          promptId: selectedPrompt.id,
+          title: `${selectedPrompt.title} mobile`,
+          url: mobilePath,
+          notes: `Mobile capture from one-click proof. ${first.notes || ""}`.trim(),
+          rating: normalized.buildRun.status === "passed" ? "great" : "unrated",
+          createdAt: normalized.buildRun.updatedAt,
+        });
+      }
+      if (screenshotsToAdd.length) {
+        setScreenshots((current) => [...screenshotsToAdd, ...current].slice(0, 100));
+      }
+      addLineageNode(normalized.lineage);
+      const scored = scoreResultArtifact(selectedPrompt, screenshotsToAdd[0], normalized.buildRun);
+      const proofScore = Math.round((evaluatePrompt(selectedPrompt.text).score + scored.score + dnaV2.overall) / 3);
+      const learnedStatus: ProofLearningRun["learnedStatus"] = proofScore >= 82 ? "gold" : proofScore >= 70 ? "good" : proofScore >= 52 ? "experimental" : "avoid";
+      const proofRun: ProofLearningRun = {
+        id: `proof-loop-auto-${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        promptId: selectedPrompt.id,
+        title: selectedPrompt.title,
+        queueJobId: job.id,
+        buildRunId: normalized.buildRun.id,
+        phase: "learned",
+        promptScore: evaluatePrompt(selectedPrompt.text).score,
+        resultScore: scored.score,
+        visualScore: screenshotQa.score,
+        dnaScore: dnaV2.overall,
+        learnedStatus,
+        screenshotCount: screenshotsToAdd.length,
+        notes: [
+          "One-click proof scaffolded, built, previewed, captured desktop/mobile screenshots, and imported the result.",
+          ...scored.recommendations.slice(0, 4),
+        ],
+      };
+      setProofLearningRuns((current) => [proofRun, ...current].slice(0, 40));
+      updateOutcome(selectedPrompt, {
+        rating: learnedStatus === "gold" ? "great" : learnedStatus === "avoid" ? "bad" : "okay",
+        status: learnedStatus,
+        notes: proofRun.notes.join(" "),
+      });
+      setActiveTrainStage("Analyze");
+      setApiNotice(`One-click proof complete: ${learnedStatus}, ${screenshotsToAdd.length} screenshot(s), result ${scored.score}/100.`);
+    } catch (error) {
+      setApiNotice(`One-click proof failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function connectHostedBrain() {
+    saveApiBase();
+    try {
+      const [health, settings] = await Promise.all([getApiHealth(), getModelSettings()]);
+      setApiHealth(health);
+      setModelEnvStatus(settings as Record<string, boolean>);
+      setApiNotice(`Hosted brain connected: ${health.sqlitePath}${settings.anthropicApiKeyConfigured ? " with Claude key." : " with local fallback."}`);
+    } catch (error) {
+      setApiHealth(undefined);
+      setApiNotice(`Hosted brain connection failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  function quarantineOffProjectPrompts() {
+    if (activeWorkspace === "all") {
+      setApiNotice("Choose an isolated workspace before quarantining off-project prompts.");
+      return;
+    }
+    const ids = projectBoundaryReport.outOfScope.map((prompt) => prompt.id);
+    if (!ids.length) {
+      setApiNotice(`${activeWorkspacePreset.label} has no visible off-project prompts to quarantine.`);
+      return;
+    }
+    setCurationDecisions((current) => {
+      const next = { ...current };
+      for (const id of ids) next[id] = "quarantine";
+      return next;
+    });
+    setApiNotice(`Marked ${ids.length} off-project prompt(s) as quarantine for ${activeWorkspacePreset.label}.`);
+  }
+
   async function importResultJson() {
     try {
       const parsed = JSON.parse(resultImportText) as unknown;
@@ -4317,6 +4750,7 @@ export default function App() {
               goldenChallengeBoard={goldenChallengeBoard}
               goldReview={goldReview}
               guidedWizard={guidedWizard}
+              qualityGraderV2={qualityGraderV2}
               generatorPresets={generatorPresets}
               generatorInput={generatorInput}
               hostedSyncReport={hostedSyncReport}
@@ -4342,6 +4776,7 @@ export default function App() {
               onCaptureSelectedResult={captureSelectedResult}
               onApplyResultLearningPatch={applyResultLearningPatch}
               onCheckApi={checkApi}
+              onConnectHostedBrain={connectHostedBrain}
               onCreateDatasetVersion={createDatasetVersion}
               onApplyGoldReview={applyGoldReview}
               onApplyGeneratorPreset={applyGeneratorPreset}
@@ -4365,6 +4800,7 @@ export default function App() {
               onLoadDemoMode={loadDemoMode}
               onModelEvaluate={runModelEvaluation}
               onOneClickLearningLoop={runOneClickLearningLoop}
+              onRunOneClickBuildProof={runOneClickBuildProof}
               onPullFromApi={pullFromApi}
               onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
               onRunAutonomousBattle={runAutonomousBattle}
@@ -4383,6 +4819,7 @@ export default function App() {
               onRunPromptCoach={runPromptCoach}
               onQueueTournament={queueTournamentFinalists}
               onQueueWizard={() => queueBattleVariants(wizardBattle, "one-click wizard")}
+              onQuarantineOffProjectPrompts={quarantineOffProjectPrompts}
               onQuarantineWeakCorpus={quarantineWeakCorpus}
               onRefreshApiEvents={refreshApiEvents}
               onRemoveBuildRun={removeBuildRun}
@@ -4402,6 +4839,7 @@ export default function App() {
               pairwiseReviews={pairwiseReviews}
               patternExtraction={patternExtraction}
               patternDashboard={patternDashboard}
+              projectBoundaryReport={projectBoundaryReport}
               promptComparisons={promptComparisons}
               proofLearningRuns={proofLearningRuns}
               promptBattle={promptBattle}
@@ -4416,6 +4854,7 @@ export default function App() {
               queueJobs={queueJobs}
               resultImportText={resultImportText}
               rewriteComparison={rewriteComparison}
+              benchmarkRegression={benchmarkRegression}
               snapshotImportText={snapshotImportText}
               resultScore={resultScore}
               runnerPlan={runnerPlan}
@@ -4427,6 +4866,7 @@ export default function App() {
               screenshots={screenshots}
               searchResults={semanticResults}
               selectedPrompt={selectedPrompt}
+              promptEvolutionSteps={promptEvolutionSteps}
               selectedLineage={selectedLineage}
               semanticQuery={semanticQuery}
               sourceSafety={sourceSafety}
@@ -5376,6 +5816,7 @@ function TrainView({
   goldenChallengeBoard,
   goldReview,
   guidedWizard,
+  qualityGraderV2,
   generatorPresets,
   generatorInput,
   hostedSyncReport,
@@ -5407,6 +5848,7 @@ function TrainView({
   onBulkPromoteLeaderboard,
   onCaptureSelectedResult,
   onCheckApi,
+  onConnectHostedBrain,
   onChooseOnboardingMode,
   onCreateBackupSnapshot,
   onCreateDatasetVersion,
@@ -5425,6 +5867,7 @@ function TrainView({
   onLoadDemoMode,
   onModelEvaluate,
   onOneClickLearningLoop,
+  onRunOneClickBuildProof,
   onPullFromApi,
   onQueueBattle,
   onQuarantineWeakCorpus,
@@ -5445,6 +5888,7 @@ function TrainView({
   onRunPromptCoach,
   onQueueTournament,
   onQueueWizard,
+  onQuarantineOffProjectPrompts,
   onRemoveBuildRun,
   onRemoveQueueJob,
   onRemoveScreenshot,
@@ -5462,6 +5906,7 @@ function TrainView({
   pairwiseReviews,
   patternExtraction,
   patternDashboard,
+  projectBoundaryReport,
   promptComparisons,
   proofLearningRuns,
   promptBattle,
@@ -5476,6 +5921,7 @@ function TrainView({
   queueJobs,
   resultImportText,
   rewriteComparison,
+  benchmarkRegression,
   snapshotImportText,
   resultScore,
   runnerPlan,
@@ -5487,6 +5933,7 @@ function TrainView({
   screenshots,
   searchResults,
   selectedPrompt,
+  promptEvolutionSteps,
   selectedLineage,
   semanticQuery,
   sourceSafety,
@@ -5578,6 +6025,7 @@ function TrainView({
   goldenChallengeBoard: ReturnType<typeof buildGoldenChallengeBoard>;
   goldReview: GoldReviewReport;
   guidedWizard: GuidedPromptWizardReport;
+  qualityGraderV2: QualityGraderV2;
   generatorPresets: GeneratorPreset[];
   generatorInput: LearnedGeneratorInput;
   hostedSyncReport: HostedSyncReport;
@@ -5617,6 +6065,7 @@ function TrainView({
   onBulkPromoteLeaderboard: () => void;
   onCaptureSelectedResult: () => void;
   onCheckApi: () => void;
+  onConnectHostedBrain: () => void;
   onChooseOnboardingMode: (mode: OnboardingMode) => void;
   onCreateBackupSnapshot: (label?: string) => void;
   onCreateDatasetVersion: () => void;
@@ -5635,6 +6084,7 @@ function TrainView({
   onLoadDemoMode: () => void;
   onModelEvaluate: () => void;
   onOneClickLearningLoop: () => void;
+  onRunOneClickBuildProof: () => void;
   onPullFromApi: () => void;
   onQueueBattle: () => void;
   onQuarantineWeakCorpus: () => void;
@@ -5655,6 +6105,7 @@ function TrainView({
   onRunPromptCoach: () => void;
   onQueueTournament: () => void;
   onQueueWizard: () => void;
+  onQuarantineOffProjectPrompts: () => void;
   onRemoveBuildRun: (id: string) => void;
   onRemoveQueueJob: (id: string) => void;
   onRemoveScreenshot: (id: string) => void;
@@ -5672,6 +6123,7 @@ function TrainView({
   pairwiseReviews: PairwiseReviewRecord[];
   patternExtraction: PatternExtractionReport;
   patternDashboard: PatternDashboardReport;
+  projectBoundaryReport: ProjectBoundaryReport;
   promptComparisons: PromptComparisonRun[];
   proofLearningRuns: ProofLearningRun[];
   promptBattle: PromptBattle;
@@ -5686,6 +6138,7 @@ function TrainView({
   queueJobs: BuildQueueJob[];
   resultImportText: string;
   rewriteComparison: PromptImprovementComparison;
+  benchmarkRegression: BenchmarkRegressionReport;
   snapshotImportText: string;
   resultScore: ResultScore;
   runnerPlan?: BuildRunnerPlan;
@@ -5697,6 +6150,7 @@ function TrainView({
   screenshots: ScreenshotRecord[];
   searchResults: SearchResult[];
   selectedPrompt?: PromptExample;
+  promptEvolutionSteps: PromptEvolutionStep[];
   selectedLineage: PromptLineageNode[];
   semanticQuery: string;
   sourceSafety: SourceSafetyReport;
@@ -5827,6 +6281,7 @@ function TrainView({
         buildFeedback={buildFeedback}
         onRunBenchmarkSuite={onRunBenchmarkSuite}
         onRunMutationTournament={onRunMutationTournament}
+        onRunOneClickBuildProof={onRunOneClickBuildProof}
         onRunProofLearningLoop={onRunProofLearningLoop}
         onRunScreenshotJudge={onRunScreenshotJudge}
         proofLearningRuns={proofLearningRuns}
@@ -5834,12 +6289,18 @@ function TrainView({
         screenshotJudgeRuns={screenshotJudgeRuns}
       />
 
+      <PromptEvolutionTimelinePanel steps={promptEvolutionSteps} />
+
       <section className="train-columns">
         <GoldenBenchmarkBoardPanel
           board={goldenChallengeBoard}
           benchmarkRuns={benchmarkRuns}
           onRunBenchmarkSuite={onRunBenchmarkSuite}
         />
+        <BenchmarkRegressionPanel report={benchmarkRegression} />
+      </section>
+
+      <section className="train-columns">
         <ProductionHardeningPanel
           apiHealth={apiHealth}
           backupSnapshots={backupSnapshots}
@@ -5847,6 +6308,18 @@ function TrainView({
           modelEnvStatus={modelEnvStatus}
           proofLearningRuns={proofLearningRuns}
           screenshotJudgeRuns={screenshotJudgeRuns}
+        />
+        <ConnectHostedBrainPanel
+          apiBaseDraft={apiBaseDraft}
+          apiHealth={apiHealth}
+          apiNotice={apiNotice}
+          apiTokenDraft={apiTokenDraft}
+          modelEnvStatus={modelEnvStatus}
+          onCheckApi={onCheckApi}
+          onConnectHostedBrain={onConnectHostedBrain}
+          onSaveApiBase={onSaveApiBase}
+          setApiBaseDraft={setApiBaseDraft}
+          setApiTokenDraft={setApiTokenDraft}
         />
       </section>
 
@@ -5890,6 +6363,20 @@ function TrainView({
         learningExamples={learningExamples}
         setActiveWorkspace={setActiveWorkspace}
         workspaceExamples={workspaceExamples}
+      />
+
+      <ProjectBoundaryGuardPanel
+        activeWorkspace={activeWorkspace}
+        onQuarantineOffProjectPrompts={onQuarantineOffProjectPrompts}
+        projectBoundaryReport={projectBoundaryReport}
+        setActiveWorkspace={setActiveWorkspace}
+      />
+
+      <TrainingSetCuratorV2Panel
+        curationReport={curationReport}
+        onSelectPrompt={onSelectPrompt}
+        onSetPromptCurationDecision={onSetPromptCurationDecision}
+        projectBoundaryReport={projectBoundaryReport}
       />
 
       <OneClickLearningLoopPanel
@@ -6104,6 +6591,8 @@ function TrainView({
         />
         <DnaScoreExplainerPanel dnaExplanation={dnaExplanation} selectedPrompt={selectedPrompt} />
       </section>
+
+      <QualityGraderV2Panel grader={qualityGraderV2} />
 
       <section className="train-columns">
         <PromptGeneratorBattleModePanel
@@ -6612,6 +7101,114 @@ function ProjectWorkspacePanel({
   );
 }
 
+function ProjectBoundaryGuardPanel({
+  activeWorkspace,
+  onQuarantineOffProjectPrompts,
+  projectBoundaryReport,
+  setActiveWorkspace,
+}: {
+  activeWorkspace: WorkspaceKey;
+  onQuarantineOffProjectPrompts: () => void;
+  projectBoundaryReport: ProjectBoundaryReport;
+  setActiveWorkspace: (workspace: WorkspaceKey) => void;
+}) {
+  return (
+    <section className="panel lab-panel project-boundary-panel" data-train-section="workspace">
+      <div className="output-header">
+        <div className="panel-header">
+          <AlertTriangle size={18} />
+          <h2>Project isolation guard</h2>
+        </div>
+        <span className="workspace-pill">{projectBoundaryReport.mode}</span>
+      </div>
+      <div className="source-safety-grid">
+        <article className="index-card">
+          <strong>{projectBoundaryReport.inScopeCount}</strong>
+          <span>in scope</span>
+        </article>
+        <article className="index-card">
+          <strong>{projectBoundaryReport.outOfScopeCount}</strong>
+          <span>off project</span>
+        </article>
+        <article className="index-card">
+          <strong>{projectBoundaryReport.quarantineCount}</strong>
+          <span>quarantine</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Sources</h3>
+          <p>{Object.entries(projectBoundaryReport.sourceCounts).map(([source, count]) => `${source}: ${count}`).join(" / ")}</p>
+        </article>
+      </div>
+      <FeedbackList title="Boundary warnings" items={projectBoundaryReport.warnings} empty="No active boundary warnings." />
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={() => setActiveWorkspace(activeWorkspace === "all" ? "hero" : activeWorkspace)}>
+          Use isolated workspace
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={onQuarantineOffProjectPrompts} disabled={activeWorkspace === "all" || !projectBoundaryReport.outOfScope.length}>
+          Quarantine visible mismatches
+        </button>
+      </div>
+      <div className="version-list compact-list">
+        {projectBoundaryReport.outOfScope.map((prompt) => (
+          <article className="version-card" key={prompt.id}>
+            <strong>{prompt.title}</strong>
+            <p>{countWords(prompt.text)} words / {prompt.source}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TrainingSetCuratorV2Panel({
+  curationReport,
+  onSelectPrompt,
+  onSetPromptCurationDecision,
+  projectBoundaryReport,
+}: {
+  curationReport: CorpusCurationReport;
+  onSelectPrompt: (id: string) => void;
+  onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
+  projectBoundaryReport: ProjectBoundaryReport;
+}) {
+  const queue = curationReport.items
+    .filter((item) => item.recommendation !== "learn" || projectBoundaryReport.outOfScope.some((prompt) => prompt.id === item.promptId))
+    .slice(0, 8);
+  return (
+    <section className="panel lab-panel training-set-curator-panel">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Training set curator</h2>
+      </div>
+      <p className="selected-meta">
+        Review gold/good/duplicate/off-project/too-vague candidates before they influence the learner.
+      </p>
+      <div className="version-list compact-list">
+        {queue.map((item) => {
+          const offProject = projectBoundaryReport.outOfScope.some((prompt) => prompt.id === item.promptId);
+          return (
+            <article className="version-card" key={item.promptId}>
+              <div className="dna-v2-topline">
+                <strong>{item.title}</strong>
+                <span data-tone={scoreTone(item.confidence)}>{item.confidence}</span>
+              </div>
+              <p>{offProject ? "Off-project risk. " : ""}{item.reasons[0] ?? item.category}</p>
+              <small>{item.category} / recommended {item.recommendation}</small>
+              <div className="button-row">
+                <button className="primary-button compact-button" type="button" onClick={() => onSetPromptCurationDecision(item.promptId, "learn")}>Learn</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onSetPromptCurationDecision(item.promptId, "review")}>Review</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onSetPromptCurationDecision(item.promptId, "quarantine")}>Quarantine</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onSelectPrompt(item.promptId)}>Open</button>
+              </div>
+            </article>
+          );
+        })}
+        {!queue.length ? <p className="selected-meta">No curation risks in the current workspace.</p> : null}
+      </div>
+    </section>
+  );
+}
+
 function OneClickLearningLoopPanel({
   guidedWizard,
   onOneClickLearningLoop,
@@ -6717,6 +7314,7 @@ function StartHereProofLoopPanel({
   buildFeedback,
   onRunBenchmarkSuite,
   onRunMutationTournament,
+  onRunOneClickBuildProof,
   onRunProofLearningLoop,
   onRunScreenshotJudge,
   proofLearningRuns,
@@ -6726,6 +7324,7 @@ function StartHereProofLoopPanel({
   buildFeedback: BuildFeedbackReport;
   onRunBenchmarkSuite: () => void;
   onRunMutationTournament: () => void;
+  onRunOneClickBuildProof: () => void;
   onRunProofLearningLoop: () => void;
   onRunScreenshotJudge: () => void;
   proofLearningRuns: ProofLearningRun[];
@@ -6735,7 +7334,7 @@ function StartHereProofLoopPanel({
   const latestProof = proofLearningRuns[0];
   const latestJudge = screenshotJudgeRuns[0];
   const steps = [
-    { label: "1. Prove", detail: latestProof ? `${latestProof.phase} / ${latestProof.learnedStatus}` : "Queue or score the selected prompt.", action: onRunProofLearningLoop, cta: "Run proof loop" },
+    { label: "1. Build proof", detail: latestProof ? `${latestProof.phase} / ${latestProof.learnedStatus}` : "Scaffold, build, preview, capture, and import proof.", action: onRunOneClickBuildProof, cta: "Run proof now" },
     { label: "2. Judge", detail: latestJudge ? `${latestJudge.score}/100 ${latestJudge.verdict}` : "Ask Claude/local judge to repair from screenshots.", action: onRunScreenshotJudge, cta: "Run screenshot judge" },
     { label: "3. Mutate", detail: "Run a mutation tournament before spending another build.", action: onRunMutationTournament, cta: "Run tournament" },
     { label: "4. Benchmark", detail: "Refresh canonical challenges to see if the learner improved.", action: onRunBenchmarkSuite, cta: "Run benchmark" },
@@ -6763,7 +7362,31 @@ function StartHereProofLoopPanel({
           </article>
         ))}
       </div>
+      <button className="ghost-button compact-button" type="button" onClick={onRunProofLearningLoop} disabled={!selectedPrompt}>
+        Record existing evidence only
+      </button>
       <FeedbackList title="Current proof actions" items={buildFeedback.nextActions} empty="No proof actions yet." />
+    </section>
+  );
+}
+
+function PromptEvolutionTimelinePanel({ steps }: { steps: PromptEvolutionStep[] }) {
+  return (
+    <section className="panel lab-panel prompt-evolution-panel">
+      <div className="panel-header">
+        <Archive size={18} />
+        <h2>Before / after prompt evolution</h2>
+      </div>
+      <div className="evolution-track">
+        {steps.map((step) => (
+          <article className="evolution-step" key={step.label}>
+            <span>{step.label}</span>
+            <strong>{step.title}</strong>
+            <em data-tone={scoreTone(step.score)}>{step.score || "--"}</em>
+            <p>{step.detail}</p>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
@@ -6809,6 +7432,37 @@ function GoldenBenchmarkBoardPanel({
   );
 }
 
+function BenchmarkRegressionPanel({ report }: { report: BenchmarkRegressionReport }) {
+  return (
+    <section className="panel lab-panel benchmark-regression-panel">
+      <div className="panel-header">
+        <BarChart3 size={18} />
+        <h2>Regression benchmark suite</h2>
+      </div>
+      <div className="outcome-scoreboard compact-scoreboard">
+        <Metric value={formatNumber(report.latestAverage)} label="Latest" />
+        <Metric value={formatNumber(report.previousAverage)} label="Previous" />
+        <Metric value={`${report.delta > 0 ? "+" : ""}${report.delta}`} label="Delta" />
+        <Metric value={formatNumber(report.regressed)} label="Regressed" />
+      </div>
+      <div className="version-list compact-list">
+        {report.rows.slice(0, 4).map((row) => (
+          <article className="version-card" key={row.title}>
+            <div className="dna-v2-topline">
+              <strong>{row.title}</strong>
+              <span data-tone={scoreTone(row.delta >= 0 ? 80 : 40)}>{row.delta > 0 ? `+${row.delta}` : row.delta}</span>
+            </div>
+            <p>{row.finding}</p>
+            <small>
+              {row.previous || "--"} {"->"} {row.latest || "--"}
+            </small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ProductionHardeningPanel({
   apiHealth,
   backupSnapshots,
@@ -6847,6 +7501,71 @@ function ProductionHardeningPanel({
           </article>
         ))}
       </div>
+    </section>
+  );
+}
+
+function ConnectHostedBrainPanel({
+  apiBaseDraft,
+  apiHealth,
+  apiNotice,
+  apiTokenDraft,
+  modelEnvStatus,
+  onCheckApi,
+  onConnectHostedBrain,
+  onSaveApiBase,
+  setApiBaseDraft,
+  setApiTokenDraft,
+}: {
+  apiBaseDraft: string;
+  apiHealth?: ApiHealth;
+  apiNotice: string;
+  apiTokenDraft: string;
+  modelEnvStatus?: Record<string, boolean>;
+  onCheckApi: () => void;
+  onConnectHostedBrain: () => void;
+  onSaveApiBase: () => void;
+  setApiBaseDraft: (value: string) => void;
+  setApiTokenDraft: (value: string) => void;
+}) {
+  const rows = [
+    { label: "API", ready: Boolean(apiHealth?.ok), detail: apiHealth?.sqlitePath || "Not connected" },
+    { label: "Token", ready: Boolean(apiHealth?.authRequired), detail: apiHealth?.authRequired ? "Bearer auth required" : "Optional locally; required for hosted" },
+    { label: "Claude", ready: Boolean(modelEnvStatus?.anthropicApiKeyConfigured), detail: modelEnvStatus?.anthropicApiKeyConfigured ? "Server key present" : "Local evaluator fallback" },
+    { label: "Collections", ready: Boolean(apiHealth?.collections?.length), detail: `${apiHealth?.collections?.length ?? 0} durable collection(s)` },
+  ];
+  return (
+    <section className="panel lab-panel hosted-brain-panel" data-train-section="api">
+      <div className="panel-header">
+        <Sparkles size={18} />
+        <h2>Connect hosted brain</h2>
+      </div>
+      <div className="two-field-grid">
+        <Field label="API URL">
+          <input value={apiBaseDraft} onChange={(event) => setApiBaseDraft(event.target.value)} placeholder="https://your-api.example.com" />
+        </Field>
+        <Field label="Bearer token">
+          <input type="password" value={apiTokenDraft} onChange={(event) => setApiTokenDraft(event.target.value)} placeholder="Server token, never model key" />
+        </Field>
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onConnectHostedBrain}>
+          <Check size={15} />
+          Save + check
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={onSaveApiBase}>Save only</button>
+        <button className="ghost-button compact-button" type="button" onClick={onCheckApi}>Check API</button>
+      </div>
+      <div className="hardening-grid">
+        {rows.map((row) => (
+          <article className="sync-check-card" data-ready={row.ready} key={row.label}>
+            <strong>{row.ready ? "Ready" : "Watch"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </article>
+        ))}
+      </div>
+      <p className="selected-meta">{apiNotice}</p>
     </section>
   );
 }
@@ -7683,10 +8402,11 @@ function ExportFormatStudioPanel({
   promptMemory: PromptMemoryExport;
   selectedPrompt?: PromptExample;
 }) {
-  const targets = ["Codex prompt", "Claude prompt", "v0 prompt", "Cursor task", "JSON training dataset", "Markdown prompt pack"];
+  const targets = ["Codex prompt", "Claude prompt", "v0 prompt", "Cursor task", "JSON training dataset", "JSONL training data", "Markdown prompt pack"];
   const [target, setTarget] = useState(targets[0]);
   const formatted = formatPromptForTarget(selectedPrompt, target, promptMemory, packs);
-  const extension = target === "JSON training dataset" ? "json" : "md";
+  const extension = target === "JSON training dataset" ? "json" : target === "JSONL training data" ? "jsonl" : "md";
+  const mime = extension === "json" ? "application/json" : extension === "jsonl" ? "application/x-ndjson" : "text/markdown";
   return (
     <section className="panel lab-panel export-format-panel" data-train-section="packs">
       <div className="output-header">
@@ -7699,7 +8419,7 @@ function ExportFormatStudioPanel({
             {copied === `export-format-${target}` ? <Check size={15} /> : <Copy size={15} />}
             Copy
           </button>
-          <button className="ghost-button compact-button" type="button" onClick={() => onDownload(`${slugify(target)}.${extension}`, formatted, extension === "json" ? "application/json" : "text/markdown")}>
+          <button className="ghost-button compact-button" type="button" onClick={() => onDownload(`${slugify(target)}.${extension}`, formatted, mime)}>
             <Download size={15} />
             Export
           </button>
@@ -8310,6 +9030,36 @@ function DnaScoreExplainerPanel({
           </article>
         ))}
       </div>
+    </section>
+  );
+}
+
+function QualityGraderV2Panel({ grader }: { grader: QualityGraderV2 }) {
+  return (
+    <section className="panel lab-panel quality-grader-v2-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Prompt quality grader v2</h2>
+        </div>
+        <ScoreRing score={grader.score} label={grader.verdict} />
+      </div>
+      <div className="gate-check-grid">
+        {grader.dimensions.map((dimension) => (
+          <article className="gate-check-card" key={dimension.key}>
+            <div className="dna-v2-topline">
+              <strong>{dimension.label}</strong>
+              <span data-tone={scoreTone(dimension.score)}>{dimension.score}</span>
+            </div>
+            <p>{dimension.fix}</p>
+            <small>{dimension.evidence.slice(0, 4).join(" / ")}</small>
+          </article>
+        ))}
+      </div>
+      <section className="train-columns nested-train-columns">
+        <FeedbackList title="Anti-vague penalties" items={grader.penalties} empty="No grader penalties detected." />
+        <FeedbackList title="Next best fixes" items={grader.nextActions} empty="This prompt is proof-ready." />
+      </section>
     </section>
   );
 }

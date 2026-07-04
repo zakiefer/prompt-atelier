@@ -26,10 +26,15 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Export presets for Codex, v0, Claude artifacts, Lovable, and raw implementation specs
 - Codex skill and reusable memory pack exports
 - Start-here proof loop that queues a build, blends prompt/result/screenshot/DNA scores, and records whether the prompt learned from real evidence
+- One-click proof runner that can scaffold, build, capture desktop/mobile screenshots, import the result, and update the proof-learning ledger
+- Before/after prompt evolution timeline that shows the selected prompt moving through mutation, screenshot judging, closed-loop training, proof, and benchmark scoring
 - Golden benchmark board for canonical website prompt challenges
+- Regression benchmark suite that compares the latest benchmark average against the previous run and flags improved or regressed briefs
 - Claude/local screenshot judge that converts visual proof into repair patches
 - Mutation tournament history so variants can compete before a build run is spent
-- Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, and Markdown packs
+- Project isolation guard and training-set curator v2 for keeping unrelated repo prompts out of website-prompt learning
+- Prompt quality grader v2 covering exactness, visual specificity, implementation readiness, assets, responsiveness, and proof instructions
+- Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, JSONL training data, and Markdown packs
 
 ## Development
 
@@ -112,17 +117,20 @@ The Train tab now starts with:
 7. Guided generator, leaderboard, backup, Codex build-pack, and security/ops panels for running the loop as a product.
 8. Import audits, evaluation history, export presets, and automated visual QA so prompt quality is judged against real build evidence.
 9. A Start Here path: prove the selected prompt, judge screenshots, run a mutation tournament, and refresh the benchmark suite.
-10. A production-hardening checklist covering hosted API, token posture, Claude key visibility, restore points, dataset versions, and proof history.
+10. A before/after evolution timeline, quality grader v2, regression benchmark deltas, and project isolation guard so each prompt can be improved without contaminating the corpus.
+11. A production-hardening checklist and hosted brain connector covering API health, token posture, Claude key visibility, restore points, dataset versions, and proof history.
 
 The tightest improvement cycle is:
 
 ```text
-prompt -> queued build -> desktop/mobile screenshots -> screenshot judge -> mutation tournament -> benchmark board -> learned corpus
+prompt -> queued build -> desktop/mobile screenshots -> screenshot judge -> mutation tournament -> regression benchmark -> learned corpus
 ```
 
 The app is honest about missing proof. If no build result or screenshot exists yet, the proof loop records a queued run and tells you to import `queue-result.json` or attach screenshots before promoting a prompt to gold.
 
 The corpus should only contain prompts intentionally imported for this project. Recipe, memory, search, and generator learning use curated website prompts by default.
+
+Use the project isolation guard before running calibration or exporting training data. In an isolated workspace it reports out-of-scope prompts and can quarantine them so unrelated Codex project tasks do not affect website prompt recipes.
 
 ## Prompt Corpus
 
