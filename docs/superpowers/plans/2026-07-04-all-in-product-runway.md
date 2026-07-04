@@ -29,7 +29,7 @@
 - Modify: `src/promptEngine.ts`
 - Test: `scripts/testEngine.ts`
 
-- [ ] **Step 1: Add report types**
+- [x] **Step 1: Add report types**
 
 Add exported types near the existing measured-quality report types:
 
@@ -45,7 +45,7 @@ export type ProductCommandCenterReport = {
 
 Also add `DatasetInboxReport`, `ProofRunControllerReport`, `CalibrationProductReport`, `HostedReadinessProductReport`, and `QualityRegressionGateReport` with simple row/card fields.
 
-- [ ] **Step 2: Implement builders**
+- [x] **Step 2: Implement builders**
 
 Add pure exported builders:
 
@@ -68,7 +68,7 @@ Add similar deterministic builders:
 - `buildHostedReadinessProductReport`
 - `buildQualityRegressionGateReport`
 
-- [ ] **Step 3: Add tests**
+- [x] **Step 3: Add tests**
 
 In `scripts/testEngine.ts`, import the new builders and assert:
 
@@ -79,7 +79,7 @@ In `scripts/testEngine.ts`, import the new builders and assert:
 - hosted readiness returns one of the documented verdicts
 - quality gate has report-only rows and no secret leakage
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -94,11 +94,11 @@ Expected: pass with increased assertion count.
 **Files:**
 - Modify: `src/App.tsx`
 
-- [ ] **Step 1: Import new types/builders**
+- [x] **Step 1: Import new types/builders**
 
 Add imports for the new report builders and types from `src/promptEngine.ts`.
 
-- [ ] **Step 2: Compute reports**
+- [x] **Step 2: Compute reports**
 
 Add `useMemo` values in `App` for:
 
@@ -109,14 +109,14 @@ Add `useMemo` values in `App` for:
 - `qualityRegressionGate`
 - `productCommandCenter`
 
-- [ ] **Step 3: Pass reports and handlers to `TrainView`**
+- [x] **Step 3: Pass reports and handlers to `TrainView`**
 
 Extend `TrainView` props with the new reports plus handlers:
 
 - `onDatasetInboxDecision`
 - `onProveGeneratedPrompt`
 
-- [ ] **Step 4: Add product panels**
+- [x] **Step 4: Add product panels**
 
 Add component functions:
 
@@ -130,7 +130,7 @@ Add component functions:
 
 Place `ProductCommandCenterPanel` immediately after the Train hero, before the section navigator.
 
-- [ ] **Step 5: Verify**
+- [x] **Step 5: Verify**
 
 Run:
 
@@ -147,7 +147,7 @@ Expected: TypeScript and Vite build pass.
 - Modify: `src/promptApi.ts` only if needed
 - Modify: `scripts/promptLabApi.mjs` only if needed
 
-- [ ] **Step 1: Dataset inbox action handler**
+- [x] **Step 1: Dataset inbox action handler**
 
 Add `handleDatasetInboxDecision(promptId, action)` that maps:
 
@@ -157,11 +157,11 @@ Add `handleDatasetInboxDecision(promptId, action)` that maps:
 - `gold` -> outcome status `gold`, rating `great`
 - `remove` -> remove user prompt if it is user-generated, otherwise quarantine
 
-- [ ] **Step 2: Proof generated prompt action**
+- [x] **Step 2: Proof generated prompt action**
 
 Add `handleProveGeneratedPrompt()` that applies the Prompt Generator v2 variant and starts the existing hosted proof worker path when a selected prompt exists. If no selected prompt exists, it saves the generator variant as a user prompt first.
 
-- [ ] **Step 3: Verify actions in browser build**
+- [x] **Step 3: Verify actions in browser build**
 
 Run:
 
@@ -178,7 +178,7 @@ Expected: pass.
 - Modify: `package.json`
 - Modify: `.github/workflows/ci.yml`
 
-- [ ] **Step 1: Create report-only quality gate script**
+- [x] **Step 1: Create report-only quality gate script**
 
 The script should read `src/prompts/*.md`, reject known unrelated repo-operation phrases, and report:
 
@@ -189,7 +189,7 @@ The script should read `src/prompts/*.md`, reject known unrelated repo-operation
 
 It should exit non-zero only for secret/unrelated-project contamination. Coverage thresholds are report-only.
 
-- [ ] **Step 2: Add npm script**
+- [x] **Step 2: Add npm script**
 
 Add:
 
@@ -197,11 +197,11 @@ Add:
 "check:quality-gate": "node scripts/checkQualityGate.mjs"
 ```
 
-- [ ] **Step 3: Add CI step**
+- [x] **Step 3: Add CI step**
 
 In `.github/workflows/ci.yml`, run `npm run check:quality-gate` after corpus safety.
 
-- [ ] **Step 4: Verify**
+- [x] **Step 4: Verify**
 
 Run:
 
@@ -223,7 +223,7 @@ Expected: all pass.
 - Modify: `docs/hosted-api.md`
 - Modify: `scripts/testApiRoutes.mjs` if API routes were added
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document:
 
@@ -234,7 +234,7 @@ Document:
 - Calibration summary
 - Quality gate
 
-- [ ] **Step 2: Full verification**
+- [x] **Step 2: Full verification**
 
 Run:
 
@@ -255,7 +255,7 @@ git diff --check
 
 Expected: all pass.
 
-- [ ] **Step 3: Browser proof**
+- [x] **Step 3: Browser proof**
 
 Start API and preview:
 
