@@ -1,0 +1,138 @@
+name: Render API
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "Dockerfile.api"
+      - "render.yaml"
+      - "scripts/promptLabApi.mjs"
+      - "scripts/deployHostedApi.mjs"
+      - "scripts/seedProofRunway.mjs"
+      - "scripts/exportRegressionTimeline.mjs"
+      - "scripts/auditSecurityBoundary.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/render-api.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-api
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Validate hosted API blueprint
+        run: npm run deploy:hosted-api -- --out output/hosted-api-deploy
+
+      - name: Seed offline proof runway
+        run: npm run proof:seed -- --limit 5 --out output/proof-seed-runway
+
+      - name: Export regression timeline
+        run: npm run export:regression -- --out output/regression-timeline
+
+      - name: Audit credential boundary
+        run: npm run audit:security-boundary -- --out output/security-boundary
+
+      - name: Upload API readiness artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-api-readiness
+          path: |
+            output/hosted-api-deploy
+            output/proof-seed-runway
+            output/regression-timeline
+            output/security-boundary
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Trigger Render deploy hook when configured
+        run: |
+          set -euo pipefail
+          if [ -z "${RENDER_DEPLOY_HOOK_URL:-}" ]; then
+            mkdir -p output/hosted-api-deploy
+            printf '%s\n' '{"ok":true,"skipped":true,"reason":"RENDER_DEPLOY_HOOK_URL is not configured."}' > output/hosted-api-deploy/hosted-api-deploy-report.json
+            exit 0
+          fi
+          npm run deploy:hosted-api -- --out output/hosted-api-deploy --require-deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+
+      - name: Upload deploy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-api-deploy
+          path: output/hosted-api-deploy
+
+  verify-hosted:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Verify hosted API when configured
+        run: |
+          set -euo pipefail
+          if [ -z "${PROMPT_LAB_API_URL:-}" ]; then
+            mkdir -p output/hosted-api-verify output/proof-seed-hosted output/regression-timeline-hosted
+            printf '%s\n' '{"ok":true,"skipped":true,"reason":"PROMPT_LAB_API_URL is not configured."}' > output/hosted-api-verify/hosted-api-verify-report.json
+            printf '%s\n' '{"ok":true,"skipped":true,"reason":"PROMPT_LAB_API_URL is not configured."}' > output/proof-seed-hosted/proof-seed-runway-report.json
+            printf '%s\n' '{"ok":true,"skipped":true,"reason":"PROMPT_LAB_API_URL is not configured."}' > output/regression-timeline-hosted/regression-timeline.json
+            exit 0
+          fi
+          npm run verify:hosted-api -- --out output/hosted-api-verify
+          npm run proof:seed -- --limit 5 --out output/proof-seed-hosted
+          npm run export:regression -- --out output/regression-timeline-hosted
+        env:
+          PROMPT_LAB_API_URL: ${{ secrets.PROMPT_LAB_API_URL }}
+          PROMPT_LAB_API_TOKEN: ${{ secrets.PROMPT_LAB_API_TOKEN }}
+
+      - name: Upload hosted verification artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-api-hosted-verification
+          path: |
+            output/hosted-api-verify
+            output/proof-seed-hosted
+            output/regression-timeline-hosted

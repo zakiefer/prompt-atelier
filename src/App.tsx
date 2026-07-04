@@ -86,6 +86,7 @@ import {
   buildLearnedGeneratorVariants,
   buildGuidedPromptWizardReport,
   buildGoldenBenchmarkHarnessReport,
+  buildGeneratorBriefChecklistReport,
   buildGeneratorV3Report,
   buildGeneratorModeTestProductReport,
   buildHostedCiSmokeReport,
@@ -102,7 +103,9 @@ import {
   buildLearningMachineReport,
   buildNextProductLayerReport,
   buildPatternDashboard,
+  buildProofSeedingRunwayReport,
   buildProjectExportPack,
+  buildPreferenceReviewDeckReport,
   buildPreferenceTrainingReport,
   buildPromptMemoryDiffReport,
   buildPromptCoachReport,
@@ -112,6 +115,7 @@ import {
   buildResultGallery,
   buildReusableMemoryPack,
   buildPublicDemoPolishReport,
+  buildPublicProofChecklistReport,
   buildPreferenceDatasetV2ProductReport,
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
@@ -130,7 +134,9 @@ import {
   buildSimpleModeReport,
   buildResultQualityDashboardReport,
   buildRegressionHistoryProductReport,
+  buildRegressionTimelineReport,
   buildHostedWorkerOpsReport,
+  buildSecurityBoundaryReport,
   buildSecurityCleanupProductReport,
   buildSourceSafetyReport,
   buildSpeedLabelingReport,
@@ -243,6 +249,7 @@ import {
   type FailureMemoryAutopilotReport,
   type Feature,
   type GoldenBenchmarkHarnessReport,
+  type GeneratorBriefChecklistReport,
   type GeneratorV3Report,
   type HostedCiSmokeReport,
   type InterviewBrief,
@@ -255,6 +262,7 @@ import {
   type LearningExplanationReport,
   type LearningMachineReport,
   type NextProductLayerReport,
+  type ProofSeedingRunwayReport,
   type GuidedPromptWizardReport,
   type HostedBackendKitReport,
   type HostedHardeningReport,
@@ -273,6 +281,7 @@ import {
   type PairwiseReviewRecord,
   type PatternDashboardReport,
   type PatternExtractionReport,
+  type PreferenceReviewDeckReport,
   type PreferenceTrainingReport,
   type PromptPack,
   type PromptAnalysis,
@@ -299,7 +308,9 @@ import {
   type PromptRank,
   type PromptTournament,
   type PublicDemoPolishReport,
+  type PublicProofChecklistReport,
   type ProviderPluginLayerReport,
+  type SecurityBoundaryReport,
   type SecurityCleanupProductReport,
   type SourceSafetyReport,
   type GoldenRecipe,
@@ -311,6 +322,7 @@ import {
   type QualityGateReport,
   type QualityRegressionGateReport,
   type RegressionHistoryProductReport,
+  type RegressionTimelineReport,
   type QualityRubric,
   type RecipeOptions,
   type ResultScore,
@@ -3169,9 +3181,13 @@ export default function App() {
           "All-in product runway",
           "Learning machine control plane",
           "Next product layer",
+          "Proof seeding runway",
           "Autonomous proof loop",
           "Prompt generator v3",
+          "Preference review deck",
           "Training export readiness",
+          "Public proof checklist",
+          "Credential boundary audit",
         ],
         hasWorkflow: true,
         publicUrl: "https://zakiefer.github.io/prompt-atelier/",
@@ -3289,6 +3305,59 @@ export default function App() {
       resultGalleryHydrationProduct,
       trainingExportReadiness,
     ],
+  );
+  const proofSeedingRunway = useMemo(
+    () =>
+      buildProofSeedingRunwayReport({
+        exampleCount: learningExamples.length,
+        hostedWorker: hostedWorkerOps,
+        promptToProof: promptToProofWorkflow,
+        proofRunCount: proofLearningRuns.length,
+        queueJobCount: queueJobs.length,
+        resultGalleryCount: resultGallery.length,
+      }),
+    [hostedWorkerOps, learningExamples.length, promptToProofWorkflow, proofLearningRuns.length, queueJobs.length, resultGallery.length],
+  );
+  const preferenceReviewDeck = useMemo(
+    () => buildPreferenceReviewDeckReport({ examples: learningExamples, outcomes, pairwiseReviews }),
+    [learningExamples, outcomes, pairwiseReviews],
+  );
+  const generatorBriefChecklist = useMemo(
+    () => buildGeneratorBriefChecklistReport({ briefBuilder: briefBuilderProduct, generator: promptGeneratorV2 }),
+    [briefBuilderProduct, promptGeneratorV2],
+  );
+  const publicProofChecklist = useMemo(
+    () =>
+      buildPublicProofChecklistReport({
+        hostedCi: hostedCiSmoke,
+        proofRunCount: proofLearningRuns.length,
+        publicDemo: publicDemoPolish,
+        resultGalleryCount: resultGallery.length,
+        trainingExports: trainingExportReadiness,
+      }),
+    [hostedCiSmoke, proofLearningRuns.length, publicDemoPolish, resultGallery.length, trainingExportReadiness],
+  );
+  const regressionTimeline = useMemo(
+    () =>
+      buildRegressionTimelineReport({
+        benchmarkRunCount: benchmarkRuns.length,
+        benchmarkV2RunCount: benchmarkV2Runs.length,
+        evaluationHistory,
+        modelCacheCount: modelEvaluationCache.length,
+        proofRunCount: proofLearningRuns.length,
+        trainingRunCount: trainingRuns.length,
+      }),
+    [benchmarkRuns.length, benchmarkV2Runs.length, evaluationHistory, modelEvaluationCache.length, proofLearningRuns.length, trainingRuns.length],
+  );
+  const securityBoundary = useMemo(
+    () =>
+      buildSecurityBoundaryReport({
+        hosted: hostedReadinessProduct,
+        leakage: leakageGuard,
+        securityCleanup: securityCleanupProduct,
+        sourceSafety,
+      }),
+    [hostedReadinessProduct, leakageGuard, securityCleanupProduct, sourceSafety],
   );
 
   useEffect(() => {
@@ -4206,6 +4275,13 @@ export default function App() {
     setApiNotice("Added the recommended pairwise preference label.");
   }
 
+  function addPreferenceDeckLabel(pair: PreferenceReviewDeckReport["pairs"][number], winnerId = pair.recommendedWinnerId) {
+    const left = examples.find((prompt) => prompt.id === pair.leftId);
+    const right = examples.find((prompt) => prompt.id === pair.rightId);
+    addPairwiseReview(left, right, winnerId, pair.reason);
+    setApiNotice(`Added preference deck label for ${pair.leftTitle} vs ${pair.rightTitle}.`);
+  }
+
   function applyBriefBuilderPatch() {
     const patch = briefBuilderProduct.suggestedPatch;
     if (!Object.keys(patch).length) {
@@ -4326,7 +4402,7 @@ export default function App() {
     return {
       provider: modelSettings.provider,
       endpoint: modelSettings.endpoint,
-      apiKey: modelSettings.apiKey,
+      apiKey: "",
       model: modelSettings.model,
       temperature: modelSettings.temperature,
     };
@@ -7172,13 +7248,19 @@ export default function App() {
               hostedCiSmoke={hostedCiSmoke}
               trainingExportReadiness={trainingExportReadiness}
               nextProductLayer={nextProductLayer}
+              proofSeedingRunway={proofSeedingRunway}
               hostedBackendKit={hostedBackendKit}
               promptToProofWorkflow={promptToProofWorkflow}
               datasetBulkTools={datasetBulkTools}
+              preferenceReviewDeck={preferenceReviewDeck}
               preferenceTraining={preferenceTraining}
               claudeCalibrationProduct={claudeCalibrationProduct}
               briefBuilderProduct={briefBuilderProduct}
+              generatorBriefChecklist={generatorBriefChecklist}
               regressionHistoryProduct={regressionHistoryProduct}
+              regressionTimeline={regressionTimeline}
+              publicProofChecklist={publicProofChecklist}
+              securityBoundary={securityBoundary}
               securityCleanupProduct={securityCleanupProduct}
               narrativePolish={narrativePolish}
               leakageGuard={leakageGuard}
@@ -7278,6 +7360,7 @@ export default function App() {
               onBulkDatasetInboxDecision={handleBulkDatasetInboxDecision}
               onProveGeneratedPrompt={handleProveGeneratedPrompt}
               onAddRecommendedPreferenceLabel={addRecommendedPreferenceLabel}
+              onAddPreferenceDeckLabel={addPreferenceDeckLabel}
               onApplyBriefBuilderPatch={applyBriefBuilderPatch}
               onRunSecurityCleanup={runSecurityCleanup}
               onSetPromptCurationDecision={setPromptCurationDecision}
@@ -8373,13 +8456,19 @@ function TrainView({
   hostedCiSmoke,
   trainingExportReadiness,
   nextProductLayer,
+  proofSeedingRunway,
   hostedBackendKit,
   promptToProofWorkflow,
   datasetBulkTools,
+  preferenceReviewDeck,
   preferenceTraining,
   claudeCalibrationProduct,
   briefBuilderProduct,
+  generatorBriefChecklist,
   regressionHistoryProduct,
+  regressionTimeline,
+  publicProofChecklist,
+  securityBoundary,
   securityCleanupProduct,
   narrativePolish,
   leakageGuard,
@@ -8480,6 +8569,7 @@ function TrainView({
   onBulkDatasetInboxDecision,
   onProveGeneratedPrompt,
   onAddRecommendedPreferenceLabel,
+  onAddPreferenceDeckLabel,
   onApplyBriefBuilderPatch,
   onRunSecurityCleanup,
   onSetPromptCurationDecision,
@@ -8695,13 +8785,19 @@ function TrainView({
   hostedCiSmoke: HostedCiSmokeReport;
   trainingExportReadiness: TrainingExportReadinessReport;
   nextProductLayer: NextProductLayerReport;
+  proofSeedingRunway: ProofSeedingRunwayReport;
   hostedBackendKit: HostedBackendKitReport;
   promptToProofWorkflow: PromptToProofWorkflowReport;
   datasetBulkTools: DatasetBulkToolsReport;
+  preferenceReviewDeck: PreferenceReviewDeckReport;
   preferenceTraining: PreferenceTrainingReport;
   claudeCalibrationProduct: ClaudeCalibrationProductReport;
   briefBuilderProduct: BriefBuilderProductReport;
+  generatorBriefChecklist: GeneratorBriefChecklistReport;
   regressionHistoryProduct: RegressionHistoryProductReport;
+  regressionTimeline: RegressionTimelineReport;
+  publicProofChecklist: PublicProofChecklistReport;
+  securityBoundary: SecurityBoundaryReport;
   securityCleanupProduct: SecurityCleanupProductReport;
   narrativePolish: NarrativePolishReport;
   leakageGuard: LeakageGuardReport;
@@ -8810,6 +8906,7 @@ function TrainView({
   onBulkDatasetInboxDecision: (action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
   onProveGeneratedPrompt: () => void;
   onAddRecommendedPreferenceLabel: () => void;
+  onAddPreferenceDeckLabel: (pair: PreferenceReviewDeckReport["pairs"][number], winnerId?: string) => void;
   onApplyBriefBuilderPatch: () => void;
   onRunSecurityCleanup: () => void;
   onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
@@ -8913,18 +9010,24 @@ function TrainView({
     { id: "workflow", label: "Workflow" },
     { id: "machine", label: "Learning machine" },
     { id: "next-layer", label: "Next layer" },
+    { id: "proof-seeding", label: "Proof seeding" },
     { id: "autonomous", label: "Autonomous" },
     { id: "generator-v3", label: "Generator v3" },
     { id: "benchmark-scale", label: "Benchmark scale" },
     { id: "explain", label: "Explain" },
     { id: "public-demo", label: "Public demo" },
+    { id: "public-proof", label: "Public proof" },
     { id: "hosted-smoke", label: "Hosted smoke" },
     { id: "training-exports", label: "Training exports" },
     { id: "proof", label: "Prompt-to-proof" },
     { id: "brief", label: "Brief builder" },
+    { id: "brief-checklist", label: "Brief checklist" },
     { id: "preferences", label: "Preferences" },
+    { id: "preference-deck", label: "Preference deck" },
     { id: "regression", label: "Regression" },
+    { id: "regression-timeline", label: "Regression timeline" },
     { id: "security", label: "Security" },
+    { id: "security-boundary", label: "Security boundary" },
     { id: "story", label: "Story" },
     { id: "demo", label: "Demo" },
     { id: "api", label: "API" },
@@ -8986,6 +9089,8 @@ function TrainView({
 
       <NextProductLayerPanel copied={copied} onCopy={onCopy} report={nextProductLayer} />
 
+      <ProofSeedingRunwayPanel copied={copied} onCopy={onCopy} report={proofSeedingRunway} />
+
       <section className="train-columns">
         <AutonomousProofLoopPanel report={autonomousProofLoop} onRunAutonomousProofLoop={onRunAutonomousProofLoop} />
         <GeneratorV3Panel report={generatorV3} onApplyMode={onApplyGeneratorV3Mode} onCopy={onCopy} copied={copied} />
@@ -8998,8 +9103,10 @@ function TrainView({
 
       <section className="train-columns">
         <PublicDemoPolishPanel report={publicDemoPolish} onLoadDemoMode={onLoadDemoMode} onSelect={scrollToTrainSection} />
-        <HostedCiSmokePanel report={hostedCiSmoke} onRunHostedSmoke={onRunHostedSmoke} />
+        <PublicProofChecklistPanel copied={copied} onCopy={onCopy} report={publicProofChecklist} />
       </section>
+
+      <HostedCiSmokePanel report={hostedCiSmoke} onRunHostedSmoke={onRunHostedSmoke} />
 
       <TrainingExportReadinessPanel report={trainingExportReadiness} onExportOneClickTrainingPack={onExportOneClickTrainingPack} />
 
@@ -9013,14 +9120,23 @@ function TrainView({
         <PreferenceTrainingPanel report={preferenceTraining} onAddRecommendedPreferenceLabel={onAddRecommendedPreferenceLabel} />
       </section>
 
+      <PreferenceReviewDeckPanel report={preferenceReviewDeck} onAddPreferenceDeckLabel={onAddPreferenceDeckLabel} />
+
       <section className="train-columns">
         <ClaudeCalibrationProductPanel report={claudeCalibrationProduct} onRunCachedModelEvaluation={onRunCachedModelEvaluation} onRunHostedClaudeHealthCheck={onRunHostedClaudeHealthCheck} />
         <BriefBuilderProductPanel report={briefBuilderProduct} onApplyBriefBuilderPatch={onApplyBriefBuilderPatch} />
       </section>
 
+      <GeneratorBriefChecklistPanel copied={copied} onApplyBriefBuilderPatch={onApplyBriefBuilderPatch} onCopy={onCopy} report={generatorBriefChecklist} />
+
       <section className="train-columns">
         <RegressionHistoryProductPanel report={regressionHistoryProduct} onRunBenchmarkSuite={onRunBenchmarkSuite} onRunBenchmarkV2={onRunBenchmarkV2} />
+        <RegressionTimelinePanel copied={copied} onCopy={onCopy} report={regressionTimeline} />
+      </section>
+
+      <section className="train-columns">
         <SecurityCleanupProductPanel report={securityCleanupProduct} onRunSecurityCleanup={onRunSecurityCleanup} />
+        <SecurityBoundaryPanel copied={copied} onCopy={onCopy} report={securityBoundary} />
       </section>
 
       <NarrativePolishPanel report={narrativePolish} onLoadDemoMode={onLoadDemoMode} onSelect={scrollToTrainSection} />
@@ -10346,6 +10462,45 @@ function NextProductLayerPanel({
   );
 }
 
+function ProofSeedingRunwayPanel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: ProofSeedingRunwayReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="proof-seeding">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Proof seeding runway</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.command, "proof-seeding-command")}>
+            {copied === "proof-seeding-command" ? <Check size={15} /> : <Copy size={15} />}
+            Command
+          </button>
+          <ScoreRing score={report.score} label={report.status} />
+        </div>
+      </div>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <div className="safe-check" key={row.label} data-ready={row.ready ? "true" : "false"}>
+            <strong>{row.ready ? "Ready" : "Open"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </div>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Seed command:</strong> {report.command}</p>
+      <FeedbackList title="Proof seeding notes" items={report.notes} empty="No proof seeding notes." />
+    </section>
+  );
+}
+
 function AutonomousProofLoopPanel({
   onRunAutonomousProofLoop,
   report,
@@ -10523,6 +10678,42 @@ function PublicDemoPolishPanel({
       </div>
       <button className="primary-button compact-button" type="button" onClick={onLoadDemoMode}>Load public demo mode</button>
       <FeedbackList title="Demo polish notes" items={report.notes} empty="No demo polish notes." />
+    </section>
+  );
+}
+
+function PublicProofChecklistPanel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: PublicProofChecklistReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="public-proof">
+      <div className="output-header">
+        <div className="panel-header">
+          <Clipboard size={18} />
+          <h2>Public proof checklist</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Open"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </div>
+        ))}
+      </div>
+      <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.command, "public-proof-command")}>
+        {copied === "public-proof-command" ? <Check size={15} /> : <Copy size={15} />}
+        Copy smoke command
+      </button>
+      <FeedbackList title="Public proof notes" items={report.notes} empty="No public proof notes." />
     </section>
   );
 }
@@ -10733,6 +10924,56 @@ function PreferenceTrainingPanel({
   );
 }
 
+function PreferenceReviewDeckPanel({
+  onAddPreferenceDeckLabel,
+  report,
+}: {
+  onAddPreferenceDeckLabel: (pair: PreferenceReviewDeckReport["pairs"][number], winnerId?: string) => void;
+  report: PreferenceReviewDeckReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="preference-deck">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Preference review deck</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.reviewedCount}/${report.targetCount}`} label="Reviewed" />
+        <Metric value={formatNumber(report.pairs.length)} label="Ready pairs" />
+        <Metric value={formatNumber(report.score)} label="Preference score" />
+      </div>
+      {report.pairs.length ? (
+        <div className="benchmark-v2-grid">
+          {report.pairs.map((pair) => (
+            <article className="benchmark-row" key={`${pair.leftId}-${pair.rightId}`} data-status="watch">
+              <strong>{pair.leftTitle} vs {pair.rightTitle}</strong>
+              <p>{pair.reason}</p>
+              <span>{pair.leftScore} / {pair.rightScore}</span>
+              <div className="button-row">
+                <button className="ghost-button compact-button" type="button" onClick={() => onAddPreferenceDeckLabel(pair, pair.leftId)}>
+                  Pick left
+                </button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onAddPreferenceDeckLabel(pair, pair.rightId)}>
+                  Pick right
+                </button>
+                <button className="primary-button compact-button" type="button" onClick={() => onAddPreferenceDeckLabel(pair)}>
+                  Pick suggested
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="selected-meta">No unreviewed preference pairs are ready. Add more prompts or clear completed pair labels.</p>
+      )}
+      <FeedbackList title="Preference deck notes" items={report.notes} empty="No preference deck notes." />
+    </section>
+  );
+}
+
 function ClaudeCalibrationProductPanel({
   onRunCachedModelEvaluation,
   onRunHostedClaudeHealthCheck,
@@ -10801,6 +11042,54 @@ function BriefBuilderProductPanel({
   );
 }
 
+function GeneratorBriefChecklistPanel({
+  copied,
+  onApplyBriefBuilderPatch,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onApplyBriefBuilderPatch: () => void;
+  onCopy: (value: string, key: string) => void;
+  report: GeneratorBriefChecklistReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="brief-checklist">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Generator brief checklist</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={report.completion} label="Complete" />
+        <Metric value={String(Object.keys(report.suggestedPatch).length)} label="Patch fields" />
+        <Metric value={formatNumber(report.samplePrompt.length)} label="Prompt chars" />
+      </div>
+      <div className="safe-check-grid">
+        {report.fields.map((field) => (
+          <div className="safe-check" key={String(field.key)} data-ready={field.ready ? "true" : "false"}>
+            <strong>{field.ready ? "Ready" : "Ask"}</strong>
+            <span>{field.label}</span>
+            <p>{field.ready ? field.value : field.prompt}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" disabled={!Object.keys(report.suggestedPatch).length} onClick={onApplyBriefBuilderPatch}>
+          Fill missing fields
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.samplePrompt, "brief-checklist-sample")} disabled={!report.samplePrompt}>
+          {copied === "brief-checklist-sample" ? <Check size={15} /> : <Copy size={15} />}
+          Copy generated prompt
+        </button>
+      </div>
+      <FeedbackList title="Brief checklist notes" items={report.notes} empty="No brief checklist notes." />
+    </section>
+  );
+}
+
 function RegressionHistoryProductPanel({
   onRunBenchmarkSuite,
   onRunBenchmarkV2,
@@ -10840,6 +11129,45 @@ function RegressionHistoryProductPanel({
   );
 }
 
+function RegressionTimelinePanel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: RegressionTimelineReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="regression-timeline">
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Regression timeline export</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        {report.metrics.map((metric) => <Metric key={metric.label} value={metric.value} label={metric.label} />)}
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.events.map((event) => (
+          <div className="benchmark-row" key={`${event.kind}-${event.label}-${event.createdAt}`} data-status={event.status === "fail" ? "missing" : event.status === "pass" ? "aligned" : "watch"}>
+            <strong>{event.label}</strong>
+            <p>{event.detail}</p>
+            <span>{event.kind}</span>
+          </div>
+        ))}
+      </div>
+      <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.exportCommand, "regression-export-command")}>
+        {copied === "regression-export-command" ? <Check size={15} /> : <Copy size={15} />}
+        Copy export command
+      </button>
+      <FeedbackList title="Timeline notes" items={report.notes} empty="No timeline notes." />
+    </section>
+  );
+}
+
 function SecurityCleanupProductPanel({
   onRunSecurityCleanup,
   report,
@@ -10869,6 +11197,43 @@ function SecurityCleanupProductPanel({
       <button className="primary-button compact-button" type="button" disabled={!report.cleanupActions.length} onClick={onRunSecurityCleanup}>Run cleanup</button>
       <FeedbackList title="Cleanup actions" items={report.cleanupActions} empty="No cleanup actions." />
       <FeedbackList title="Security notes" items={report.notes} empty="No security notes." />
+    </section>
+  );
+}
+
+function SecurityBoundaryPanel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: SecurityBoundaryReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="security-boundary">
+      <div className="output-header">
+        <div className="panel-header">
+          <AlertTriangle size={18} />
+          <h2>Credential boundary audit</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Clean" : check.blocking ? "Blocker" : "Review"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+            {!check.ready ? <small>{check.fix}</small> : null}
+          </div>
+        ))}
+      </div>
+      <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.auditCommand, "security-boundary-command")}>
+        {copied === "security-boundary-command" ? <Check size={15} /> : <Copy size={15} />}
+        Copy audit command
+      </button>
+      <FeedbackList title="Boundary notes" items={report.notes} empty="No boundary notes." />
     </section>
   );
 }
@@ -17099,7 +17464,7 @@ function ModelProviderSettingsPanel({
   const statuses = [
     ["provider", modelSettings.provider],
     ["endpoint", Boolean(modelSettings.endpoint || modelEnvStatus?.endpointConfigured)],
-    ["api key", Boolean(modelSettings.apiKey || modelEnvStatus?.apiKeyConfigured || modelEnvStatus?.anthropicApiKeyConfigured)],
+    ["server key", Boolean(modelEnvStatus?.apiKeyConfigured || modelEnvStatus?.anthropicApiKeyConfigured)],
     ["agent", Boolean(modelSettings.agentCommand || modelEnvStatus?.agentCommandConfigured)],
     ["build", Boolean(modelSettings.buildCommand || modelEnvStatus?.buildCommandConfigured)],
   ] as const;
@@ -17142,15 +17507,14 @@ function ModelProviderSettingsPanel({
           placeholder="https://api.example.com/evaluate"
         />
       </Field>
+      <article className="version-card">
+        <strong>Provider credentials stay server-side</strong>
+        <span>{modelEnvStatus?.anthropicApiKeyConfigured || modelEnvStatus?.apiKeyConfigured ? "Server model credential detected" : "Local fallback active"}</span>
+        <p>
+          The browser sends prompts to the hosted API route and does not accept provider keys in this settings panel.
+        </p>
+      </article>
       <div className="two-field-grid">
-        <Field label="API key">
-          <input
-            type="password"
-            value={modelSettings.apiKey}
-            onChange={(event) => setModelSettings((current) => ({ ...current, apiKey: event.target.value }))}
-            placeholder="Optional; stored only in browser state"
-          />
-        </Field>
         <Field label="Model">
           <input
             value={modelSettings.model}

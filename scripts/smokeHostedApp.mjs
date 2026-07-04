@@ -28,9 +28,13 @@ const expectedHeadings = [
   "All-in product runway",
   "Learning machine control plane",
   "Next product layer",
+  "Proof seeding runway",
   "Autonomous proof loop",
   "Prompt generator v3",
+  "Preference review deck",
   "Training export readiness",
+  "Public proof checklist",
+  "Credential boundary audit",
 ];
 
 await mkdir(outDir, { recursive: true });

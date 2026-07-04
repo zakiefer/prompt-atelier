@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
 const args = process.argv.slice(2);
 
 function readArg(name, fallback = "") {
@@ -12,6 +15,7 @@ function readArg(name, fallback = "") {
 
 const baseUrl = (readArg("url", process.env.PROMPT_LAB_API_URL || "http://127.0.0.1:8787") || "").replace(/\/+$/, "");
 const token = readArg("token", process.env.PROMPT_LAB_API_TOKEN || "");
+const outDir = readArg("out", "");
 const shouldEvaluate = args.includes("--evaluate") || process.env.PROMPT_LAB_VERIFY_EVALUATE === "1";
 
 function headers(extra = {}) {
@@ -54,7 +58,7 @@ try {
 
   const settings = await readJson("/api/model/settings");
   checks.push(check("model settings route", settings.ok, `HTTP ${settings.status}`));
-  checks.push(check("server Claude key", Boolean(settings.body?.anthropicApiKeyConfigured), settings.body?.anthropicApiKeyConfigured ? "Claude key is configured server-side." : "Claude key is not configured server-side.", "Set ANTHROPIC_API_KEY only on the API host."));
+  checks.push(check("server Claude key", Boolean(settings.body?.anthropicApiKeyConfigured), settings.body?.anthropicApiKeyConfigured ? "Claude key is configured server-side." : "Claude key is not configured server-side.", "Keep any live Claude key on the API host; local fallback works when it is absent."));
   checks.push(check("model route", Boolean(settings.body?.anthropicConfigured || settings.body?.endpointConfigured || settings.body?.agentCommandConfigured), "At least one model route should be configured for hosted judging.", "Configure Claude, an OpenAI-compatible endpoint, or an agent command."));
 
   if (shouldEvaluate) {
@@ -83,5 +87,13 @@ const result = {
   nextActions: [...blocking.map((item) => item.fix).filter(Boolean), ...failures.map((item) => `Resolve verifier error: ${item}`)].slice(0, 8),
 };
 
-console.log(JSON.stringify(result, null, 2));
+let outputPath = "";
+if (outDir) {
+  const resolved = resolve(outDir);
+  mkdirSync(resolved, { recursive: true });
+  outputPath = join(resolved, "hosted-api-verify-report.json");
+  writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
+}
+
+console.log(JSON.stringify({ ...result, outputPath }, null, 2));
 process.exit(ready ? 0 : 1);

@@ -33,6 +33,15 @@ jobs:
       - name: Quality gate
         run: npm run check:quality-gate
 
+      - name: Proof seed artifact
+        run: npm run proof:seed -- --out output/proof-seed-ci
+
+      - name: Regression timeline artifact
+        run: npm run export:regression -- --out output/regression-timeline-ci
+
+      - name: Credential boundary audit
+        run: npm run audit:security-boundary -- --out output/security-boundary-ci
+
       - name: API route tests
         run: npm run test:api
 

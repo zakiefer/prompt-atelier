@@ -44,7 +44,7 @@ const checks = [
   check("persistent disk", /disk:\s*\n[\s\S]*mountPath:\s*\/var\/data/.test(renderYaml), "Blueprint has a persistent /var/data disk.", "Mount persistent storage for SQLite."),
   check("api dockerfile", dockerfile.includes("CMD [\"npm\", \"run\", \"api\"]"), "Dockerfile.api starts the API server.", "Use npm run api as the Docker command."),
   check("api script", Boolean(packageJson.scripts?.api), "package.json exposes npm run api.", "Add an api script."),
-  check("secret placeholder", renderYaml.includes("ANTHROPIC_API_KEY") && renderYaml.includes("sync: false"), "Claude key is server-side only.", "Keep ANTHROPIC_API_KEY out of browser builds."),
+  check("secret placeholder", renderYaml.includes("ANTHROPIC_API_KEY") && renderYaml.includes("sync: false"), "Claude key placeholder is server-side only.", "Keep provider credentials out of browser builds."),
 ];
 
 let deploy = { attempted: false, ok: false, status: 0, detail: "No deploy hook configured." };

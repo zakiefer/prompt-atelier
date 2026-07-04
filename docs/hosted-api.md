@@ -4,7 +4,7 @@ Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labe
 
 The browser also computes deterministic training intelligence locally: corpus provenance, guided step readiness, real build-result learning, Prompt Quality DNA explanations, prompt recipes, benchmark-library coverage, generated-prompt editor guidance, model/local/result comparison, and best-next-action recommendations. These reports do not require a model key, but they become stronger when cached model evaluations, build runs, screenshots, and hosted artifacts are synced through the API.
 
-The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. The all-in runway layer adds hosted backend verification, one-click prompt-to-proof, Dataset Inbox bulk tools, preference training, Claude calibration, brief-builder completion, public demo mode, regression history, security cleanup, and narrative polish. The Learning Machine control plane adds the next operating layer: autonomous proof orchestration, Prompt Generator v3 modes, 60+ golden benchmark challenges, result gallery proof, plain-English learning explanations, public demo polish, hosted CI smoke, and real training export readiness. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
+The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. The all-in runway layer adds hosted backend verification, one-click prompt-to-proof, Dataset Inbox bulk tools, preference training, Claude calibration, brief-builder completion, public demo mode, regression history, security cleanup, and narrative polish. The Learning Machine control plane adds the next operating layer: autonomous proof orchestration, Prompt Generator v3 modes, 60+ golden benchmark challenges, result gallery proof, plain-English learning explanations, public demo polish, hosted CI smoke, and real training export readiness. The latest operator layer adds proof seeding, a preference review deck, generator brief checklist, public proof checklist, regression timeline export, and credential-boundary audit. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
 
 ## Render Blueprint
 
@@ -18,6 +18,7 @@ The Train tab now exposes the same intelligence as a product runway: Product Com
 8. Use Claude readiness without browser secrets to confirm API health, bearer auth, SQLite write visibility, model route behavior, and whether image judging can run through the server-side key.
 9. Run `npm run verify:hosted-api -- --url https://your-api.example.com --token <token>` from a terminal or CI smoke to prove the same hosted-readiness checks outside the browser.
 10. Run `npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hosted-api-deploy` after the Blueprint deploy to write a JSON deployment-readiness report.
+11. Use `.github/workflows/render-api.yml` for repeatable Blueprint validation, optional Render deploy-hook triggering, hosted API verification, proof seeding, regression timeline export, and credential-boundary audit.
 
 ## Required Environment
 
@@ -28,7 +29,7 @@ The Train tab now exposes the same intelligence as a product runway: Product Com
 - `PROMPT_LAB_RATE_LIMIT=240`
 - `PROMPT_LAB_MODEL_PROVIDER=anthropic`
 - `PROMPT_LAB_MODEL_NAME=claude-sonnet-5`
-- `ANTHROPIC_API_KEY=<Claude API key on the API host only>`
+- `ANTHROPIC_API_KEY=<optional model provider key on the API host only>`
 
 The SQLite file is stored on the mounted Render disk so the training state persists across deploys.
 
@@ -55,12 +56,21 @@ These commands are the terminal equivalents of the Train tab's Next Product Laye
 
 ```bash
 npm run deploy:hosted-api -- --out output/hosted-api-deploy
+npm run proof:seed -- --limit 5 --out output/proof-seed-runway
+npm run export:regression -- --out output/regression-timeline
+npm run audit:security-boundary -- --out output/security-boundary
 npm run export:training-v2 -- --out output/training-dataset-v2
 npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-gallery
 npm run proof:batch -- --url http://127.0.0.1:8787 --limit 1 --allow-fail --out output/autonomous-proof-batch
 ```
 
-`deploy:hosted-api` is safe to run without a deploy hook or API URL; it still validates the Blueprint, Dockerfile, package scripts, persistent disk posture, and server-side `ANTHROPIC_API_KEY` requirement. Add `--require-deploy` only in CI or release jobs where a Render deploy hook or reachable API URL is mandatory.
+`deploy:hosted-api` is safe to run without a deploy hook or API URL; it still validates the Blueprint, Dockerfile, package scripts, persistent disk posture, and server-side model-provider placeholder. Add `--require-deploy` only in CI or release jobs where a Render deploy hook or reachable API URL is mandatory.
+
+`proof:seed` creates a queue of proof jobs from hosted collections or the local curated corpus. It can run offline, sync queued jobs to `/api/collections`, or execute immediately against `/api/closed-loop/prove` with `--run` on a trusted worker host.
+
+`export:regression` writes JSON and Markdown timeline artifacts from outcomes, builds, screenshots, pairwise reviews, cached model rows, benchmarks, proof runs, and training runs. It falls back to an empty local timeline when no hosted API is configured.
+
+`audit:security-boundary` scans source, scripts, public corpus files, workflows, and env examples for raw provider keys, browser-exposed provider env vars, and client-side provider-key channels. It redacts any finding and reports only boundary posture; it does not change provider keys or deploy secrets.
 
 `export:training-v2` writes supervised chat rows, chosen/rejected preference pairs, closed-loop repair rows, avoid/failure rows, and a manifest. It reads the hosted API when `--url` is supplied and falls back to the curated `src/prompts` corpus for offline exports.
 
