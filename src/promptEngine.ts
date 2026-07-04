@@ -1073,6 +1073,99 @@ export type BestNextActionReport = {
   checklist: string[];
 };
 
+export type TrueClosedLoopReport = {
+  score: number;
+  readiness: "ready" | "needs-api" | "needs-proof" | "blocked";
+  stages: {
+    id: "generate" | "build" | "screenshot" | "judge" | "rewrite" | "export";
+    label: string;
+    status: "ready" | "active" | "blocked";
+    detail: string;
+    action: string;
+  }[];
+  runPlan: string[];
+  expectedArtifacts: string[];
+  notes: string[];
+};
+
+export type PromptSectionRegenerationReport = {
+  score: number;
+  sections: {
+    id: string;
+    label: string;
+    status: "ready" | "thin";
+    patch: string;
+    recipeHint: string;
+  }[];
+  nextSectionId: string;
+  notes: string[];
+};
+
+export type ImportWizardReport = {
+  score: number;
+  mode: "ready" | "review" | "blocked" | "empty";
+  counts: {
+    total: number;
+    importable: number;
+    gold: number;
+    review: number;
+    quarantine: number;
+    duplicates: number;
+  };
+  steps: { label: string; status: "done" | "active" | "blocked"; detail: string }[];
+  recommendations: string[];
+};
+
+export type SpeedLabelingReport = {
+  score: number;
+  candidates: {
+    id: string;
+    title: string;
+    suggestedStatus: OutcomeRecord["status"] | "not-website";
+    suggestedRating: OutcomeRating;
+    reason: string;
+    confidence: number;
+  }[];
+  notes: string[];
+};
+
+export type BenchmarkBattleReport = {
+  score: number;
+  rows: {
+    fixtureId: string;
+    title: string;
+    winnerTitle: string;
+    winnerScore: number;
+    variants: { title: string; score: number; promptPatch: string }[];
+    nextAction: string;
+  }[];
+  notes: string[];
+};
+
+export type CalibrationDashboardReport = {
+  score: number;
+  alignment: "aligned" | "watch" | "divergent" | "empty";
+  rows: { label: string; score: number; delta: number; detail: string }[];
+  notes: string[];
+};
+
+export type HostedHardeningReport = {
+  score: number;
+  readiness: "production-ready" | "needs-hardening" | "local-only";
+  checklist: { label: string; ready: boolean; fix: string }[];
+  backupPlan: string[];
+  notes: string[];
+};
+
+export type OperatorModeReport = {
+  mode: "beginner" | "expert";
+  score: number;
+  primaryCta: string;
+  visiblePanels: string[];
+  cards: { title: string; detail: string; target: string }[];
+  notes: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -5346,6 +5439,366 @@ export function buildBestNextActionReport({
     target: stepper.score >= 85 ? "Evaluation artifacts" : "Guided workflow",
     detail: stepper.notes[1],
     checklist: stepper.steps.filter((step) => step.status !== "ready").map((step) => `${step.label}: ${step.fix}`).slice(0, 4),
+  };
+}
+
+export function buildTrueClosedLoopReport({
+  benchmarkLibrary,
+  buildLearning,
+  candidateTournament,
+  evaluationArtifacts = [],
+  modelComparison,
+  promptDna,
+  selectedPrompt,
+}: {
+  benchmarkLibrary: BenchmarkLibraryReport;
+  buildLearning: BuildResultLearningReport;
+  candidateTournament: PromptCandidateTournamentReport;
+  evaluationArtifacts?: EvaluationArtifact[];
+  modelComparison: ModelJudgeComparisonReport;
+  promptDna: PromptQualityDnaReport;
+  selectedPrompt?: PromptExample;
+}): TrueClosedLoopReport {
+  const hasPrompt = Boolean(selectedPrompt || candidateTournament.winner?.prompt);
+  const stages: TrueClosedLoopReport["stages"] = [
+    {
+      id: "generate",
+      label: "Generate",
+      status: candidateTournament.winner ? "ready" : "blocked",
+      detail: candidateTournament.winner ? `${candidateTournament.winner.title} is the current generated winner.` : "Generate or select a prompt first.",
+      action: "Run candidate quality loop.",
+    },
+    {
+      id: "build",
+      label: "Build",
+      status: hasPrompt ? "active" : "blocked",
+      detail: hasPrompt ? "A queue job can be created for the winner." : "No prompt is available to build.",
+      action: "Run one-click build proof.",
+    },
+    {
+      id: "screenshot",
+      label: "Screenshot",
+      status: buildLearning.rows.find((row) => row.label === "Screenshot QA")?.state === "ready" ? "ready" : "active",
+      detail: buildLearning.rows.find((row) => row.label === "Screenshot QA")?.detail || "Capture desktop/mobile screenshots.",
+      action: "Capture visual proof and import queue-result.json.",
+    },
+    {
+      id: "judge",
+      label: "Judge",
+      status: modelComparison.alignment === "empty" ? "active" : modelComparison.alignment === "divergent" ? "blocked" : "ready",
+      detail: modelComparison.notes[0],
+      action: "Run cached model evaluation or screenshot judge.",
+    },
+    {
+      id: "rewrite",
+      label: "Rewrite",
+      status: promptDna.score >= 75 ? "ready" : "active",
+      detail: promptDna.summary[0],
+      action: "Regenerate thin prompt sections.",
+    },
+    {
+      id: "export",
+      label: "Export",
+      status: evaluationArtifacts.length ? "ready" : "active",
+      detail: evaluationArtifacts.length ? `${evaluationArtifacts.length} evaluation artifact(s) exist.` : "No evaluation artifact exists yet.",
+      action: "Create evaluation artifact and export training pack.",
+    },
+  ];
+  const blocked = stages.filter((stage) => stage.status === "blocked").length;
+  const ready = stages.filter((stage) => stage.status === "ready").length;
+  const score = Math.max(0, Math.min(100, Math.round((ready / stages.length) * 100 - blocked * 8 + Math.min(12, benchmarkLibrary.score / 10))));
+  const readiness: TrueClosedLoopReport["readiness"] =
+    blocked ? "blocked" : buildLearning.status !== "ready-to-learn" ? "needs-proof" : modelComparison.alignment === "empty" ? "needs-api" : "ready";
+  return {
+    score,
+    readiness,
+    stages,
+    runPlan: [
+      "Generate or select the best current prompt candidate.",
+      "Create a build queue job and run the API proof worker when available.",
+      "Import desktop/mobile screenshot proof.",
+      "Judge the result with server-side Claude when configured or deterministic fallback otherwise.",
+      "Rewrite only thin sections and save the winning prompt.",
+      "Create an evaluation artifact and export the training pack.",
+    ],
+    expectedArtifacts: ["build run", "desktop screenshot", "mobile screenshot", "model/cache row", "rewritten winner", "evaluation artifact"],
+    notes: [
+      `Closed-loop readiness is ${readiness}.`,
+      `${ready}/${stages.length} stage(s) are ready.`,
+      benchmarkLibrary.score < 80 ? "Benchmark coverage is still limiting confidence." : "Benchmark coverage is strong enough for loop promotion.",
+    ],
+  };
+}
+
+export function buildPromptSectionRegenerationReport({
+  editorGuidance,
+  prompt,
+  recipeDistiller,
+}: {
+  editorGuidance: PromptEditorGuidanceReport;
+  prompt?: PromptExample;
+  recipeDistiller: PromptRecipeDistillerReport;
+}): PromptSectionRegenerationReport {
+  const recipe = recipeDistiller.recipes[0];
+  const sourceTitle = prompt?.title || "selected prompt";
+  const sections = editorGuidance.sections.map((section) => {
+    const recipeHint = recipe?.ingredients.find((ingredient) => ingredient.toLowerCase().includes(section.label.toLowerCase().split(/\s+/)[0])) || recipe?.ingredients[0] || "Use exact, build-ready language from gold recipes.";
+    return {
+      id: section.id,
+      label: section.label,
+      status: section.status,
+      recipeHint,
+      patch: [
+        `## Regenerate ${section.label} for ${sourceTitle}`,
+        section.rewriteHint,
+        `Recipe hint: ${recipeHint}`,
+        "Keep the rest of the prompt unchanged. Return only this replacement section with concrete implementation details.",
+      ].join("\n"),
+    };
+  });
+  const nextSection = sections.find((section) => section.status === "thin") ?? sections[0];
+  return {
+    score: editorGuidance.score,
+    sections,
+    nextSectionId: nextSection?.id || "visual",
+    notes: [
+      prompt ? `Section regeneration is scoped to ${prompt.title}.` : "Select a prompt before regenerating sections.",
+      "Use section patches to avoid replacing an otherwise strong prompt.",
+    ],
+  };
+}
+
+export function buildImportWizardReport({
+  audit,
+  contamination,
+}: {
+  audit: PromptImportAudit;
+  contamination?: { status?: string; warnings?: string[]; actions?: string[] };
+}): ImportWizardReport {
+  const blockedByContamination = contamination?.status === "block";
+  const mode: ImportWizardReport["mode"] = !audit.total ? "empty" : blockedByContamination || audit.importable === 0 ? "blocked" : audit.reviewCandidates || audit.nearDuplicates ? "review" : "ready";
+  const score = audit.total ? Math.max(0, Math.min(100, audit.averageScore + audit.goldCandidates * 4 - audit.reviewCandidates * 5 - audit.quarantineCandidates * 10 - audit.exactDuplicates * 12 - (blockedByContamination ? 40 : 0))) : 0;
+  return {
+    score,
+    mode,
+    counts: {
+      total: audit.total,
+      importable: audit.importable,
+      gold: audit.goldCandidates,
+      review: audit.reviewCandidates,
+      quarantine: audit.quarantineCandidates,
+      duplicates: audit.exactDuplicates + audit.nearDuplicates,
+    },
+    steps: [
+      { label: "Parse", status: audit.total ? "done" : "active", detail: `${audit.total} candidate(s) detected.` },
+      { label: "Dedupe", status: audit.exactDuplicates ? "blocked" : audit.nearDuplicates ? "active" : audit.total ? "done" : "active", detail: `${audit.exactDuplicates} exact / ${audit.nearDuplicates} near duplicate(s).` },
+      { label: "Safety", status: blockedByContamination || audit.quarantineCandidates ? "blocked" : audit.reviewCandidates ? "active" : audit.total ? "done" : "active", detail: contamination?.warnings?.[0] || `${audit.quarantineCandidates} quarantine candidate(s).` },
+      { label: "Gold preview", status: audit.goldCandidates ? "done" : audit.total ? "active" : "blocked", detail: `${audit.goldCandidates} gold-worthy candidate(s).` },
+      { label: "Import", status: audit.importable ? "active" : "blocked", detail: `${audit.importable} candidate(s) safe to import.` },
+    ],
+    recommendations: [
+      ...audit.recommendations,
+      ...(contamination?.actions ?? []),
+      mode === "ready" ? "Use Add curated to import without noisy rows." : "Resolve blocked/review rows before importing into the learning corpus.",
+    ].slice(0, 8),
+  };
+}
+
+export function buildSpeedLabelingReport({
+  buildRuns = [],
+  examples,
+  outcomes = [],
+  screenshots = [],
+}: {
+  buildRuns?: BuildRunRecord[];
+  examples: PromptExample[];
+  outcomes?: OutcomeRecord[];
+  screenshots?: ScreenshotRecord[];
+}): SpeedLabelingReport {
+  const outcomeById = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const buildByPrompt = new Map(buildRuns.map((run) => [run.promptId, run]));
+  const screenshotCountByPrompt = screenshots.reduce((map, screenshot) => map.set(screenshot.promptId, (map.get(screenshot.promptId) || 0) + 1), new Map<string, number>());
+  const candidates = examples
+    .filter((example) => !outcomeById.has(example.id))
+    .map((example) => {
+      const score = evaluatePrompt(example.text).score;
+      const analysis = analyzePrompt(example.text);
+      const build = buildByPrompt.get(example.id);
+      const shotCount = screenshotCountByPrompt.get(example.id) || 0;
+      const notWebsite = !/(hero|landing|website|page|section|navbar|layout|responsive|tailwind|react|vite|video|font|cta)/i.test(example.text);
+      const suggestedStatus: SpeedLabelingReport["candidates"][number]["suggestedStatus"] =
+        notWebsite ? "not-website" : build?.status === "failed" || score < 45 ? "avoid" : score >= 82 && (build?.status === "passed" || shotCount) ? "gold" : score >= 68 ? "good" : "experimental";
+      const suggestedRating: OutcomeRating = suggestedStatus === "gold" ? "great" : suggestedStatus === "avoid" || suggestedStatus === "not-website" ? "bad" : suggestedStatus === "good" ? "okay" : "unrated";
+      return {
+        id: example.id,
+        title: example.title,
+        suggestedStatus,
+        suggestedRating,
+        reason: [
+          `${score} prompt score`,
+          analysis.archetypes[0]?.label || "unclustered",
+          build ? `build ${build.status}` : "no build proof",
+          shotCount ? `${shotCount} screenshot(s)` : "no screenshots",
+        ].join(" / "),
+        confidence: Math.max(20, Math.min(98, score + (build?.status === "passed" ? 8 : 0) + (shotCount ? 6 : 0) - (notWebsite ? 50 : 0))),
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence)
+    .slice(0, 12);
+  const score = Math.round(Math.min(100, outcomes.length * 2 + candidates.filter((candidate) => candidate.confidence >= 70).length * 8));
+  return {
+    score,
+    candidates,
+    notes: [
+      `${candidates.length} unlabeled candidate(s) are ready for speed review.`,
+      "Fast labels are the highest-leverage supervision signal for future prompt generation.",
+    ],
+  };
+}
+
+export function buildBenchmarkBattleReport({
+  examples,
+  fixtures = BENCHMARK_FIXTURES,
+  promptMemory,
+}: {
+  examples: PromptExample[];
+  fixtures?: typeof BENCHMARK_FIXTURES;
+  promptMemory?: PromptMemoryExport;
+}): BenchmarkBattleReport {
+  const profile = analyzeCorpus(examples);
+  const rows = fixtures.slice(0, 8).map((fixture) => {
+    const base = [
+      `Build a ${fixture.title} for a ${fixture.siteType}.`,
+      `Goal: ${fixture.goal}.`,
+      `Required signals: ${fixture.requiredSignals.join(", ")}.`,
+      "Use exact stack, assets, responsive states, accessibility, and verification gates.",
+    ].join("\n");
+    const variants = [
+      { title: "Corpus recipe", promptPatch: improvePromptWithLearning(base, profile, [], undefined) },
+      { title: "Proof-heavy", promptPatch: `${base}\n\nAdd desktop/mobile Playwright screenshots, console checks, media readiness, and text-overflow proof.` },
+      { title: "Visual-specific", promptPatch: `${base}\n\nUse concrete typography, color tokens, layout dimensions, motion timing, and no placeholder assets.` },
+    ].map((variant) => ({
+      ...variant,
+      score: Math.min(100, evaluatePrompt(variant.promptPatch).score + (promptMemory?.sections.length ? 4 : 0)),
+    })).sort((a, b) => b.score - a.score);
+    const winner = variants[0];
+    return {
+      fixtureId: fixture.id,
+      title: fixture.title,
+      winnerTitle: winner.title,
+      winnerScore: winner.score,
+      variants,
+      nextAction: winner.score >= 80 ? "Queue this winner for real build proof." : `Patch missing traits: ${fixture.requiredSignals.join(", ")}.`,
+    };
+  });
+  const score = Math.round(rows.reduce((sum, row) => sum + row.winnerScore, 0) / Math.max(1, rows.length));
+  return {
+    score,
+    rows,
+    notes: [
+      `Benchmark battle average winner score is ${score}.`,
+      "Each fixture gets corpus, proof-heavy, and visual-specific contenders before build time is spent.",
+    ],
+  };
+}
+
+export function buildCalibrationDashboardReport({
+  evaluationHistory,
+  modelComparison,
+  modelCache,
+  resultScore,
+}: {
+  evaluationHistory: EvaluationHistoryReport;
+  modelComparison: ModelJudgeComparisonReport;
+  modelCache: ModelEvaluationCacheReport;
+  resultScore: ResultScore;
+}): CalibrationDashboardReport {
+  const latestCache = modelCache.items[0];
+  const rows = [
+    { label: "Model vs local", score: latestCache?.score ?? 0, delta: latestCache?.delta ?? 0, detail: latestCache ? `${latestCache.provider} / ${latestCache.agreement}` : "No cached model row yet." },
+    { label: "Model vs build", score: latestCache?.score ?? 0, delta: latestCache ? latestCache.score - resultScore.score : 0, detail: resultScore.recommendations[0] || "No build result yet." },
+    { label: "History quality", score: evaluationHistory.score, delta: evaluationHistory.trends.averageModelScore - evaluationHistory.trends.averageBuildScore, detail: `${evaluationHistory.items.length} historical evidence rows.` },
+    { label: "Comparison spread", score: modelComparison.score, delta: 100 - modelComparison.score, detail: modelComparison.notes[0] },
+  ];
+  const avgDelta = Math.round(rows.reduce((sum, row) => sum + Math.abs(row.delta), 0) / Math.max(1, rows.length));
+  const alignment: CalibrationDashboardReport["alignment"] = !latestCache ? "empty" : avgDelta <= 8 ? "aligned" : avgDelta <= 20 ? "watch" : "divergent";
+  return {
+    score: Math.max(0, Math.min(100, 100 - avgDelta)),
+    alignment,
+    rows,
+    notes: [
+      `Average calibration delta is ${avgDelta}.`,
+      alignment === "divergent" ? "Review score weights and labels before automatic promotion." : "Calibration is usable for guided recommendations.",
+    ],
+  };
+}
+
+export function buildHostedHardeningReport({
+  eventCount = 0,
+  hasBackups = false,
+  hostedSyncScore = 0,
+  safeToTrain,
+}: {
+  eventCount?: number;
+  hasBackups?: boolean;
+  hostedSyncScore?: number;
+  safeToTrain: SafeToTrainReport;
+}): HostedHardeningReport {
+  const checklist = [
+    ...safeToTrain.checks.map((check) => ({ label: check.label, ready: check.ready, fix: check.fix })),
+    { label: "Restore point exists", ready: hasBackups, fix: "Create a backup before bulk imports or model calibration." },
+    { label: "API event history visible", ready: eventCount > 0, fix: "Refresh API events after connecting the hosted brain." },
+    { label: "Hosted sync score healthy", ready: hostedSyncScore >= 75, fix: "Push/pull collections through the API and verify auth/CORS." },
+  ];
+  const score = Math.round((checklist.filter((item) => item.ready).length / checklist.length) * 100);
+  return {
+    score,
+    readiness: score >= 85 ? "production-ready" : score >= 45 ? "needs-hardening" : "local-only",
+    checklist,
+    backupPlan: [
+      "Create a browser restore point before every large import.",
+      "Push collections to the hosted API after labels, screenshots, or training runs change.",
+      "Export the full training pack after Golden Dataset v1 changes.",
+      "Keep model keys only in the API host environment.",
+    ],
+    notes: [
+      `Hosted hardening score is ${score}.`,
+      safeToTrain.safe ? "Safe-to-train gate is passing." : "Safe-to-train gate still has blockers.",
+    ],
+  };
+}
+
+export function buildOperatorModeReport({
+  bestNextAction,
+  buildLearning,
+  importWizard,
+  mode,
+  stepper,
+}: {
+  bestNextAction: BestNextActionReport;
+  buildLearning: BuildResultLearningReport;
+  importWizard: ImportWizardReport;
+  mode?: string;
+  stepper: GuidedTrainingStepperReport;
+}): OperatorModeReport {
+  const beginner = mode !== "trained";
+  return {
+    mode: beginner ? "beginner" : "expert",
+    score: Math.round((stepper.score + importWizard.score + buildLearning.score) / 3),
+    primaryCta: beginner ? "Run the guided loop" : "Open expert controls",
+    visiblePanels: beginner
+      ? ["Best next action", "Import wizard", "Closed-loop runway", "Speed labeling", "Export"]
+      : ["Best next action", "Stepper", "Calibration", "Benchmark battles", "Hosted hardening", "Artifacts"],
+    cards: [
+      { title: "Ingest", detail: importWizard.mode === "empty" ? "Paste or upload prompts to begin." : `${importWizard.counts.importable} importable candidate(s).`, target: "workspace" },
+      { title: "Train", detail: `Current focus: ${stepper.currentStep}.`, target: "workflow" },
+      { title: "Prove", detail: buildLearning.status === "ready-to-learn" ? "Proof can feed learning." : "Add build and screenshot proof.", target: "queue" },
+      { title: "Next", detail: bestNextAction.title, target: bestNextAction.target },
+    ],
+    notes: [
+      beginner ? "Beginner mode keeps the main path short: import, label, prove, export." : "Expert mode exposes calibration, hosted hardening, and benchmark internals.",
+      `Best next action: ${bestNextAction.title}.`,
+    ],
   };
 }
 

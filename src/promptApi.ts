@@ -172,6 +172,13 @@ export function evaluateWithModel(payload: { prompt: string; memory?: string; co
   });
 }
 
+export function runClosedLoopViaApi(payload: Record<string, unknown>) {
+  return requestJson<Record<string, unknown>>("/api/closed-loop/run", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createTrainingRun(payload: Record<string, unknown>) {
   return requestJson<Record<string, unknown>>("/api/training/run", {
     method: "POST",

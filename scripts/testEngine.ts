@@ -10,7 +10,9 @@ import {
   buildBestNextActionReport,
   buildCodexBuildPack,
   buildBuildResultLearningReport,
+  buildBenchmarkBattleReport,
   buildCorpusProvenanceFirewallReport,
+  buildCalibrationDashboardReport,
   buildCorpusIntelligenceReport,
   buildEvaluationArtifact,
   buildEvaluationHistoryReport,
@@ -20,6 +22,8 @@ import {
   buildArchetypePromptPacks,
   buildGuidedPromptWizardReport,
   buildHostedSyncReport,
+  buildHostedHardeningReport,
+  buildImportWizardReport,
   buildLearnedGeneratorVariants,
   buildLeakageGuardReport,
   buildPatternDashboard,
@@ -38,8 +42,12 @@ import {
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
   buildModelJudgeComparisonReport,
+  buildOperatorModeReport,
   buildTrainingRunSummary,
+  buildTrueClosedLoopReport,
   buildVisualRegressionReport,
+  buildPromptSectionRegenerationReport,
+  buildSpeedLabelingReport,
   answerLearnerQuestion,
   comparePromptImprovement,
   createDatasetVersionSnapshot,
@@ -568,4 +576,73 @@ const bestNextAction = buildBestNextActionReport({
 assert.ok(bestNextAction.title.length > 0, "Best next action should pick a clear recommendation.");
 assert.ok(bestNextAction.checklist.length >= 0, "Best next action should expose a checklist array.");
 
-console.log(JSON.stringify({ ok: true, assertions: 110, score: score.score, snapshot: snapshot.label }, null, 2));
+const promptMemory = {
+  markdown: "# Memory\n- exact assets win",
+  json: "{}",
+  sections: [{ title: "Rules", items: ["Exact assets win", "Require mobile proof"] }],
+};
+
+const trueClosedLoop = buildTrueClosedLoopReport({
+  benchmarkLibrary,
+  buildLearning,
+  candidateTournament: candidateReport,
+  evaluationArtifacts: [artifact],
+  modelComparison,
+  promptDna: promptQualityDna,
+  selectedPrompt: examples[0],
+});
+assert.equal(trueClosedLoop.stages.length, 6, "True closed-loop report should expose all six stages.");
+assert.ok(trueClosedLoop.runPlan.some((item) => /screenshot/i.test(item)), "True closed-loop report should include screenshot proof.");
+
+const sectionRegeneration = buildPromptSectionRegenerationReport({
+  editorGuidance,
+  prompt: examples[0],
+  recipeDistiller,
+});
+assert.ok(sectionRegeneration.sections.length >= 5, "Section regeneration should cover editable prompt sections.");
+assert.ok(sectionRegeneration.sections[0].patch.includes("Return only this replacement section"), "Section regeneration patches should be scoped.");
+
+const importWizard = buildImportWizardReport({
+  audit: importAudit,
+  contamination: { status: "clean", warnings: [], actions: [] },
+});
+assert.ok(importWizard.steps.length >= 5, "Import wizard should expose the full ingest path.");
+assert.ok(importWizard.counts.total >= importAudit.total, "Import wizard should preserve audit counts.");
+
+const speedLabeling = buildSpeedLabelingReport({ buildRuns, examples, outcomes, screenshots });
+assert.ok(speedLabeling.candidates.length > 0, "Speed labeling should surface unlabeled candidates.");
+assert.ok(speedLabeling.candidates.every((candidate) => candidate.reason), "Speed labeling candidates should explain the suggested label.");
+
+const benchmarkBattle = buildBenchmarkBattleReport({ examples, promptMemory });
+assert.ok(benchmarkBattle.rows.length > 0, "Benchmark battles should create fixture rows.");
+assert.ok(benchmarkBattle.rows.every((row) => row.variants.length === 3), "Each benchmark battle should compare three contenders.");
+
+const calibrationDashboard = buildCalibrationDashboardReport({
+  evaluationHistory,
+  modelCache: cacheReport,
+  modelComparison,
+  resultScore: resultArtifact,
+});
+assert.ok(calibrationDashboard.rows.length >= 4, "Calibration dashboard should compare model, history, and build evidence.");
+assert.notEqual(calibrationDashboard.alignment, "empty", "Calibration dashboard should use cached model data.");
+
+const hostedHardening = buildHostedHardeningReport({
+  eventCount: 1,
+  hasBackups: true,
+  hostedSyncScore: hostedSync.score,
+  safeToTrain,
+});
+assert.ok(hostedHardening.checklist.length > safeToTrain.checks.length, "Hosted hardening should extend safe-to-train checks.");
+assert.ok(hostedHardening.backupPlan.some((item) => /restore|backup/i.test(item)), "Hosted hardening should include backup guidance.");
+
+const operatorMode = buildOperatorModeReport({
+  bestNextAction,
+  buildLearning,
+  importWizard,
+  mode: "upload",
+  stepper,
+});
+assert.equal(operatorMode.mode, "beginner", "Operator mode should simplify non-trained workflows.");
+assert.ok(operatorMode.cards.length >= 4, "Operator mode should expose workflow cards.");
+
+console.log(JSON.stringify({ ok: true, assertions: 126, score: score.score, snapshot: snapshot.label }, null, 2));

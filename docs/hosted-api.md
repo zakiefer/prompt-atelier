@@ -1,6 +1,6 @@
 # Hosted Prompt Atelier API
 
-Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, closed-loop trainer results, benchmark runs, Claude health checks, prompt comparisons, screenshot-generated prompts, workspace packs, proof-loop runs, screenshot judge results, mutation tournaments, guided training runs, cached model evaluations, corpus intelligence runs, benchmark v2 runs, evaluation artifacts, hosted setup checks, and backups across browsers.
+Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, true closed-loop judge/rewrite results, benchmark runs, Claude health checks, prompt comparisons, screenshot-generated prompts, workspace packs, proof-loop runs, screenshot judge results, mutation tournaments, guided training runs, cached model evaluations, corpus intelligence runs, benchmark v2 runs, evaluation artifacts, hosted setup checks, and backups across browsers.
 
 The browser also computes deterministic training intelligence locally: corpus provenance, guided step readiness, real build-result learning, Prompt Quality DNA explanations, prompt recipes, benchmark-library coverage, generated-prompt editor guidance, model/local/result comparison, and best-next-action recommendations. These reports do not require a model key, but they become stronger when cached model evaluations, build runs, screenshots, and hosted artifacts are synced through the API.
 
@@ -37,6 +37,8 @@ If the key is absent, the API falls back to the local evaluator so the app remai
 Every model response is normalized to `schemaVersion: prompt-atelier.model-evaluation.v1` with `score`, `readiness`, `findings`, `recommendations`, optional prompt outputs, and a `redactions` array. Prompt text, memory, context, collection syncs, and API event details are redacted server-side before they are stored or logged.
 
 The Claude/local/result comparison panel reads cached model rows, local DNA scoring, and imported build outcomes together. Keep the Claude key server-side only: the browser should never receive `ANTHROPIC_API_KEY`, and the deterministic fallback is used whenever the hosted route cannot score safely.
+
+The true closed-loop route is `POST /api/closed-loop/run`. It redacts the prompt payload, scores the original prompt, requests or creates a rewritten prompt, scores the rewrite, persists a `closedLoopRuns` row, writes a `closed-loop-run` API event, and returns `{ run, original, improved, winnerPrompt, redactions, collections.closedLoopRuns }`. When `ANTHROPIC_API_KEY` is present on the API host, the route uses Claude through the same normalized schema as `/api/model/evaluate`; when it is absent, it returns a deterministic local fallback without exposing browser secrets.
 
 ## Training Artifacts
 
@@ -88,6 +90,7 @@ The top of the Train tab can run without a model key, then enrich through API ro
 - `POST /api/training/run`: appends a guided training run and returns `{ trainingRun, collections.trainingRuns }`.
 - `GET /api/training/runs`: returns stored guided training runs.
 - `POST /api/model/evaluate-cached`: redacts prompt/model payloads, checks the cache, and appends a schema-versioned cache row when needed.
+- `POST /api/closed-loop/run`: performs server-side original-vs-rewrite judging and appends a closed-loop winner row.
 - `POST /api/corpus/analyze`: creates a deterministic corpus intelligence run from supplied examples.
 - `POST /api/benchmark/v2`: creates a deterministic benchmark v2 run from supplied examples.
 - `POST /api/artifact/create`: creates a markdown/JSON evaluation artifact for the selected prompt.
