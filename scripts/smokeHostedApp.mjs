@@ -25,8 +25,16 @@ if (shouldOpenTrain) {
   targetUrl.searchParams.set("tab", "train");
 }
 const expectedHeadings = [
+  "Next product sprint",
   "Prompt Atelier Product OS",
   "Accessibility and QA scoring",
+  "One guided training run",
+  "Corpus cleanup mode",
+  "Prompt battle autopilot",
+  "Prompt template compiler",
+  "Real result feedback loop",
+  "Public demo simplification",
+  "No-key local mode polish",
   "All-in product runway",
   "Learning machine control plane",
   "Next product layer",

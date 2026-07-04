@@ -38,6 +38,9 @@ import {
   buildBuildFeedbackReport,
   buildArchetypePromptPacks,
   buildFailureMemory,
+  buildCorpusCleaningReport,
+  buildCorpusCleanupModeReport,
+  buildGuidedProductRunReport,
   buildGoldenDatasetV1LockReport,
   buildGoldenBenchmarkHarnessReport,
   buildGeneratorBriefChecklistReport,
@@ -68,13 +71,18 @@ import {
   buildPreferenceTrainingReport,
   buildPromptMemoryDiffReport,
   buildModelEvaluationCacheReport,
+  buildLocalModePolishReport,
+  buildPromptBattle,
+  buildPromptBattleAutopilotReport,
   buildPromptProductOsReport,
+  buildProductSprintReport,
   buildPromptCandidateTournament,
   buildPromptCritiqueRepairReport,
   buildPromptCoachReport,
   buildPromptEditorGuidance,
   buildPromptGeneratorV2Report,
   buildPromptToProofWorkflowReport,
+  buildPromptTemplates,
   buildProductCommandCenterReport,
   buildPromptQualityDnaReport,
   buildPromptRecipeDistillerReport,
@@ -83,12 +91,14 @@ import {
   buildQueueProgressReport,
   buildQualityGateReport,
   buildResultQualityDashboardReport,
+  buildResultFeedbackLoopReport,
   buildResultGalleryHydrationProductReport,
   buildRegressionDashboardV2ProductReport,
   buildRegressionHistoryProductReport,
   buildRegressionTimelineReport,
   buildDatasetReviewQueueReport,
   buildReusableMemoryPack,
+  buildPublicDemoSimplificationReport,
   buildPublicDemoPolishReport,
   buildPublicProofChecklistReport,
   buildSecurityBoundaryReport,
@@ -105,6 +115,7 @@ import {
   buildSimpleModeReport,
   buildTrainingExportReadinessReport,
   buildTrainingRunSummary,
+  buildTemplateCompilerReport,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
   buildVisualRegressionReport,
@@ -268,6 +279,7 @@ assert.equal(snapshot.counts.buildRuns, buildRuns.length, "Dataset snapshot shou
 
 const profile = analyzeCorpus(examples);
 const clusters = analyzeArchetypeClusters(examples);
+const templates = buildPromptTemplates(profile);
 const presets = buildGeneratorPresets(profile, clusters, outcomes);
 assert.ok(presets.length > 0, "Generator presets should be created from corpus signals.");
 assert.ok(presets[0].prompt.includes("React"), "Generator preset prompt should include implementation stack guidance.");
@@ -647,6 +659,9 @@ const promptMemory = {
   json: "{}",
   sections: [{ title: "Rules", items: ["Exact assets win", "Require mobile proof"] }],
 };
+const promptBattle = buildPromptBattle(exactPrompt, profile, outcomes, resultArtifact);
+assert.ok(promptBattle.variants.length >= 3, "Prompt battle should produce multiple variants.");
+assert.ok(promptBattle.winner.prompt.length > 100, "Prompt battle should choose a substantial winner.");
 
 const trueClosedLoop = buildTrueClosedLoopReport({
   benchmarkLibrary,
@@ -1164,8 +1179,16 @@ assert.ok(publicDemoPolish.checks.some((check) => check.label === "Result galler
 
 const hostedCiSmoke = buildHostedCiSmokeReport({
   expectedHeadings: [
+    "Next product sprint",
     "Prompt Atelier Product OS",
     "Accessibility and QA scoring",
+    "One guided training run",
+    "Corpus cleanup mode",
+    "Prompt battle autopilot",
+    "Prompt template compiler",
+    "Real result feedback loop",
+    "Public demo simplification",
+    "No-key local mode polish",
     "All-in product runway",
     "Learning machine control plane",
     "Next product layer",
@@ -1283,6 +1306,90 @@ assert.equal(productOs.items.length, 9, "Product OS should track all nine reques
 assert.ok(productOs.summary.some((item) => /command center, dataset governance, generator quality/i.test(item)), "Product OS should summarize the complete product surface.");
 assert.ok(productOs.nextAction.length > 0, "Product OS should choose the next product action.");
 
+const resultFeedbackLoop = buildResultFeedbackLoopReport({
+  accessibilityQa: accessibilityQaScore,
+  buildLearning,
+  proofStorage: proofArtifacts,
+  resultGallery: resultGalleryHydrationProduct,
+  resultQuality: resultQualityDashboard,
+  screenshotQa: screenshotSet,
+  visualProof: visualProofComparison,
+});
+assert.equal(resultFeedbackLoop.rows.length, 7, "Result feedback loop should blend build, screenshot, gallery, accessibility, and artifact evidence.");
+assert.ok(resultFeedbackLoop.feedbackPatch.includes("RESULT FEEDBACK LOOP PATCH"), "Result feedback loop should expose a reusable patch.");
+
+const guidedProductRun = buildGuidedProductRunReport({
+  commandCenter: productCommandCenter,
+  datasetInbox,
+  generator: generatorV3,
+  proof: proofRunController,
+  resultFeedback: resultFeedbackLoop,
+  trainingExports: trainingExportReadiness,
+  trainingSummary,
+});
+assert.equal(guidedProductRun.steps.length, 6, "Guided product run should cover import, clean, battle, proof, learn, and export.");
+assert.ok(guidedProductRun.primaryAction.length > 0, "Guided product run should pick a primary action.");
+
+const corpusCleanupMode = buildCorpusCleanupModeReport({
+  cleaning: buildCorpusCleaningReport(examples, outcomes),
+  datasetInbox,
+  leakage: leakageGuard,
+  sourceSafety,
+});
+assert.equal(corpusCleanupMode.rows.length, 7, "Corpus cleanup mode should cover leakage, sources, duplicates, weak examples, balance, and inbox.");
+assert.ok(["clean", "review", "blocked"].includes(corpusCleanupMode.status), "Corpus cleanup mode should classify cleanup readiness.");
+
+const promptBattleAutopilot = buildPromptBattleAutopilotReport({
+  accessibilityQa: accessibilityQaScore,
+  candidateTournament: candidateReport,
+  generator: generatorV3,
+  promptBattle,
+  resultFeedback: resultFeedbackLoop,
+});
+assert.ok(promptBattleAutopilot.variants.length >= 3, "Battle autopilot should rank generated variants.");
+assert.ok(promptBattleAutopilot.decision.includes(promptBattleAutopilot.winnerTitle), "Battle autopilot should explain the selected winner.");
+
+const templateCompiler = buildTemplateCompilerReport({
+  accessibilityQa: accessibilityQaScore,
+  generator: generatorV3,
+  qualityGate: qualityRegressionGate,
+  templates,
+});
+assert.equal(templateCompiler.slots.length, 6, "Template compiler should expose implementation slots.");
+assert.ok(templateCompiler.compilerPrompt.includes("WEBSITE PROMPT TEMPLATE COMPILER"), "Template compiler should expose a reusable compiler prompt.");
+
+const localModePolish = buildLocalModePolishReport({
+  apiOnline: true,
+  hasServerModelRoute: true,
+  hosted: hostedReadinessProduct,
+  localFallbackActive: false,
+  providerRouter,
+});
+assert.ok(localModePolish.notes.some((note) => /without changing or rotating provider keys/i.test(note)), "Local mode polish should explicitly avoid key changes.");
+assert.ok(["ready", "partial", "needs-route"].includes(localModePolish.status), "Local mode polish should classify fallback readiness.");
+
+const publicDemoSimplification = buildPublicDemoSimplificationReport({
+  hostedCi: hostedCiSmoke,
+  localMode: localModePolish,
+  productOs,
+  publicDemo: publicDemoPolish,
+  resultFeedback: resultFeedbackLoop,
+});
+assert.equal(publicDemoSimplification.checks.length, 5, "Public demo simplification should focus the public product path.");
+assert.ok(publicDemoSimplification.publicStory.includes("Paste a great website prompt"), "Public demo simplification should describe the public value story.");
+
+const productSprint = buildProductSprintReport({
+  battleAutopilot: promptBattleAutopilot,
+  cleanupMode: corpusCleanupMode,
+  guidedRun: guidedProductRun,
+  localMode: localModePolish,
+  publicDemo: publicDemoSimplification,
+  resultFeedback: resultFeedbackLoop,
+  templateCompiler,
+});
+assert.equal(productSprint.items.length, 7, "Product sprint should track all seven next upgrades.");
+assert.ok(productSprint.summary.some((item) => /guided run, cleanup, battle, templates/i.test(item)), "Product sprint should summarize the complete next product batch.");
+
 const proofSeedingRunway = buildProofSeedingRunwayReport({
   exampleCount: examples.length,
   hostedWorker: hostedWorkerOps,
@@ -1332,4 +1439,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 279, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 297, score: score.score, snapshot: snapshot.label }, null, 2));

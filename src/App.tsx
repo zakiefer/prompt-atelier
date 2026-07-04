@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties, type Dispatch, type DragEvent, type ReactNode, type SetStateAction } from "react";
 import {
+  Activity,
   Archive,
   AlertTriangle,
   BarChart3,
@@ -8,18 +9,23 @@ import {
   Clipboard,
   Copy,
   Download,
+  FileJson,
   FileText,
   Gauge,
   Hammer,
+  Laptop,
   Lightbulb,
   ListChecks,
+  MonitorSmartphone,
   PackageOpen,
   Plus,
   Search,
   Save,
+  ShieldCheck,
   Sparkles,
   Shuffle,
   SlidersHorizontal,
+  Swords,
   Tags,
   Trophy,
   Trash2,
@@ -53,6 +59,7 @@ import {
   buildClaudeCalibrationSetReport,
   buildClosedLoopRunDetailReport,
   buildCorpusCleaningReport,
+  buildCorpusCleanupModeReport,
   buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
   buildDatasetBulkToolsReport,
@@ -64,14 +71,18 @@ import {
   buildExportPresets,
   buildFailureMemory,
   buildFailureMemoryAutopilotReport,
+  buildGuidedProductRunReport,
   buildModelEvaluationCacheReport,
   buildLocalEmbeddingIndex,
+  buildLocalModePolishReport,
   buildOutcomeSummary,
   buildPromptPacks,
   buildPromptLineage,
   buildPromptMemoryExport,
   buildPromptBattle,
+  buildPromptBattleAutopilotReport,
   buildPromptProductOsReport,
+  buildProductSprintReport,
   buildPromptCandidateTournament,
   buildPromptEditorGuidance,
   buildPromptQualityDnaReport,
@@ -114,7 +125,9 @@ import {
   buildQueueProgressReport,
   buildQualityGateReport,
   buildResultGallery,
+  buildResultFeedbackLoopReport,
   buildReusableMemoryPack,
+  buildPublicDemoSimplificationReport,
   buildPublicDemoPolishReport,
   buildPublicProofChecklistReport,
   buildPreferenceDatasetV2ProductReport,
@@ -143,6 +156,7 @@ import {
   buildSpeedLabelingReport,
   buildTrainingRunSummary,
   buildTrainingExportReadinessReport,
+  buildTemplateCompilerReport,
   buildResultGalleryHydrationProductReport,
   buildRegressionDashboardV2ProductReport,
   buildAccessibilityQaScoreReport,
@@ -222,6 +236,7 @@ import {
   type ComposeOptions,
   type CorpusHealth,
   type CorpusCleaningReport,
+  type CorpusCleanupModeReport,
   type CorpusProvenanceFirewallReport,
   type CorpusIntelligenceReport,
   type CorpusCurationReport,
@@ -252,12 +267,14 @@ import {
   type FailureMemoryAutopilotReport,
   type Feature,
   type GoldenBenchmarkHarnessReport,
+  type GuidedProductRunReport,
   type GeneratorBriefChecklistReport,
   type GeneratorV3Report,
   type HostedCiSmokeReport,
   type InterviewBrief,
   type ImportWizardReport,
   type LocalEmbeddingIndex,
+  type LocalModePolishReport,
   type LearnerAnswerReport,
   type LearnedGeneratorInput,
   type LearnedGeneratorVariant,
@@ -289,6 +306,7 @@ import {
   type PromptPack,
   type PromptAnalysis,
   type PromptBattle,
+  type PromptBattleAutopilotReport,
   type PromptCandidateTournamentReport,
   type PromptEditorGuidanceReport,
   type PromptQualityDnaReport,
@@ -305,12 +323,14 @@ import {
   type ProofArtifactStorageReport,
   type ProductCommandCenterReport,
   type PromptProductOsReport,
+  type ProductSprintReport,
   type PromptToProofWorkflowReport,
   type PromptCritiqueRepairReport,
   type PromptGeneratorV2Report,
   type PromptProfile,
   type PromptRank,
   type PromptTournament,
+  type PublicDemoSimplificationReport,
   type PublicDemoPolishReport,
   type PublicProofChecklistReport,
   type ProviderPluginLayerReport,
@@ -330,6 +350,7 @@ import {
   type QualityRubric,
   type RecipeOptions,
   type ResultScore,
+  type ResultFeedbackLoopReport,
   type ResultGalleryItem,
   type ReusableMemoryPack,
   type SafeToTrainReport,
@@ -342,6 +363,7 @@ import {
   type SkillInstallPlan,
   type VectorSearchResult,
   type NarrativePolishReport,
+  type TemplateCompilerReport,
   type VisualRegressionReport,
   type VisualQaReport,
   type PromptCoachReport,
@@ -3192,8 +3214,16 @@ export default function App() {
     () =>
       buildHostedCiSmokeReport({
         expectedHeadings: [
+          "Next product sprint",
           "Prompt Atelier Product OS",
           "Accessibility and QA scoring",
+          "One guided training run",
+          "Corpus cleanup mode",
+          "Prompt battle autopilot",
+          "Prompt template compiler",
+          "Real result feedback loop",
+          "Public demo simplification",
+          "No-key local mode polish",
           "All-in product runway",
           "Learning machine control plane",
           "Next product layer",
@@ -3346,6 +3376,114 @@ export default function App() {
       resultGalleryHydrationProduct,
       trainingExportReadiness,
     ],
+  );
+  const resultFeedbackLoop = useMemo(
+    () =>
+      buildResultFeedbackLoopReport({
+        accessibilityQa: accessibilityQaScore,
+        buildLearning: buildResultLearning,
+        proofStorage: proofArtifactStorage,
+        resultGallery: resultGalleryHydrationProduct,
+        resultQuality: resultQualityDashboard,
+        screenshotQa,
+        visualProof: visualProofComparison,
+      }),
+    [
+      accessibilityQaScore,
+      buildResultLearning,
+      proofArtifactStorage,
+      resultGalleryHydrationProduct,
+      resultQualityDashboard,
+      screenshotQa,
+      visualProofComparison,
+    ],
+  );
+  const guidedProductRun = useMemo(
+    () =>
+      buildGuidedProductRunReport({
+        commandCenter: productCommandCenter,
+        datasetInbox,
+        generator: generatorV3,
+        proof: proofRunController,
+        resultFeedback: resultFeedbackLoop,
+        trainingExports: trainingExportReadiness,
+        trainingSummary: trainingRunSummary,
+      }),
+    [datasetInbox, generatorV3, productCommandCenter, proofRunController, resultFeedbackLoop, trainingExportReadiness, trainingRunSummary],
+  );
+  const corpusCleanupMode = useMemo(
+    () =>
+      buildCorpusCleanupModeReport({
+        cleaning: corpusCleaning,
+        datasetInbox,
+        leakage: leakageGuard,
+        sourceSafety,
+      }),
+    [corpusCleaning, datasetInbox, leakageGuard, sourceSafety],
+  );
+  const promptBattleAutopilot = useMemo(
+    () =>
+      buildPromptBattleAutopilotReport({
+        accessibilityQa: accessibilityQaScore,
+        candidateTournament: promptCandidateTournament,
+        generator: generatorV3,
+        promptBattle,
+        resultFeedback: resultFeedbackLoop,
+      }),
+    [accessibilityQaScore, generatorV3, promptBattle, promptCandidateTournament, resultFeedbackLoop],
+  );
+  const templateCompiler = useMemo(
+    () =>
+      buildTemplateCompilerReport({
+        accessibilityQa: accessibilityQaScore,
+        generator: generatorV3,
+        qualityGate: qualityRegressionGate,
+        templates,
+      }),
+    [accessibilityQaScore, generatorV3, qualityRegressionGate, templates],
+  );
+  const localModePolish = useMemo(
+    () =>
+      buildLocalModePolishReport({
+        apiOnline: Boolean(apiHealth?.ok),
+        hasServerModelRoute: Boolean(modelEnvStatus?.anthropicApiKeyConfigured || modelEnvStatus?.endpointConfigured || modelEnvStatus?.agentCommandConfigured),
+        hosted: hostedReadinessProduct,
+        localFallbackActive: !(modelEnvStatus?.anthropicApiKeyConfigured || modelEnvStatus?.apiKeyConfigured),
+        providerRouter: modelProviderRouter,
+      }),
+    [
+      apiHealth?.ok,
+      hostedReadinessProduct,
+      modelEnvStatus?.agentCommandConfigured,
+      modelEnvStatus?.anthropicApiKeyConfigured,
+      modelEnvStatus?.apiKeyConfigured,
+      modelEnvStatus?.endpointConfigured,
+      modelProviderRouter,
+    ],
+  );
+  const publicDemoSimplification = useMemo(
+    () =>
+      buildPublicDemoSimplificationReport({
+        hostedCi: hostedCiSmoke,
+        localMode: localModePolish,
+        productOs,
+        publicDemo: publicDemoPolish,
+        resultFeedback: resultFeedbackLoop,
+      }),
+    [hostedCiSmoke, localModePolish, productOs, publicDemoPolish, resultFeedbackLoop],
+  );
+  const productSprint = useMemo(
+    () =>
+      buildProductSprintReport({
+        battleAutopilot: promptBattleAutopilot,
+        cleanupMode: corpusCleanupMode,
+        guidedRun: guidedProductRun,
+        localMode: localModePolish,
+        publicDemo: publicDemoSimplification,
+        resultFeedback: resultFeedbackLoop,
+        templateCompiler,
+      }),
+    [corpusCleanupMode, guidedProductRun, localModePolish, promptBattleAutopilot, publicDemoSimplification, resultFeedbackLoop, templateCompiler],
   );
   const proofSeedingRunway = useMemo(
     () =>
@@ -7280,6 +7418,14 @@ export default function App() {
               qualityRegressionGate={qualityRegressionGate}
               accessibilityQaScore={accessibilityQaScore}
               productOs={productOs}
+              productSprint={productSprint}
+              guidedProductRun={guidedProductRun}
+              corpusCleanupMode={corpusCleanupMode}
+              promptBattleAutopilot={promptBattleAutopilot}
+              templateCompiler={templateCompiler}
+              resultFeedbackLoop={resultFeedbackLoop}
+              publicDemoSimplification={publicDemoSimplification}
+              localModePolish={localModePolish}
               productCommandCenter={productCommandCenter}
               allInRunway={allInRunway}
               learningMachine={learningMachine}
@@ -8490,6 +8636,14 @@ function TrainView({
   qualityRegressionGate,
   accessibilityQaScore,
   productOs,
+  productSprint,
+  guidedProductRun,
+  corpusCleanupMode,
+  promptBattleAutopilot,
+  templateCompiler,
+  resultFeedbackLoop,
+  publicDemoSimplification,
+  localModePolish,
   productCommandCenter,
   allInRunway,
   learningMachine,
@@ -8821,6 +8975,14 @@ function TrainView({
   qualityRegressionGate: QualityRegressionGateReport;
   accessibilityQaScore: AccessibilityQaScoreReport;
   productOs: PromptProductOsReport;
+  productSprint: ProductSprintReport;
+  guidedProductRun: GuidedProductRunReport;
+  corpusCleanupMode: CorpusCleanupModeReport;
+  promptBattleAutopilot: PromptBattleAutopilotReport;
+  templateCompiler: TemplateCompilerReport;
+  resultFeedbackLoop: ResultFeedbackLoopReport;
+  publicDemoSimplification: PublicDemoSimplificationReport;
+  localModePolish: LocalModePolishReport;
   productCommandCenter: ProductCommandCenterReport;
   allInRunway: AllInRunwayReport;
   learningMachine: LearningMachineReport;
@@ -9054,7 +9216,15 @@ function TrainView({
 }) {
   const [sectionQuery, setSectionQuery] = useState("");
   const trainSections = [
+    { id: "product-sprint", label: "Sprint" },
     { id: "product-os", label: "Product OS" },
+    { id: "guided-run", label: "Guided run" },
+    { id: "cleanup-mode", label: "Cleanup" },
+    { id: "battle-autopilot", label: "Battle" },
+    { id: "template-compiler", label: "Templates" },
+    { id: "result-feedback", label: "Feedback" },
+    { id: "demo-simple", label: "Demo simple" },
+    { id: "local-mode", label: "Local mode" },
     { id: "workflow", label: "Workflow" },
     { id: "machine", label: "Learning machine" },
     { id: "next-layer", label: "Next layer" },
@@ -9133,6 +9303,25 @@ function TrainView({
       <PromptProductOsPanel report={productOs} onSelect={scrollToTrainSection} />
 
       <AccessibilityQaScorePanel report={accessibilityQaScore} onSelect={scrollToTrainSection} />
+
+      <ProductSprintPanel report={productSprint} onSelect={scrollToTrainSection} />
+
+      <section className="train-columns">
+        <GuidedProductRunPanel report={guidedProductRun} onRunGuidedTraining={onRunGuidedTraining} onSelect={scrollToTrainSection} />
+        <CorpusCleanupModePanel report={corpusCleanupMode} onRunCorpusHygieneSweep={onRunCorpusHygieneSweep} onSelect={scrollToTrainSection} />
+      </section>
+
+      <section className="train-columns">
+        <PromptBattleAutopilotPanel report={promptBattleAutopilot} onQueueBattle={onQueueBattle} onSelect={scrollToTrainSection} />
+        <TemplateCompilerPanel copied={copied} onCopy={onCopy} report={templateCompiler} />
+      </section>
+
+      <section className="train-columns">
+        <ResultFeedbackLoopPanel copied={copied} onApplyResultLearningPatch={onApplyResultLearningPatch} onCopy={onCopy} report={resultFeedbackLoop} onSelect={scrollToTrainSection} />
+        <PublicDemoSimplificationPanel report={publicDemoSimplification} onLoadDemoMode={onLoadDemoMode} onSelect={scrollToTrainSection} />
+      </section>
+
+      <LocalModePolishPanel report={localModePolish} onApplyProviderPreset={onApplyProviderPreset} />
 
       <ProductCommandCenterPanel report={productCommandCenter} onSelect={scrollToTrainSection} />
 
@@ -10341,6 +10530,339 @@ function MeasuredQualitySprintPanel({ report }: { report: MeasuredQualitySprintR
         ))}
       </div>
       <FeedbackList title="Sprint notes" items={report.notes} empty="No sprint notes." />
+    </section>
+  );
+}
+
+function ProductSprintPanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: ProductSprintReport;
+}) {
+  return (
+    <section className="panel lab-panel product-sprint-panel" data-readiness={report.status} data-train-section="product-sprint">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>{report.headline}</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta">
+        The next product batch is now one operating layer: guided run, cleanup, battle autopilot, template compiler, result feedback, public demo simplification, and no-key local mode.
+      </p>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.items.filter((item) => item.status === "ready").length}/${report.items.length}`} label="Ready upgrades" />
+        <Metric value={formatNumber(report.blockers.length)} label="Blockers" />
+        <Metric value={formatNumber(report.score)} label="Sprint score" />
+      </div>
+      <div className="safe-check-grid product-os-grid">
+        {report.items.map((item) => (
+          <button
+            className="safe-check product-command-card"
+            key={item.id}
+            type="button"
+            data-ready={item.status === "ready" ? "true" : "false"}
+            onClick={() => onSelect(item.target)}
+          >
+            <strong>{item.score}</strong>
+            <span>{item.label}</span>
+            <p>{item.evidence}</p>
+            <small>{item.nextAction}</small>
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
+      <FeedbackList title="Sprint summary" items={report.summary} empty="No sprint summary." />
+      {report.blockers.length ? <FeedbackList title="Sprint blockers" items={report.blockers} empty="No blockers." /> : null}
+    </section>
+  );
+}
+
+function GuidedProductRunPanel({
+  onRunGuidedTraining,
+  onSelect,
+  report,
+}: {
+  onRunGuidedTraining: () => void;
+  onSelect: (id: string) => void;
+  report: GuidedProductRunReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="guided-run">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>One guided training run</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.steps.map((step) => (
+          <button className="safe-check product-command-card" key={step.id} type="button" data-ready={step.status === "ready" ? "true" : "false"} onClick={() => onSelect(step.target)}>
+            <strong>{step.score}</strong>
+            <span>{step.label}</span>
+            <p>{step.detail}</p>
+            <small>{step.action}</small>
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Primary:</strong> {report.primaryAction}</p>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onRunGuidedTraining}>Run guided training</button>
+      </div>
+      <FeedbackList title="Guided run notes" items={report.notes} empty="No guided run notes." />
+    </section>
+  );
+}
+
+function CorpusCleanupModePanel({
+  onRunCorpusHygieneSweep,
+  onSelect,
+  report,
+}: {
+  onRunCorpusHygieneSweep: () => void;
+  onSelect: (id: string) => void;
+  report: CorpusCleanupModeReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="cleanup-mode">
+      <div className="output-header">
+        <div className="panel-header">
+          <ShieldCheck size={18} />
+          <h2>Corpus cleanup mode</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.counts.leakage)} label="Leakage" />
+        <Metric value={formatNumber(report.counts.exact + report.counts.near)} label="Duplicates" />
+        <Metric value={formatNumber(report.counts.weak)} label="Weak prompts" />
+      </div>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <button className="safe-check product-command-card" key={row.label} type="button" data-ready={row.status === "clean" ? "true" : "false"} onClick={() => onSelect(row.target)}>
+            <strong>{row.severity}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+            <small>{row.action}</small>
+          </button>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onRunCorpusHygieneSweep}>Apply hygiene sweep</button>
+      </div>
+      <p className="selected-meta">{report.bulkAction}</p>
+      <FeedbackList title="Cleanup notes" items={report.notes} empty="No cleanup notes." />
+    </section>
+  );
+}
+
+function PromptBattleAutopilotPanel({
+  onQueueBattle,
+  onSelect,
+  report,
+}: {
+  onQueueBattle: () => void;
+  onSelect: (id: string) => void;
+  report: PromptBattleAutopilotReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="battle-autopilot">
+      <div className="output-header">
+        <div className="panel-header">
+          <Swords size={18} />
+          <h2>Prompt battle autopilot</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta"><strong>Winner:</strong> {report.winnerTitle}. {report.decision}</p>
+      <div className="safe-check-grid">
+        {report.variants.map((variant) => (
+          <article className="safe-check" key={`${variant.source}-${variant.title}`} data-ready={variant.score >= 75 ? "true" : "false"}>
+            <strong>{variant.score}</strong>
+            <span>{variant.title}</span>
+            <p>{variant.source}: {variant.reason}</p>
+            <small>{variant.promptPreview}</small>
+          </article>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onQueueBattle}>Queue battle variants</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onSelect("result-feedback")}>Open feedback loop</button>
+      </div>
+      <FeedbackList title="Battle notes" items={report.notes} empty="No battle notes." />
+    </section>
+  );
+}
+
+function TemplateCompilerPanel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: TemplateCompilerReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="template-compiler">
+      <div className="output-header">
+        <div className="panel-header">
+          <FileJson size={18} />
+          <h2>Prompt template compiler</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.slots.map((slot) => (
+          <article className="safe-check" key={slot.label} data-ready={slot.ready ? "true" : "false"}>
+            <strong>{slot.ready ? "Ready" : "Slot"}</strong>
+            <span>{slot.label}</span>
+            <p>{slot.detail}</p>
+          </article>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.compilerPrompt, "template-compiler-prompt")}>
+          {copied === "template-compiler-prompt" ? <Check size={15} /> : <Copy size={15} />}
+          Compiler prompt
+        </button>
+        {report.templates[0] ? (
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.templates[0].prompt, report.templates[0].id)}>
+            {copied === report.templates[0].id ? <Check size={15} /> : <Copy size={15} />}
+            Top template
+          </button>
+        ) : null}
+      </div>
+      <div className="safe-check-grid">
+        {report.templates.slice(0, 3).map((template) => (
+          <article className="safe-check" key={template.id} data-ready={template.score >= 75 ? "true" : "false"}>
+            <strong>{template.score}</strong>
+            <span>{template.title}</span>
+            <p>{template.bestFor}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Compiler notes" items={report.notes} empty="No compiler notes." />
+    </section>
+  );
+}
+
+function ResultFeedbackLoopPanel({
+  copied,
+  onApplyResultLearningPatch,
+  onCopy,
+  onSelect,
+  report,
+}: {
+  copied: string;
+  onApplyResultLearningPatch: () => void;
+  onCopy: (value: string, key: string) => void;
+  onSelect: (id: string) => void;
+  report: ResultFeedbackLoopReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="result-feedback">
+      <div className="output-header">
+        <div className="panel-header">
+          <Activity size={18} />
+          <h2>Real result feedback loop</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <button className="safe-check product-command-card" key={row.label} type="button" data-ready={row.status === "ready" ? "true" : "false"} onClick={() => onSelect(row.target)}>
+            <strong>{row.score}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+            <small>{row.action}</small>
+          </button>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onApplyResultLearningPatch}>Apply repair patch</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.feedbackPatch, "result-feedback-patch")}>
+          {copied === "result-feedback-patch" ? <Check size={15} /> : <Copy size={15} />}
+          Copy feedback patch
+        </button>
+      </div>
+      <FeedbackList title="Feedback notes" items={report.notes} empty="No feedback notes." />
+    </section>
+  );
+}
+
+function PublicDemoSimplificationPanel({
+  onLoadDemoMode,
+  onSelect,
+  report,
+}: {
+  onLoadDemoMode: () => void;
+  onSelect: (id: string) => void;
+  report: PublicDemoSimplificationReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="demo-simple">
+      <div className="output-header">
+        <div className="panel-header">
+          <MonitorSmartphone size={18} />
+          <h2>Public demo simplification</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta">{report.publicStory}</p>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <button className="safe-check product-command-card" key={check.label} type="button" data-ready={check.ready ? "true" : "false"} onClick={() => onSelect(check.label === "Proof visible" ? "result-feedback" : "public-demo")}>
+            <strong>{check.ready ? "Ready" : "Open"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </button>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onLoadDemoMode}>Load public demo mode</button>
+      </div>
+      <FeedbackList title="Hide from public path" items={report.hiddenComplexity} empty="No hidden complexity." />
+      <FeedbackList title="Demo notes" items={report.notes} empty="No demo notes." />
+    </section>
+  );
+}
+
+function LocalModePolishPanel({
+  onApplyProviderPreset,
+  report,
+}: {
+  onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
+  report: LocalModePolishReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="local-mode">
+      <div className="output-header">
+        <div className="panel-header">
+          <Laptop size={18} />
+          <h2>No-key local mode polish</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("local")}>Use local fallback</button>
+          <ScoreRing score={report.score} label={report.status} />
+        </div>
+      </div>
+      <p className="selected-meta">{report.modeLabel}</p>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <article className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Open"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+            {!check.ready ? <small>{check.fix}</small> : null}
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Local mode notes" items={report.notes} empty="No local mode notes." />
     </section>
   );
 }

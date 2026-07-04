@@ -1739,6 +1739,102 @@ export type PromptProductOsReport = {
   summary: string[];
 };
 
+export type GuidedProductRunReport = {
+  score: number;
+  status: "ready" | "running" | "blocked" | "needs-proof";
+  steps: {
+    id: "import" | "clean" | "battle" | "prove" | "learn" | "export";
+    label: string;
+    status: "ready" | "active" | "blocked";
+    score: number;
+    detail: string;
+    action: string;
+    target: string;
+  }[];
+  primaryAction: string;
+  notes: string[];
+};
+
+export type CorpusCleanupModeReport = {
+  score: number;
+  status: "clean" | "review" | "blocked";
+  counts: { exact: number; near: number; weak: number; leakage: number; inbox: number; sourceUnsafe: number };
+  rows: { label: string; severity: number; status: "clean" | "review" | "blocked"; detail: string; action: string; target: string }[];
+  bulkAction: string;
+  notes: string[];
+};
+
+export type PromptBattleAutopilotReport = {
+  score: number;
+  status: "ready" | "needs-proof" | "needs-variants";
+  winnerTitle: string;
+  variants: { title: string; score: number; source: string; reason: string; promptPreview: string }[];
+  decision: string;
+  queueAction: string;
+  notes: string[];
+};
+
+export type TemplateCompilerReport = {
+  score: number;
+  status: "ready" | "needs-slots";
+  slots: { label: string; ready: boolean; detail: string }[];
+  templates: { id: string; title: string; score: number; bestFor: string; prompt: string }[];
+  compilerPrompt: string;
+  notes: string[];
+};
+
+export type ResultFeedbackLoopReport = {
+  score: number;
+  status: "ready" | "needs-proof" | "needs-rating";
+  rows: { label: string; score: number; status: "ready" | "watch" | "blocked"; detail: string; action: string; target: string }[];
+  feedbackPatch: string;
+  notes: string[];
+};
+
+export type PublicDemoSimplificationReport = {
+  score: number;
+  status: "ready" | "needs-polish";
+  checks: { label: string; ready: boolean; detail: string }[];
+  publicStory: string;
+  hiddenComplexity: string[];
+  notes: string[];
+};
+
+export type LocalModePolishReport = {
+  score: number;
+  status: "ready" | "partial" | "needs-route";
+  checks: { label: string; ready: boolean; detail: string; fix: string }[];
+  modeLabel: string;
+  notes: string[];
+};
+
+export type ProductSprintItem = {
+  id:
+    | "guided-run"
+    | "cleanup-mode"
+    | "battle-autopilot"
+    | "template-compiler"
+    | "result-feedback"
+    | "public-demo"
+    | "local-mode";
+  label: string;
+  score: number;
+  status: "ready" | "active" | "needs-work" | "blocked";
+  evidence: string;
+  nextAction: string;
+  target: string;
+};
+
+export type ProductSprintReport = {
+  score: number;
+  status: "ready" | "in-progress" | "blocked";
+  headline: string;
+  items: ProductSprintItem[];
+  nextAction: string;
+  blockers: string[];
+  summary: string[];
+};
+
 export type ProofSeedingRunwayReport = {
   score: number;
   status: "ready" | "needs-api" | "needs-prompts" | "seeded";
@@ -9108,6 +9204,599 @@ export function buildPromptProductOsReport({
     summary: [
       `${items.filter((item) => item.status === "ready").length}/${items.length} product upgrade(s) are ready.`,
       "This operating layer unifies command center, dataset governance, generator quality, proof evidence, accessibility QA, public demo, regression history, exports, and learning explanations.",
+    ],
+  };
+}
+
+export function buildResultFeedbackLoopReport({
+  accessibilityQa,
+  buildLearning,
+  proofStorage,
+  resultGallery,
+  resultQuality,
+  screenshotQa,
+  visualProof,
+}: {
+  accessibilityQa: AccessibilityQaScoreReport;
+  buildLearning: BuildResultLearningReport;
+  proofStorage: ProofArtifactStorageReport;
+  resultGallery: ResultGalleryHydrationProductReport;
+  resultQuality: ResultQualityDashboardReport;
+  screenshotQa: ScreenshotQaReport;
+  visualProof: VisualProofComparisonReport;
+}): ResultFeedbackLoopReport {
+  const rows: ResultFeedbackLoopReport["rows"] = [
+    {
+      label: "Build result feedback",
+      score: buildLearning.score,
+      status: buildLearning.status === "ready-to-learn" ? "ready" : buildLearning.status === "needs-proof" ? "watch" : "blocked",
+      detail: buildLearning.notes[0],
+      action: buildLearning.nextActions[0] || "Write result evidence back into the selected prompt.",
+      target: "proof",
+    },
+    {
+      label: "Result quality",
+      score: resultQuality.score,
+      status: resultQuality.status === "proven" ? "ready" : resultQuality.status === "partial" ? "watch" : "blocked",
+      detail: resultQuality.notes[0],
+      action: resultQuality.stages.find((stage) => !stage.ready)?.detail || "Promote proven result lessons.",
+      target: "proof",
+    },
+    {
+      label: "Screenshot QA",
+      score: screenshotQa.score,
+      status: screenshotQa.score >= 75 ? "ready" : screenshotQa.score >= 45 ? "watch" : "blocked",
+      detail: screenshotQa.notes[0] || "Screenshot QA needs desktop and mobile evidence.",
+      action: screenshotQa.captureCommands[0] || "Capture desktop and mobile screenshots.",
+      target: "screenshots",
+    },
+    {
+      label: "Proof gallery",
+      score: resultGallery.score,
+      status: resultGallery.status === "ready" ? "ready" : resultGallery.status === "needs-proof" ? "watch" : "blocked",
+      detail: `${resultGallery.counts.gallery} gallery item(s), ${resultGallery.counts.proofArtifacts} proof artifact(s).`,
+      action: resultGallery.notes[1],
+      target: "demo",
+    },
+    {
+      label: "Before and after",
+      score: visualProof.score,
+      status: visualProof.status === "ready" ? "ready" : "watch",
+      detail: visualProof.notes[0],
+      action: visualProof.notes[1] || "Attach before/after visual proof.",
+      target: "prove",
+    },
+    {
+      label: "Accessibility repair",
+      score: accessibilityQa.score,
+      status: accessibilityQa.status === "ready" ? "ready" : accessibilityQa.status === "watch" ? "watch" : "blocked",
+      detail: accessibilityQa.notes[0],
+      action: accessibilityQa.checks.find((check) => !check.ready)?.fix || "Accessibility QA is ready.",
+      target: "qa-score",
+    },
+    {
+      label: "Artifact storage",
+      score: proofStorage.score,
+      status: proofStorage.status === "ready" ? "ready" : proofStorage.status === "partial" ? "watch" : "blocked",
+      detail: `${proofStorage.artifacts.length} proof artifact(s) available.`,
+      action: proofStorage.notes[1] || "Persist proof artifacts before export.",
+      target: "proof",
+    },
+  ];
+  const score = boundedProductScore(rows.reduce((sum, row) => sum + row.score, 0) / Math.max(1, rows.length));
+  const blockers = rows.filter((row) => row.status === "blocked");
+  return {
+    score,
+    status: blockers.length ? "needs-proof" : rows.some((row) => row.status === "watch") ? "needs-rating" : "ready",
+    rows,
+    feedbackPatch: [
+      "RESULT FEEDBACK LOOP PATCH",
+      ...rows.filter((row) => row.status !== "ready").slice(0, 5).map((row) => `- ${row.label}: ${row.action}`),
+      rows.every((row) => row.status === "ready") ? "- Result evidence is strong enough to feed back into templates and generated prompts." : "",
+    ].filter(Boolean).join("\n"),
+    notes: [
+      `${rows.filter((row) => row.status === "ready").length}/${rows.length} result-feedback signal(s) are ready.`,
+      blockers.length ? "Do not promote prompts until blocked proof rows are repaired." : "Result feedback is ready to shape the next prompt mutation.",
+    ],
+  };
+}
+
+export function buildGuidedProductRunReport({
+  commandCenter,
+  datasetInbox,
+  generator,
+  proof,
+  resultFeedback,
+  trainingExports,
+  trainingSummary,
+}: {
+  commandCenter: ProductCommandCenterReport;
+  datasetInbox: DatasetInboxReport;
+  generator: GeneratorV3Report;
+  proof: ProofRunControllerReport;
+  resultFeedback: ResultFeedbackLoopReport;
+  trainingExports: TrainingExportReadinessReport;
+  trainingSummary: ReturnType<typeof buildTrainingRunSummary>;
+}): GuidedProductRunReport {
+  const baseSteps: Omit<GuidedProductRunReport["steps"][number], "status">[] = [
+    {
+      id: "import",
+      label: "Import and orient",
+      score: commandCenter.cards.find((card) => card.id === "import")?.status === "ready" ? 100 : commandCenter.score,
+      detail: commandCenter.cards.find((card) => card.id === "import")?.reason || "Corpus import should be ready.",
+      action: "Open the import/front-door flow.",
+      target: "workflow",
+    },
+    {
+      id: "clean",
+      label: "Clean corpus",
+      score: datasetInbox.score,
+      detail: `${datasetInbox.counts.review} review / ${datasetInbox.counts.quarantine} quarantine / ${datasetInbox.counts.remove} remove.`,
+      action: datasetInbox.rows.find((row) => row.recommendation !== "learn")?.reason || "Corpus is clean enough for training.",
+      target: "dataset",
+    },
+    {
+      id: "battle",
+      label: "Generate and battle",
+      score: generator.score,
+      detail: `${generator.modes.filter((mode) => mode.ready).length}/${generator.modes.length} generator mode(s) ready.`,
+      action: generator.status === "ready" ? "Run battle autopilot on the best variants." : generator.fields.find((field) => !field.ready)?.detail || "Complete generator brief.",
+      target: "battle-autopilot",
+    },
+    {
+      id: "prove",
+      label: "Run proof",
+      score: proof.score,
+      detail: proof.nextAction,
+      action: proof.actions.find((action) => action.enabled)?.detail || proof.nextAction,
+      target: "prove",
+    },
+    {
+      id: "learn",
+      label: "Learn from result",
+      score: resultFeedback.score,
+      detail: resultFeedback.notes[0],
+      action: resultFeedback.rows.find((row) => row.status !== "ready")?.action || "Write winning result lessons into memory.",
+      target: "result-feedback",
+    },
+    {
+      id: "export",
+      label: "Export pack",
+      score: trainingExports.score,
+      detail: `${trainingExports.targets.filter((target) => target.ready).length}/${trainingExports.targets.length} export target(s) ready.`,
+      action: trainingExports.targets.find((target) => !target.ready)?.detail || "Export the one-click training pack.",
+      target: "training-exports",
+    },
+  ];
+  const steps: GuidedProductRunReport["steps"] = baseSteps.map((step) => ({
+    ...step,
+    status: step.score >= 75 ? "ready" as const : step.score >= 45 ? "active" as const : "blocked" as const,
+  }));
+  const score = boundedProductScore(steps.reduce((sum, step) => sum + step.score, 0) / Math.max(1, steps.length));
+  const blocked = steps.filter((step) => step.status === "blocked");
+  const active = steps.find((step) => step.status !== "ready") || steps[steps.length - 1];
+  return {
+    score,
+    status: blocked.length ? "blocked" : trainingSummary.latest?.status === "running" ? "running" : proof.status === "needs-proof" ? "needs-proof" : "ready",
+    steps,
+    primaryAction: `${active.label}: ${active.action}`,
+    notes: [
+      `Guided product run is ${score}/100 across import, clean, battle, proof, learn, and export.`,
+      trainingSummary.latest ? `Latest training run: ${trainingSummary.latest.status} at ${trainingSummary.latest.stage}.` : "No saved training run yet; run the guided workflow to create replayable history.",
+    ],
+  };
+}
+
+export function buildCorpusCleanupModeReport({
+  cleaning,
+  datasetInbox,
+  leakage,
+  sourceSafety,
+}: {
+  cleaning: CorpusCleaningReport;
+  datasetInbox: DatasetInboxReport;
+  leakage: LeakageGuardReport;
+  sourceSafety: SourceSafetyReport;
+}): CorpusCleanupModeReport {
+  const dominant = cleaning.archetypeBalance.filter((item) => item.status === "dominant");
+  const thin = cleaning.archetypeBalance.filter((item) => item.status === "thin");
+  const rows: CorpusCleanupModeReport["rows"] = [
+    {
+      label: "Cross-project leakage",
+      severity: leakage.blockers ? 100 : leakage.warnings ? 72 : 0,
+      status: leakage.blockers ? "blocked" : leakage.warnings ? "review" : "clean",
+      detail: `${leakage.blockers} blocker(s), ${leakage.warnings} warning(s).`,
+      action: leakage.recommendations[0] || "Continue corpus safety checks.",
+      target: "quality",
+    },
+    {
+      label: "Unsafe sources",
+      severity: Math.min(100, sourceSafety.unsafeItems.length * 18),
+      status: sourceSafety.unsafeItems.some((item) => item.recommendation === "quarantine") ? "blocked" : sourceSafety.unsafeItems.length ? "review" : "clean",
+      detail: `${sourceSafety.unsafeItems.length} unsafe source item(s).`,
+      action: sourceSafety.recommendations[0] || "Source safety is clean.",
+      target: "dataset",
+    },
+    {
+      label: "Exact duplicates",
+      severity: Math.min(100, cleaning.exactDuplicates.length * 24),
+      status: cleaning.exactDuplicates.length ? "review" : "clean",
+      detail: `${cleaning.exactDuplicates.length} exact duplicate group(s).`,
+      action: cleaning.recommendations[0],
+      target: "dataset",
+    },
+    {
+      label: "Near duplicates",
+      severity: Math.min(100, cleaning.nearDuplicates.length * 12),
+      status: cleaning.nearDuplicates.length ? "review" : "clean",
+      detail: `${cleaning.nearDuplicates.length} near duplicate group(s).`,
+      action: cleaning.recommendations[1],
+      target: "dataset",
+    },
+    {
+      label: "Weak examples",
+      severity: Math.min(100, cleaning.weakPrompts.length * 8),
+      status: cleaning.weakPrompts.length ? "review" : "clean",
+      detail: `${cleaning.weakPrompts.length} weak prompt(s).`,
+      action: cleaning.recommendations[2],
+      target: "dataset",
+    },
+    {
+      label: "Archetype balance",
+      severity: Math.min(100, dominant.length * 16 + thin.length * 12),
+      status: dominant.length || thin.length ? "review" : "clean",
+      detail: `${dominant.length} dominant / ${thin.length} thin archetype(s).`,
+      action: cleaning.recommendations[3],
+      target: "patterns",
+    },
+    {
+      label: "Dataset inbox decisions",
+      severity: Math.min(100, (datasetInbox.counts.review + datasetInbox.counts.quarantine + datasetInbox.counts.remove) * 4),
+      status: datasetInbox.status === "blocked" ? "blocked" : datasetInbox.status === "review" ? "review" : "clean",
+      detail: `${datasetInbox.rows.length} inbox row(s) with ${datasetInbox.counts.review + datasetInbox.counts.quarantine + datasetInbox.counts.remove} non-learn recommendation(s).`,
+      action: datasetInbox.notes[1] || "Apply inbox recommendations.",
+      target: "dataset",
+    },
+  ];
+  const worst = rows.reduce((max, row) => Math.max(max, row.severity), 0);
+  const score = boundedProductScore(100 - worst * 0.7 - rows.filter((row) => row.status !== "clean").length * 4);
+  return {
+    score,
+    status: rows.some((row) => row.status === "blocked") ? "blocked" : rows.some((row) => row.status === "review") ? "review" : "clean",
+    counts: {
+      exact: cleaning.exactDuplicates.length,
+      near: cleaning.nearDuplicates.length,
+      weak: cleaning.weakPrompts.length,
+      leakage: leakage.findings.length,
+      inbox: datasetInbox.rows.length,
+      sourceUnsafe: sourceSafety.unsafeItems.length,
+    },
+    rows,
+    bulkAction: rows.some((row) => row.status !== "clean") ? "Apply corpus hygiene sweep and re-run corpus safety." : "No cleanup bulk action needed.",
+    notes: [
+      `${rows.filter((row) => row.status === "clean").length}/${rows.length} cleanup lane(s) are clean.`,
+      "Cleanup mode keeps bad examples visible for audit while excluding them from learning decisions.",
+    ],
+  };
+}
+
+export function buildPromptBattleAutopilotReport({
+  accessibilityQa,
+  candidateTournament,
+  generator,
+  promptBattle,
+  resultFeedback,
+}: {
+  accessibilityQa: AccessibilityQaScoreReport;
+  candidateTournament: PromptCandidateTournamentReport;
+  generator: GeneratorV3Report;
+  promptBattle: PromptBattle;
+  resultFeedback: ResultFeedbackLoopReport;
+}): PromptBattleAutopilotReport {
+  const variantMap = new Map<string, { title: string; score: number; source: string; reason: string; promptPreview: string }>();
+  for (const variant of candidateTournament.variants.slice(0, 5)) {
+    variantMap.set(`candidate-${variant.title}`, {
+      title: variant.title,
+      score: variant.score,
+      source: "candidate tournament",
+      reason: variant.intent || "Generated candidate from learned prompt memory.",
+      promptPreview: variant.prompt.slice(0, 240),
+    });
+  }
+  for (const variant of promptBattle.variants.slice(0, 5)) {
+    variantMap.set(`battle-${variant.title}`, {
+      title: variant.title,
+      score: variant.score,
+      source: "prompt battle",
+      reason: variant.intent || "Battle variant from the selected prompt.",
+      promptPreview: variant.prompt.slice(0, 240),
+    });
+  }
+  for (const mode of generator.modes.filter((mode) => mode.ready).slice(0, 3)) {
+    variantMap.set(`mode-${mode.id}`, {
+      title: mode.label,
+      score: generator.score,
+      source: "generator mode",
+      reason: mode.detail,
+      promptPreview: generator.compiledPreview.slice(0, 240),
+    });
+  }
+  const variants = Array.from(variantMap.values()).sort((a, b) => b.score - a.score).slice(0, 8);
+  const winner = variants[0];
+  const proofReady = resultFeedback.status === "ready" || resultFeedback.score >= 75;
+  const qaReady = accessibilityQa.status !== "blocked";
+  const score = boundedProductScore(((winner?.score || 0) + generator.score + resultFeedback.score + accessibilityQa.score) / 4);
+  return {
+    score,
+    status: !variants.length ? "needs-variants" : proofReady && qaReady ? "ready" : "needs-proof",
+    winnerTitle: winner?.title || "No winner yet",
+    variants,
+    decision: winner ? `${winner.title} wins because it has the strongest combined buildability, proof, and QA readiness signal.` : "Generate variants before running battle autopilot.",
+    queueAction: variants.length ? "Queue the top variants for proof and save the winner after result feedback." : "Complete the generator brief and run candidate quality loop.",
+    notes: [
+      `${variants.length} autopilot variant(s) are ranked from generator modes, prompt battle, and candidate tournament.`,
+      qaReady ? "Accessibility QA is not blocking the winner." : "Accessibility QA blocks automatic promotion.",
+      proofReady ? "Proof feedback is strong enough for winner selection." : "Run proof before treating the winner as final.",
+    ],
+  };
+}
+
+export function buildTemplateCompilerReport({
+  accessibilityQa,
+  generator,
+  qualityGate,
+  templates,
+}: {
+  accessibilityQa: AccessibilityQaScoreReport;
+  generator: GeneratorV3Report;
+  qualityGate: QualityRegressionGateReport;
+  templates: PromptTemplate[];
+}): TemplateCompilerReport {
+  const slots = [
+    { label: "Stack and dependencies", ready: /react|vite|typescript|tailwind|css|next/i.test(generator.compiledPreview), detail: "Framework and dependency boundaries." },
+    { label: "Visual signature", ready: /video|glass|hero|dashboard|marquee|carousel|scroll|section/i.test(generator.compiledPreview), detail: "Memorable first-viewport or section mechanic." },
+    { label: "Fonts and color tokens", ready: /font|color|hsl|hex|rgba|css variable/i.test(generator.compiledPreview), detail: "Implementation-grade typography and colors." },
+    { label: "Assets and media", ready: /asset|video|image|url|object-fit|focal/i.test(generator.compiledPreview), detail: "Exact assets, focal behavior, or fallbacks." },
+    { label: "Responsive behavior", ready: qualityGate.rows.some((row) => row.label === "Responsive contract" && row.ready), detail: "Desktop/mobile text fit and layout proof." },
+    { label: "Accessibility and QA", ready: accessibilityQa.status !== "blocked", detail: accessibilityQa.notes[1] },
+  ];
+  const compiledTemplates = templates.slice(0, 6).map((template) => {
+    const prompt = [
+      template.prompt,
+      "",
+      "COMPILER LOCKS",
+      "- Keep stack, assets, motion, responsive behavior, constraints, accessibility, and QA as explicit implementation sections.",
+      "- Add focus-visible states, reduced-motion behavior, media-load proof, desktop/mobile screenshots, and console/build verification.",
+      "- Do not add unspecified UI libraries, stock imagery, decorative blobs, or vague layout instructions.",
+    ].join("\n");
+    return {
+      id: `compiler-${template.id}`,
+      title: `${template.title} compiler`,
+      score: evaluatePrompt(prompt).score,
+      bestFor: template.bestFor,
+      prompt,
+    };
+  });
+  const score = boundedProductScore((readyPercent(slots) + (compiledTemplates.length ? Math.round(compiledTemplates.reduce((sum, template) => sum + template.score, 0) / compiledTemplates.length) : 0)) / 2);
+  return {
+    score,
+    status: slots.every((slot) => slot.ready) && compiledTemplates.length >= 3 ? "ready" : "needs-slots",
+    slots,
+    templates: compiledTemplates,
+    compilerPrompt: [
+      "WEBSITE PROMPT TEMPLATE COMPILER",
+      "Turn the user's rough idea into a website build prompt with these sections:",
+      "1. Stack and dependencies",
+      "2. Fonts and global CSS",
+      "3. Color system",
+      "4. Assets and media behavior",
+      "5. Layout and layer order",
+      "6. Navigation and interactive controls",
+      "7. Hero or section copy and exact styling",
+      "8. Motion/state mechanics",
+      "9. Responsive behavior",
+      "10. Constraints and QA",
+      "",
+      "Use exact values, no-go rules, accessibility labels, focus states, reduced-motion behavior, cleanup notes, and desktop/mobile verification.",
+    ].join("\n"),
+    notes: [
+      `${compiledTemplates.length} reusable compiler template(s) are ready.`,
+      slots.every((slot) => slot.ready) ? "Template slots cover the full website-prompt quality bar." : "Missing slots should be filled before exporting a template pack.",
+    ],
+  };
+}
+
+export function buildLocalModePolishReport({
+  apiOnline,
+  hasServerModelRoute,
+  hosted,
+  localFallbackActive,
+  providerRouter,
+}: {
+  apiOnline: boolean;
+  hasServerModelRoute: boolean;
+  hosted: HostedReadinessProductReport;
+  localFallbackActive: boolean;
+  providerRouter: ModelProviderRouterReport;
+}): LocalModePolishReport {
+  const checks = [
+    {
+      label: "No-key fallback",
+      ready: localFallbackActive || providerRouter.route === "local-fallback",
+      detail: localFallbackActive ? "Local evaluator is active without browser secrets." : `Provider route is ${providerRouter.route}.`,
+      fix: "Keep provider credentials server-side; use deterministic fallback when no server route exists.",
+    },
+    {
+      label: "Server route optional",
+      ready: true,
+      detail: hasServerModelRoute ? "A server-side model route is configured." : "No server model route is required for local scoring.",
+      fix: "Only configure model routes on the API host.",
+    },
+    {
+      label: "Hosted API is optional",
+      ready: apiOnline || hosted.verdict === "local-only",
+      detail: apiOnline ? "Hosted/local API is reachable." : "Browser-only mode remains usable.",
+      fix: "Keep import, scoring, generation, and export useful without API sync.",
+    },
+    {
+      label: "Hosted readiness messaging",
+      ready: hosted.verdict !== "unsafe",
+      detail: hosted.notes[0],
+      fix: hosted.checks.find((check) => !check.ready)?.fix || "Hosted readiness is safe.",
+    },
+    {
+      label: "Provider switch",
+      ready: providerRouter.score >= 60,
+      detail: `${providerRouter.route} route at ${providerRouter.score}/100.`,
+      fix: providerRouter.notes[1] || "Expose local fallback as the safe default provider.",
+    },
+  ];
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: score >= 80 ? "ready" : score >= 55 ? "partial" : "needs-route",
+    checks,
+    modeLabel: localFallbackActive ? "Local fallback active" : hasServerModelRoute ? "Server model route active" : "Browser-only fallback",
+    notes: [
+      "Local mode polish keeps Prompt Atelier useful without changing or rotating provider keys.",
+      hasServerModelRoute ? "Model credentials are treated as server-side route state only." : "No model key is required for deterministic learner behavior.",
+    ],
+  };
+}
+
+export function buildPublicDemoSimplificationReport({
+  hostedCi,
+  localMode,
+  productOs,
+  publicDemo,
+  resultFeedback,
+}: {
+  hostedCi: HostedCiSmokeReport;
+  localMode: LocalModePolishReport;
+  productOs: PromptProductOsReport;
+  publicDemo: PublicDemoPolishReport;
+  resultFeedback: ResultFeedbackLoopReport;
+}): PublicDemoSimplificationReport {
+  const checks = [
+    { label: "Single first action", ready: productOs.score >= 60, detail: "Public demo should start with paste/generate/prove/export, not every lab panel." },
+    { label: "Plain value story", ready: publicDemo.status === "ready", detail: publicDemo.headline },
+    { label: "No-key confidence", ready: localMode.status !== "needs-route", detail: localMode.modeLabel },
+    { label: "Proof visible", ready: resultFeedback.score >= 60, detail: resultFeedback.notes[0] },
+    { label: "Hosted smoke", ready: hostedCi.status === "ready", detail: hostedCi.checks.find((check) => check.label === "Train route smoke")?.detail || hostedCi.notes[0] },
+  ];
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: score >= 80 ? "ready" : "needs-polish",
+    checks,
+    publicStory: "Paste a great website prompt, see why it works, generate a sharper one, prove it with QA, and export the learning pack.",
+    hiddenComplexity: [
+      "Move advanced calibration, hosted setup, provider routing, and regression details behind Train Lab controls.",
+      "Keep the public path focused on one prompt, one improved prompt, one proof checklist, and one export.",
+      "Show Claude as optional server-side enhancement, never as a browser key requirement.",
+    ],
+    notes: [
+      `${checks.filter((check) => check.ready).length}/${checks.length} public demo simplification check(s) are ready.`,
+      "The public demo should feel like a prompt learner before it feels like an operations console.",
+    ],
+  };
+}
+
+export function buildProductSprintReport({
+  battleAutopilot,
+  cleanupMode,
+  guidedRun,
+  localMode,
+  publicDemo,
+  resultFeedback,
+  templateCompiler,
+}: {
+  battleAutopilot: PromptBattleAutopilotReport;
+  cleanupMode: CorpusCleanupModeReport;
+  guidedRun: GuidedProductRunReport;
+  localMode: LocalModePolishReport;
+  publicDemo: PublicDemoSimplificationReport;
+  resultFeedback: ResultFeedbackLoopReport;
+  templateCompiler: TemplateCompilerReport;
+}): ProductSprintReport {
+  const items: ProductSprintItem[] = [
+    {
+      id: "guided-run",
+      label: "One Guided Training Run",
+      score: guidedRun.score,
+      status: guidedRun.status === "ready" || guidedRun.status === "running" ? "ready" : guidedRun.status === "blocked" ? "blocked" : "active",
+      evidence: `${guidedRun.steps.filter((step) => step.status === "ready").length}/${guidedRun.steps.length} run step(s) ready.`,
+      nextAction: guidedRun.primaryAction,
+      target: "guided-run",
+    },
+    {
+      id: "cleanup-mode",
+      label: "Corpus Cleanup Mode",
+      score: cleanupMode.score,
+      status: cleanupMode.status === "clean" ? "ready" : cleanupMode.status === "blocked" ? "blocked" : "needs-work",
+      evidence: `${cleanupMode.counts.leakage} leakage / ${cleanupMode.counts.exact + cleanupMode.counts.near} duplicate group(s) / ${cleanupMode.counts.weak} weak prompt(s).`,
+      nextAction: cleanupMode.bulkAction,
+      target: "cleanup-mode",
+    },
+    {
+      id: "battle-autopilot",
+      label: "Prompt Battle Autopilot",
+      score: battleAutopilot.score,
+      status: battleAutopilot.status === "ready" ? "ready" : battleAutopilot.status === "needs-variants" ? "blocked" : "active",
+      evidence: `${battleAutopilot.variants.length} ranked variant(s); winner ${battleAutopilot.winnerTitle}.`,
+      nextAction: battleAutopilot.queueAction,
+      target: "battle-autopilot",
+    },
+    {
+      id: "template-compiler",
+      label: "Prompt Template Compiler",
+      score: templateCompiler.score,
+      status: templateCompiler.status === "ready" ? "ready" : "needs-work",
+      evidence: `${templateCompiler.templates.length} compiler template(s), ${templateCompiler.slots.filter((slot) => slot.ready).length}/${templateCompiler.slots.length} slot(s) ready.`,
+      nextAction: templateCompiler.notes[1],
+      target: "template-compiler",
+    },
+    {
+      id: "result-feedback",
+      label: "Real Result Feedback Loop",
+      score: resultFeedback.score,
+      status: resultFeedback.status === "ready" ? "ready" : resultFeedback.status === "needs-proof" ? "blocked" : "active",
+      evidence: `${resultFeedback.rows.filter((row) => row.status === "ready").length}/${resultFeedback.rows.length} feedback signal(s) ready.`,
+      nextAction: resultFeedback.rows.find((row) => row.status !== "ready")?.action || "Promote result lessons into templates.",
+      target: "result-feedback",
+    },
+    {
+      id: "public-demo",
+      label: "Public Demo Simplification",
+      score: publicDemo.score,
+      status: publicDemo.status === "ready" ? "ready" : "needs-work",
+      evidence: publicDemo.publicStory,
+      nextAction: publicDemo.checks.find((check) => !check.ready)?.detail || publicDemo.notes[1],
+      target: "demo-simple",
+    },
+    {
+      id: "local-mode",
+      label: "No-Key Local Mode Polish",
+      score: localMode.score,
+      status: localMode.status === "ready" ? "ready" : localMode.status === "partial" ? "active" : "needs-work",
+      evidence: localMode.modeLabel,
+      nextAction: localMode.checks.find((check) => !check.ready)?.fix || localMode.notes[0],
+      target: "local-mode",
+    },
+  ];
+  const score = boundedProductScore(items.reduce((sum, item) => sum + item.score, 0) / Math.max(1, items.length));
+  const blockers = items.filter((item) => item.status === "blocked").map((item) => `${item.label}: ${item.nextAction}`);
+  const next = items.find((item) => item.status === "blocked") || items.find((item) => item.status === "needs-work") || items.find((item) => item.status === "active") || items[0];
+  return {
+    score,
+    status: blockers.length ? "blocked" : items.every((item) => item.status === "ready") ? "ready" : "in-progress",
+    headline: "Next product sprint",
+    items,
+    nextAction: `${next.label}: ${next.nextAction}`,
+    blockers,
+    summary: [
+      `${items.filter((item) => item.status === "ready").length}/${items.length} sprint upgrade(s) are ready.`,
+      "This sprint turns the learner into a cleaner product path: guided run, cleanup, battle, templates, result feedback, public demo, and local fallback.",
     ],
   };
 }

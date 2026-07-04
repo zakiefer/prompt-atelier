@@ -1548,6 +1548,10 @@ button:disabled {
   border-color: rgba(31, 122, 104, 0.22);
 }
 
+.product-sprint-panel {
+  border-color: rgba(16, 94, 186, 0.24);
+}
+
 .product-os-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
