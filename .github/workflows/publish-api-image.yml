@@ -1,0 +1,79 @@
+name: Publish API Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - "Dockerfile.api"
+      - "scripts/promptLabApi.mjs"
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "tsconfig*.json"
+      - "index.html"
+      - ".github/workflows/publish-api-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-api-image
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/prompt-atelier-api
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      sha_tag: ${{ steps.meta.outputs.sha_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare image metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          {
+            echo "image=${IMAGE_NAME}"
+            echo "sha_tag=${IMAGE_NAME}:sha-${SHORT_SHA}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build API image
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker build \
+            -f Dockerfile.api \
+            -t "${IMAGE_NAME}:latest" \
+            -t "${IMAGE_NAME}:sha-${SHORT_SHA}" \
+            .
+
+      - name: Push API image
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          docker push "${IMAGE_NAME}:latest"
+          docker push "${IMAGE_NAME}:sha-${SHORT_SHA}"
+
+      - name: Summarize image
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::7}"
+          {
+            echo "## Published API image"
+            echo
+            echo "- \`${IMAGE_NAME}:latest\`"
+            echo "- \`${IMAGE_NAME}:sha-${SHORT_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
