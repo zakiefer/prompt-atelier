@@ -34,7 +34,9 @@ import {
   auditPromptImportBatch,
   auditVisualPrompt,
   buildAllInRunwayReport,
+  buildAutonomousProofLoopReport,
   buildCodexSkill,
+  buildBenchmarkExpansionReport,
   buildBenchmarkV2Report,
   buildBenchmarkLibraryReport,
   buildBenchmarkBattleReport,
@@ -83,6 +85,8 @@ import {
   buildLearnedGeneratorVariants,
   buildGuidedPromptWizardReport,
   buildGoldenBenchmarkHarnessReport,
+  buildGeneratorV3Report,
+  buildHostedCiSmokeReport,
   buildHostedBackendKitReport,
   buildHostedHardeningReport,
   buildHostedBuildWorkerReport,
@@ -91,6 +95,8 @@ import {
   buildImportWizardReport,
   buildArchetypePromptPacks,
   buildLeakageGuardReport,
+  buildLearningExplanationReport,
+  buildLearningMachineReport,
   buildPatternDashboard,
   buildProjectExportPack,
   buildPreferenceTrainingReport,
@@ -101,6 +107,7 @@ import {
   buildQualityGateReport,
   buildResultGallery,
   buildReusableMemoryPack,
+  buildPublicDemoPolishReport,
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
   buildModelJudgeComparisonReport,
@@ -123,6 +130,7 @@ import {
   buildSourceSafetyReport,
   buildSpeedLabelingReport,
   buildTrainingRunSummary,
+  buildTrainingExportReadinessReport,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
   buildNarrativePolishReport,
@@ -177,9 +185,11 @@ import {
   slugify,
   titleFromPrompt,
   type AllInRunwayReport,
+  type AutonomousProofLoopReport,
   type ArchetypeMixOptions,
   type ArchetypeCluster,
   type BenchmarkLibraryReport,
+  type BenchmarkExpansionReport,
   type BenchmarkBattleReport,
   type BenchmarkV2Report,
   type BestNextActionReport,
@@ -226,6 +236,8 @@ import {
   type FailureMemoryAutopilotReport,
   type Feature,
   type GoldenBenchmarkHarnessReport,
+  type GeneratorV3Report,
+  type HostedCiSmokeReport,
   type InterviewBrief,
   type ImportWizardReport,
   type LocalEmbeddingIndex,
@@ -233,6 +245,8 @@ import {
   type LearnedGeneratorInput,
   type LearnedGeneratorVariant,
   type LeakageGuardReport,
+  type LearningExplanationReport,
+  type LearningMachineReport,
   type GuidedPromptWizardReport,
   type HostedBackendKitReport,
   type HostedHardeningReport,
@@ -276,6 +290,7 @@ import {
   type PromptProfile,
   type PromptRank,
   type PromptTournament,
+  type PublicDemoPolishReport,
   type ProviderPluginLayerReport,
   type SecurityCleanupProductReport,
   type SourceSafetyReport,
@@ -318,6 +333,7 @@ import {
   type SpeedLabelingReport,
   type ResultQualityDashboardReport,
   type TrainingRunRecord,
+  type TrainingExportReadinessReport,
   type TrueClosedLoopReport,
   type VisualProofComparisonReport,
   type WorkerSandboxReport,
@@ -2117,7 +2133,11 @@ export default function App() {
   const [userPrompts, setUserPrompts] = useState<PromptExample[]>(() => readStoredPrompts());
   const [draftPrompt, setDraftPrompt] = useState("");
   const [selectedId, setSelectedId] = useState(seedPrompts[0]?.id ?? "");
-  const [tab, setTab] = useState<TabKey>("learn");
+  const [tab, setTab] = useState<TabKey>(() => {
+    if (typeof window === "undefined") return "learn";
+    const requested = new URLSearchParams(window.location.search).get("tab") || window.location.hash.replace(/^#/, "");
+    return ["learn", "compose", "critic", "templates", "lab", "train"].includes(requested) ? requested as TabKey : "learn";
+  });
   const [composeOptions, setComposeOptions] = useState<ComposeOptions>(defaultComposeOptions);
   const [evaluationText, setEvaluationText] = useState("");
   const [copied, setCopied] = useState("");
@@ -3082,6 +3102,108 @@ export default function App() {
       promptToProofWorkflow,
       regressionHistoryProduct,
       securityCleanupProduct,
+    ],
+  );
+  const autonomousProofLoop = useMemo(
+    () =>
+      buildAutonomousProofLoopReport({
+        hostedWorker: hostedWorkerOps,
+        promptToProof: promptToProofWorkflow,
+        proofArtifacts: proofArtifactStorage,
+        proofController: proofRunController,
+        queueJobCount: queueJobs.length,
+        resultQuality: resultQualityDashboard,
+        screenshotCount: screenshots.length,
+      }),
+    [hostedWorkerOps, promptToProofWorkflow, proofArtifactStorage, proofRunController, queueJobs.length, resultQualityDashboard, screenshots.length],
+  );
+  const generatorV3 = useMemo(
+    () =>
+      buildGeneratorV3Report({
+        benchmark: goldenBenchmarkHarness,
+        briefBuilder: briefBuilderProduct,
+        generator: promptGeneratorV2,
+        preferenceTraining,
+        promptMemory,
+      }),
+    [briefBuilderProduct, goldenBenchmarkHarness, preferenceTraining, promptGeneratorV2, promptMemory],
+  );
+  const benchmarkExpansion = useMemo(
+    () => buildBenchmarkExpansionReport(goldenBenchmarkHarness),
+    [goldenBenchmarkHarness],
+  );
+  const learningExplanation = useMemo(
+    () =>
+      buildLearningExplanationReport({
+        promptCoach,
+        promptMemoryDiff,
+        promptQualityDna,
+        selectedPrompt,
+        winExplanation,
+      }),
+    [promptCoach, promptMemoryDiff, promptQualityDna, selectedPrompt, winExplanation],
+  );
+  const publicDemoPolish = useMemo(
+    () =>
+      buildPublicDemoPolishReport({
+        allInRunway,
+        exportPresetCount: exportPresets.length,
+        learningExampleCount: learningExamples.length,
+        narrative: narrativePolish,
+        resultGalleryCount: resultGallery.length,
+      }),
+    [allInRunway, exportPresets.length, learningExamples.length, narrativePolish, resultGallery.length],
+  );
+  const hostedCiSmoke = useMemo(
+    () =>
+      buildHostedCiSmokeReport({
+        expectedHeadings: [
+          "All-in product runway",
+          "Learning machine control plane",
+          "Autonomous proof loop",
+          "Prompt generator v3",
+          "Training export readiness",
+        ],
+        hasWorkflow: true,
+        publicUrl: "https://zakiefer.github.io/prompt-atelier/",
+      }),
+    [],
+  );
+  const trainingExportReadiness = useMemo(
+    () =>
+      buildTrainingExportReadinessReport({
+        exportPresets,
+        oneClickExportPack,
+        projectExportPack,
+        reusableMemoryPack,
+      }),
+    [exportPresets, oneClickExportPack, projectExportPack, reusableMemoryPack],
+  );
+  const learningMachine = useMemo(
+    () =>
+      buildLearningMachineReport({
+        autonomousProof: autonomousProofLoop,
+        benchmarkExpansion,
+        explanations: learningExplanation,
+        exports: trainingExportReadiness,
+        generatorV3,
+        hostedBackend: hostedBackendKit,
+        hostedCi: hostedCiSmoke,
+        preferenceTraining,
+        publicDemo: publicDemoPolish,
+        resultGalleryCount: resultGallery.length,
+      }),
+    [
+      autonomousProofLoop,
+      benchmarkExpansion,
+      generatorV3,
+      hostedBackendKit,
+      hostedCiSmoke,
+      learningExplanation,
+      preferenceTraining,
+      publicDemoPolish,
+      resultGallery.length,
+      trainingExportReadiness,
     ],
   );
 
@@ -5325,6 +5447,31 @@ export default function App() {
     }
   }
 
+  function runAutonomousProofLoop() {
+    handleProveGeneratedPrompt();
+    runProofLearningLoop();
+    void runTrueClosedLoop();
+    void runScreenshotJudge();
+    void runBenchmarkV2();
+    setApiNotice("Autonomous proof loop queued proof, local proof learning, closed-loop rewrite, screenshot judge, and benchmark v2.");
+  }
+
+  function applyGeneratorV3Mode(mode: GeneratorV3Report["modes"][number]) {
+    setGeneratorInput((current) => ({
+      ...current,
+      ...mode.patch,
+      goal: current.goal || "turn learned prompt DNA into a build-ready, proof-ready website brief",
+      outputTarget: current.outputTarget || "Codex build prompt",
+      strictness: Math.max(current.strictness || 0, 9),
+    }));
+    setApiNotice(`Applied Generator v3 mode: ${mode.label}.`);
+  }
+
+  function runHostedSmoke() {
+    void copyText(hostedCiSmoke.workflowPatch, "hosted-smoke");
+    setApiNotice("Copied the hosted smoke command. CI runs the same smoke after Pages deploy.");
+  }
+
   async function createSelectedEvaluationArtifact() {
     const prompt = selectedPrompt ?? { id: "generated", title: "Generated prompt", text: generatedPrompt, source: "user" as const, createdAt: new Date().toISOString() };
     const artifact = buildEvaluationArtifact({
@@ -6932,6 +7079,14 @@ export default function App() {
               qualityRegressionGate={qualityRegressionGate}
               productCommandCenter={productCommandCenter}
               allInRunway={allInRunway}
+              learningMachine={learningMachine}
+              autonomousProofLoop={autonomousProofLoop}
+              generatorV3={generatorV3}
+              benchmarkExpansion={benchmarkExpansion}
+              learningExplanation={learningExplanation}
+              publicDemoPolish={publicDemoPolish}
+              hostedCiSmoke={hostedCiSmoke}
+              trainingExportReadiness={trainingExportReadiness}
               hostedBackendKit={hostedBackendKit}
               promptToProofWorkflow={promptToProofWorkflow}
               datasetBulkTools={datasetBulkTools}
@@ -7000,6 +7155,9 @@ export default function App() {
               onRunCachedModelEvaluation={runCachedModelEvaluation}
               onRunCorpusIntelligence={runCorpusIntelligence}
               onRunBenchmarkV2={runBenchmarkV2}
+              onRunAutonomousProofLoop={runAutonomousProofLoop}
+              onApplyGeneratorV3Mode={applyGeneratorV3Mode}
+              onRunHostedSmoke={runHostedSmoke}
               onRunProofLearningLoop={runProofLearningLoop}
               onRunModelBatchCalibration={runModelBatchCalibration}
               onRunPromptComparison={runPromptComparison}
@@ -8121,6 +8279,14 @@ function TrainView({
   qualityRegressionGate,
   productCommandCenter,
   allInRunway,
+  learningMachine,
+  autonomousProofLoop,
+  generatorV3,
+  benchmarkExpansion,
+  learningExplanation,
+  publicDemoPolish,
+  hostedCiSmoke,
+  trainingExportReadiness,
   hostedBackendKit,
   promptToProofWorkflow,
   datasetBulkTools,
@@ -8192,6 +8358,9 @@ function TrainView({
   onRunCachedModelEvaluation,
   onRunCorpusIntelligence,
   onRunBenchmarkV2,
+  onRunAutonomousProofLoop,
+  onApplyGeneratorV3Mode,
+  onRunHostedSmoke,
   onRunProofLearningLoop,
   onRunModelBatchCalibration,
   onRunPromptComparison,
@@ -8431,6 +8600,14 @@ function TrainView({
   qualityRegressionGate: QualityRegressionGateReport;
   productCommandCenter: ProductCommandCenterReport;
   allInRunway: AllInRunwayReport;
+  learningMachine: LearningMachineReport;
+  autonomousProofLoop: AutonomousProofLoopReport;
+  generatorV3: GeneratorV3Report;
+  benchmarkExpansion: BenchmarkExpansionReport;
+  learningExplanation: LearningExplanationReport;
+  publicDemoPolish: PublicDemoPolishReport;
+  hostedCiSmoke: HostedCiSmokeReport;
+  trainingExportReadiness: TrainingExportReadinessReport;
   hostedBackendKit: HostedBackendKitReport;
   promptToProofWorkflow: PromptToProofWorkflowReport;
   datasetBulkTools: DatasetBulkToolsReport;
@@ -8510,6 +8687,9 @@ function TrainView({
   onRunCachedModelEvaluation: () => void;
   onRunCorpusIntelligence: () => void;
   onRunBenchmarkV2: () => void;
+  onRunAutonomousProofLoop: () => void;
+  onApplyGeneratorV3Mode: (mode: GeneratorV3Report["modes"][number]) => void;
+  onRunHostedSmoke: () => void;
   onRunProofLearningLoop: () => void;
   onRunModelBatchCalibration: () => void;
   onRunPromptComparison: (left: PromptExample | undefined, right: PromptExample | undefined) => void;
@@ -8644,6 +8824,14 @@ function TrainView({
   const [sectionQuery, setSectionQuery] = useState("");
   const trainSections = [
     { id: "workflow", label: "Workflow" },
+    { id: "machine", label: "Learning machine" },
+    { id: "autonomous", label: "Autonomous" },
+    { id: "generator-v3", label: "Generator v3" },
+    { id: "benchmark-scale", label: "Benchmark scale" },
+    { id: "explain", label: "Explain" },
+    { id: "public-demo", label: "Public demo" },
+    { id: "hosted-smoke", label: "Hosted smoke" },
+    { id: "training-exports", label: "Training exports" },
     { id: "proof", label: "Prompt-to-proof" },
     { id: "brief", label: "Brief builder" },
     { id: "preferences", label: "Preferences" },
@@ -8705,6 +8893,25 @@ function TrainView({
       <ProductCommandCenterPanel report={productCommandCenter} onSelect={scrollToTrainSection} />
 
       <AllInRunwayPanel report={allInRunway} onSelect={scrollToTrainSection} />
+
+      <LearningMachinePanel report={learningMachine} onSelect={scrollToTrainSection} />
+
+      <section className="train-columns">
+        <AutonomousProofLoopPanel report={autonomousProofLoop} onRunAutonomousProofLoop={onRunAutonomousProofLoop} />
+        <GeneratorV3Panel report={generatorV3} onApplyMode={onApplyGeneratorV3Mode} onCopy={onCopy} copied={copied} />
+      </section>
+
+      <section className="train-columns">
+        <BenchmarkExpansionPanel report={benchmarkExpansion} onRunBenchmarkV2={onRunBenchmarkV2} />
+        <LearningExplanationPanel report={learningExplanation} />
+      </section>
+
+      <section className="train-columns">
+        <PublicDemoPolishPanel report={publicDemoPolish} onLoadDemoMode={onLoadDemoMode} onSelect={scrollToTrainSection} />
+        <HostedCiSmokePanel report={hostedCiSmoke} onRunHostedSmoke={onRunHostedSmoke} />
+      </section>
+
+      <TrainingExportReadinessPanel report={trainingExportReadiness} onExportOneClickTrainingPack={onExportOneClickTrainingPack} />
 
       <section className="train-columns">
         <HostedBackendKitPanel report={hostedBackendKit} onCheckApi={onCheckApi} onRunHostedSetupWizard={onRunHostedSetupWizard} />
@@ -9945,6 +10152,289 @@ function AllInRunwayPanel({
       <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
       <FeedbackList title="All-in summary" items={report.summary} empty="No runway summary." />
       {report.blockers.length ? <FeedbackList title="Runway blockers" items={report.blockers} empty="No blockers." /> : null}
+    </section>
+  );
+}
+
+function LearningMachinePanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: LearningMachineReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="machine">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Learning machine control plane</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.items.filter((item) => item.status === "ready").length}/${report.items.length}`} label="Ready" />
+        <Metric value={formatNumber(report.blockers.length)} label="Blockers" />
+        <Metric value={formatNumber(report.score)} label="Machine score" />
+      </div>
+      <div className="safe-check-grid">
+        {report.items.map((item) => (
+          <button className="safe-check product-command-card" key={item.id} type="button" data-ready={item.status === "ready" ? "true" : "false"} onClick={() => onSelect(item.target)}>
+            <strong>{item.score}</strong>
+            <span>{item.label}</span>
+            <p>{item.evidence}</p>
+            <small>{item.nextAction}</small>
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
+      <FeedbackList title="Machine summary" items={report.summary} empty="No learning machine summary." />
+      {report.blockers.length ? <FeedbackList title="Machine blockers" items={report.blockers} empty="No blockers." /> : null}
+    </section>
+  );
+}
+
+function AutonomousProofLoopPanel({
+  onRunAutonomousProofLoop,
+  report,
+}: {
+  onRunAutonomousProofLoop: () => void;
+  report: AutonomousProofLoopReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="autonomous">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Autonomous proof loop</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.steps.map((step) => (
+          <div className="guided-step" key={step.label} data-status={step.ready ? "ready" : "active"}>
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" disabled={!report.canRun} onClick={onRunAutonomousProofLoop}>
+        Run autonomous proof loop
+      </button>
+      <p className="selected-meta"><strong>Smoke:</strong> {report.command}</p>
+      <FeedbackList title="Autonomous notes" items={report.notes} empty="No autonomous notes." />
+    </section>
+  );
+}
+
+function GeneratorV3Panel({
+  copied,
+  onApplyMode,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onApplyMode: (mode: GeneratorV3Report["modes"][number]) => void;
+  onCopy: (value: string, key: string) => void;
+  report: GeneratorV3Report;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="generator-v3">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Prompt generator v3</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.fields.map((field) => (
+          <div className="safe-check" key={field.label} data-ready={field.ready ? "true" : "false"}>
+            <strong>{field.ready ? "Ready" : "Open"}</strong>
+            <span>{field.label}</span>
+            <p>{field.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.modes.map((mode) => (
+          <button className="benchmark-row product-command-card" key={mode.id} type="button" data-status={mode.ready ? "aligned" : "watch"} onClick={() => onApplyMode(mode)}>
+            <strong>{mode.label}</strong>
+            <p>{mode.detail}</p>
+            <span>{mode.ready ? "trained" : "thin"}</span>
+          </button>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={() => onCopy(report.compiledPreview, "generator-v3-preview")}>
+          {copied === "generator-v3-preview" ? "Copied" : "Copy v3 preview"}
+        </button>
+      </div>
+      <FeedbackList title="Generator v3 notes" items={report.notes} empty="No generator v3 notes." />
+    </section>
+  );
+}
+
+function BenchmarkExpansionPanel({
+  onRunBenchmarkV2,
+  report,
+}: {
+  onRunBenchmarkV2: () => void;
+  report: BenchmarkExpansionReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="benchmark-scale">
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Benchmark suite expansion</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.total)} label="Golden cases" />
+        <Metric value={formatNumber(report.byType.length)} label="Types" />
+        <Metric value={formatNumber(report.missingTypes.length)} label="Gaps" />
+      </div>
+      <div className="safe-check-grid">
+        {report.byType.slice(0, 8).map((row) => (
+          <div className="safe-check" key={row.label} data-ready="true">
+            <strong>{row.count}</strong>
+            <span>{row.label}</span>
+            <p>Canonical benchmark coverage bucket.</p>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onRunBenchmarkV2}>Run benchmark v2</button>
+      {report.missingTypes.length ? <FeedbackList title="Remaining benchmark gaps" items={report.missingTypes.slice(0, 8)} empty="No benchmark gaps." /> : null}
+      <FeedbackList title="Benchmark expansion notes" items={report.notes} empty="No benchmark expansion notes." />
+    </section>
+  );
+}
+
+function LearningExplanationPanel({ report }: { report: LearningExplanationReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="explain">
+      <div className="output-header">
+        <div className="panel-header">
+          <Lightbulb size={18} />
+          <h2>Learning explanations</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta">{report.plainEnglish}</p>
+      <div className="safe-check-grid">
+        {report.cards.map((card) => (
+          <div className="safe-check" key={card.label} data-ready={card.score >= 70 ? "true" : "false"}>
+            <strong>{card.score}</strong>
+            <span>{card.label}</span>
+            <p>{card.plainEnglish}</p>
+            <small>{card.nextAction}</small>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Explanation notes" items={report.notes} empty="No explanation notes." />
+    </section>
+  );
+}
+
+function PublicDemoPolishPanel({
+  onLoadDemoMode,
+  onSelect,
+  report,
+}: {
+  onLoadDemoMode: () => void;
+  onSelect: (id: string) => void;
+  report: PublicDemoPolishReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="public-demo">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Public demo polish</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <article className="version-card">
+        <strong>{report.headline}</strong>
+        <p>Public visitors should understand corpus, DNA, generation, proof, explanations, and exports in one pass.</p>
+      </article>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <button className="safe-check product-command-card" key={check.label} type="button" data-ready={check.ready ? "true" : "false"} onClick={() => onSelect(check.label === "Result gallery" ? "demo" : check.label === "Exports" ? "training-exports" : "machine")}>
+            <strong>{check.ready ? "Ready" : "Open"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </button>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onLoadDemoMode}>Load public demo mode</button>
+      <FeedbackList title="Demo polish notes" items={report.notes} empty="No demo polish notes." />
+    </section>
+  );
+}
+
+function HostedCiSmokePanel({
+  onRunHostedSmoke,
+  report,
+}: {
+  onRunHostedSmoke: () => void;
+  report: HostedCiSmokeReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="hosted-smoke">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Hosted CI smoke</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Open"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onRunHostedSmoke}>Copy hosted smoke command</button>
+      <p className="selected-meta"><strong>Command:</strong> {report.workflowPatch}</p>
+      <FeedbackList title="Hosted smoke notes" items={report.notes} empty="No hosted smoke notes." />
+    </section>
+  );
+}
+
+function TrainingExportReadinessPanel({
+  onExportOneClickTrainingPack,
+  report,
+}: {
+  onExportOneClickTrainingPack: () => void;
+  report: TrainingExportReadinessReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="training-exports">
+      <div className="output-header">
+        <div className="panel-header">
+          <Download size={18} />
+          <h2>Training export readiness</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.targets.map((target) => (
+          <div className="safe-check" key={`${target.label}-${target.filename}`} data-ready={target.ready ? "true" : "false"}>
+            <strong>{target.ready ? "Ready" : "Open"}</strong>
+            <span>{target.label}</span>
+            <p>{target.detail}</p>
+            <small>{target.filename}</small>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onExportOneClickTrainingPack}>Export one-click training pack</button>
+      <FeedbackList title="Training export notes" items={report.notes} empty="No training export notes." />
     </section>
   );
 }
