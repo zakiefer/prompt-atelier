@@ -1514,6 +1514,36 @@ button:disabled {
   color: var(--danger);
 }
 
+.product-command-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  font: inherit;
+  min-height: 118px;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.product-command-card:hover,
+.product-command-card:focus-visible {
+  border-color: rgba(31, 122, 104, 0.34);
+  box-shadow: 0 14px 36px rgba(31, 122, 104, 0.1);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.product-command-card small {
+  color: var(--teal-dark);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .mode-launcher-grid,
 .simple-front-door-grid {
   display: grid;

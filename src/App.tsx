@@ -43,12 +43,14 @@ import {
   buildBeginnerPromptMakerReport,
   buildBulkImportPipelineReport,
   buildCalibrationDashboardReport,
+  buildCalibrationProductReport,
   buildClaudeCalibrationSetReport,
   buildClosedLoopRunDetailReport,
   buildCorpusCleaningReport,
   buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
   buildDatasetGovernanceReport,
+  buildDatasetInboxReport,
   buildEvaluationArtifact,
   buildEvaluatorCalibrationWorkflowReport,
   buildEvaluationHistoryReport,
@@ -79,6 +81,7 @@ import {
   buildGoldenBenchmarkHarnessReport,
   buildHostedHardeningReport,
   buildHostedBuildWorkerReport,
+  buildHostedReadinessProductReport,
   buildHostedSyncReport,
   buildImportWizardReport,
   buildArchetypePromptPacks,
@@ -100,7 +103,10 @@ import {
   buildProofArtifactStorageReport,
   buildPromptCritiqueRepairReport,
   buildPromptGeneratorV2Report,
+  buildProductCommandCenterReport,
   buildProviderPluginLayerReport,
+  buildProofRunControllerReport,
+  buildQualityRegressionGateReport,
   buildQueueObservabilityReport,
   buildSimpleModeReport,
   buildResultQualityDashboardReport,
@@ -183,7 +189,9 @@ import {
   type CorpusIntelligenceReport,
   type CorpusCurationReport,
   type BulkImportPipelineReport,
+  type CalibrationProductReport,
   type DatasetGovernanceReport,
+  type DatasetInboxReport,
   type DatasetReviewQueueReport,
   type DatasetVersion,
   type DatasetVersionComparison,
@@ -214,6 +222,7 @@ import {
   type GuidedPromptWizardReport,
   type HostedHardeningReport,
   type HostedBuildWorkerReport,
+  type HostedReadinessProductReport,
   type HostedWorkerOpsReport,
   type HostedSyncReport,
   type ModelEvaluationCacheRecord,
@@ -244,6 +253,7 @@ import {
   type PromptMemoryExport,
   type PromptLineageNode,
   type ProofArtifactStorageReport,
+  type ProductCommandCenterReport,
   type PromptCritiqueRepairReport,
   type PromptGeneratorV2Report,
   type PromptProfile,
@@ -258,6 +268,7 @@ import {
   type PromptTemplate,
   type PromptWinExplanationReport,
   type QualityGateReport,
+  type QualityRegressionGateReport,
   type QualityRubric,
   type RecipeOptions,
   type ResultScore,
@@ -281,6 +292,7 @@ import {
   type CodexBuildPack,
   type QueueProgressReport,
   type QueueObservabilityReport,
+  type ProofRunControllerReport,
   type ScreenshotScoringReport,
   type SimpleModeReport,
   type SpeedLabelingReport,
@@ -2862,6 +2874,57 @@ export default function App() {
       }),
     [datasetReviewQueue, goldenBenchmarkHarness, hostedWorkerOps, promptCritiqueRepair, promptGeneratorV2, resultQualityDashboard, simpleModeCleanup],
   );
+  const datasetInbox = useMemo(
+    () => buildDatasetInboxReport({ curation: fullCorpusCurationReport, examples, outcomes }),
+    [examples, fullCorpusCurationReport, outcomes],
+  );
+  const proofRunController = useMemo(
+    () =>
+      buildProofRunControllerReport({
+        generatedPrompt: promptGeneratorV2.compiledPrompt,
+        hostedWorker: hostedWorkerOps,
+        proofLearningRuns,
+        queueJobs,
+        resultQuality: resultQualityDashboard,
+        screenshotJudgeRuns,
+        screenshots,
+        selectedPrompt,
+      }),
+    [hostedWorkerOps, promptGeneratorV2.compiledPrompt, proofLearningRuns, queueJobs, resultQualityDashboard, screenshotJudgeRuns, screenshots, selectedPrompt],
+  );
+  const calibrationProduct = useMemo(
+    () =>
+      buildCalibrationProductReport({
+        calibrationDashboard,
+        modelComparison: modelJudgeComparison,
+        resultQuality: resultQualityDashboard,
+      }),
+    [calibrationDashboard, modelJudgeComparison, resultQualityDashboard],
+  );
+  const hostedReadinessProduct = useMemo(
+    () =>
+      buildHostedReadinessProductReport({
+        apiOnline: Boolean(apiHealth?.ok),
+        authRequired: Boolean(apiHealth?.authRequired),
+        backupCount: backupSnapshots.length,
+        buildCommands: apiHealth?.worker?.allowedBuildCommands || [],
+        claudeConfigured: Boolean(modelEnvStatus?.anthropicApiKeyConfigured),
+        queueSandboxed: workerSandbox.readiness === "locked",
+        sqliteWritable: Boolean(apiHealth?.sqlitePath),
+        workerEnabled: Boolean(apiHealth?.worker?.enabled),
+      }),
+    [apiHealth, backupSnapshots.length, modelEnvStatus?.anthropicApiKeyConfigured, workerSandbox.readiness],
+  );
+  const qualityRegressionGate = useMemo(
+    () =>
+      buildQualityRegressionGateReport({
+        benchmark: goldenBenchmarkHarness,
+        corpusSafetyClean: leakageGuard.status === "clean",
+        generator: promptGeneratorV2,
+        leakage: leakageGuard,
+      }),
+    [goldenBenchmarkHarness, leakageGuard, promptGeneratorV2],
+  );
   const learnerAnswer = useMemo(
     () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
     [archetypePromptPacks, learnerQuestion, patternExtraction, profile],
@@ -2878,6 +2941,27 @@ export default function App() {
         reusableMemoryPack,
       }),
     [benchmarkTrend, codexBuildPack, goldenDataset, projectBoundaryReport, promptMemory, qualityGraderV2, reusableMemoryPack],
+  );
+  const productCommandCenter = useMemo(
+    () =>
+      buildProductCommandCenterReport({
+        calibration: calibrationProduct,
+        curation: fullCorpusCurationReport,
+        exportsReady: Boolean(latestEvaluationArtifact || evaluationArtifacts.length || oneClickExportPack),
+        generator: promptGeneratorV2,
+        hosted: hostedReadinessProduct,
+        proof: proofRunController,
+      }),
+    [
+      calibrationProduct,
+      evaluationArtifacts.length,
+      fullCorpusCurationReport,
+      hostedReadinessProduct,
+      latestEvaluationArtifact,
+      oneClickExportPack,
+      promptGeneratorV2,
+      proofRunController,
+    ],
   );
 
   useEffect(() => {
@@ -3697,6 +3781,118 @@ export default function App() {
 
   function setPromptCurationDecision(promptId: string, decision: CurationDecision) {
     setCurationDecisions((current) => ({ ...current, [promptId]: decision }));
+  }
+
+  function handleDatasetInboxDecision(promptId: string, action: DatasetInboxReport["rows"][number]["recommendation"]) {
+    const prompt = examples.find((item) => item.id === promptId);
+    if (!prompt) {
+      setApiNotice("Dataset inbox row is no longer available.");
+      return;
+    }
+    if (action === "gold") {
+      setCurationDecisions((current) => ({ ...current, [promptId]: "learn" }));
+      updateOutcome(prompt, {
+        rating: "great",
+        status: "gold",
+        notes: "Promoted to gold from the Dataset Inbox after product review.",
+      });
+      setApiNotice(`Promoted ${prompt.title} to gold training material.`);
+      return;
+    }
+    if (action === "remove") {
+      if (prompt.source === "user") {
+        removePrompt(promptId);
+        setApiNotice(`Removed ${prompt.title} from the user corpus.`);
+      } else {
+        setCurationDecisions((current) => ({ ...current, [promptId]: "quarantine" }));
+        setApiNotice(`Quarantined ${prompt.title}; seed examples cannot be deleted from the app.`);
+      }
+      return;
+    }
+    setCurationDecisions((current) => ({ ...current, [promptId]: action }));
+    setApiNotice(`${prompt.title} marked ${action} from the Dataset Inbox.`);
+  }
+
+  function handleProveGeneratedPrompt() {
+    if (apiHealth?.ok && selectedPrompt) {
+      void runHostedProofWorker();
+      return;
+    }
+
+    const now = Date.now();
+    const createdAt = new Date(now).toISOString();
+    const sourcePrompt =
+      selectedPrompt ??
+      ({
+        id: `generator-v2-${slugify(promptGeneratorV2.variant.title) || "prompt"}-${now}`,
+        title: promptGeneratorV2.variant.title || "Generated website prompt",
+        text: promptGeneratorV2.compiledPrompt || promptGeneratorV2.variant.prompt || generatedPrompt,
+        source: "user" as const,
+        createdAt,
+      } satisfies PromptExample);
+    const promptScore = evaluatePrompt(sourcePrompt.text).score;
+    const job = createBuildQueueJob(
+      sourcePrompt,
+      { title: sourcePrompt.title, prompt: sourcePrompt.text, score: promptScore },
+      selectedBuildRun?.resultUrl || "http://127.0.0.1:5173",
+    );
+    const proofRun: ProofLearningRun = {
+      id: `product-proof-${now}`,
+      createdAt,
+      promptId: sourcePrompt.id,
+      title: sourcePrompt.title,
+      queueJobId: job.id,
+      phase: "queued",
+      promptScore,
+      resultScore: selectedBuildRun?.score || 0,
+      visualScore: screenshotQa.score,
+      dnaScore: scorePromptDnaV2(sourcePrompt, undefined, undefined).overall,
+      learnedStatus: "queued",
+      screenshotCount: selectedScreenshots.length,
+      notes: [
+        apiHealth?.ok ? "Hosted API is online, but no selected prompt was active; queued the generated prompt locally first." : "API is offline, so the product proof action created a local queue job.",
+        "Run the queue or import queue-result.json to finish the proof loop.",
+      ],
+    };
+    if (!selectedPrompt) {
+      const historyVersion: PromptVersion = {
+        id: `product-proof-version-${now}`,
+        kind: "generated",
+        title: sourcePrompt.title,
+        text: sourcePrompt.text,
+        score: promptScore,
+        createdAt,
+      };
+      setUserPrompts((current) => [sourcePrompt, ...current.filter((item) => item.id !== sourcePrompt.id)]);
+      setSelectedId(sourcePrompt.id);
+      setHistory((current) => [historyVersion, ...current].slice(0, 80));
+      addLineageNode({
+        id: `lineage-product-proof-source-${sourcePrompt.id}`,
+        parentId: null,
+        promptId: sourcePrompt.id,
+        kind: "source",
+        title: sourcePrompt.title,
+        score: promptScore,
+        status: "generated",
+        detail: "Created from Generate Prompt product front door.",
+        createdAt,
+      });
+    }
+    setQueueJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 140));
+    setProofLearningRuns((current) => [proofRun, ...current.filter((item) => item.id !== proofRun.id)].slice(0, 80));
+    addLineageNode({
+      id: `lineage-product-proof-queue-${job.id}`,
+      parentId: `lineage-source-${sourcePrompt.id}`,
+      promptId: sourcePrompt.id,
+      kind: "tournament",
+      title: job.variantTitle,
+      score: job.score,
+      status: "queued",
+      detail: `Proof job queued in ${job.runFolder}.`,
+      createdAt,
+    });
+    setActiveTrainStage("Run");
+    setApiNotice(`Queued product proof for ${sourcePrompt.title}: ${job.id}.`);
   }
 
   function saveApiBase() {
@@ -6514,6 +6710,12 @@ export default function App() {
               datasetReviewQueue={datasetReviewQueue}
               hostedWorkerOps={hostedWorkerOps}
               measuredQualitySprint={measuredQualitySprint}
+              datasetInbox={datasetInbox}
+              proofRunController={proofRunController}
+              calibrationProduct={calibrationProduct}
+              hostedReadinessProduct={hostedReadinessProduct}
+              qualityRegressionGate={qualityRegressionGate}
+              productCommandCenter={productCommandCenter}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -6604,6 +6806,8 @@ export default function App() {
               onSave={saveVersion}
               onSaveApiBase={saveApiBase}
               onSelectPrompt={setSelectedId}
+              onDatasetInboxDecision={handleDatasetInboxDecision}
+              onProveGeneratedPrompt={handleProveGeneratedPrompt}
               onSetPromptCurationDecision={setPromptCurationDecision}
               onRestoreBackupSnapshot={restoreBackupSnapshot}
               onSyncToApi={syncToApi}
@@ -7681,6 +7885,12 @@ function TrainView({
   datasetReviewQueue,
   hostedWorkerOps,
   measuredQualitySprint,
+  datasetInbox,
+  proofRunController,
+  calibrationProduct,
+  hostedReadinessProduct,
+  qualityRegressionGate,
+  productCommandCenter,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -7772,6 +7982,8 @@ function TrainView({
   onSave,
   onSaveApiBase,
   onSelectPrompt,
+  onDatasetInboxDecision,
+  onProveGeneratedPrompt,
   onSetPromptCurationDecision,
   onRestoreBackupSnapshot,
   onSyncToApi,
@@ -7969,6 +8181,12 @@ function TrainView({
   datasetReviewQueue: DatasetReviewQueueReport;
   hostedWorkerOps: HostedWorkerOpsReport;
   measuredQualitySprint: MeasuredQualitySprintReport;
+  datasetInbox: DatasetInboxReport;
+  proofRunController: ProofRunControllerReport;
+  calibrationProduct: CalibrationProductReport;
+  hostedReadinessProduct: HostedReadinessProductReport;
+  qualityRegressionGate: QualityRegressionGateReport;
+  productCommandCenter: ProductCommandCenterReport;
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -8068,6 +8286,8 @@ function TrainView({
   onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
   onSaveApiBase: () => void;
   onSelectPrompt: (id: string) => void;
+  onDatasetInboxDecision: (promptId: string, action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
+  onProveGeneratedPrompt: () => void;
   onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
   onRestoreBackupSnapshot: (id: string) => void;
   onSyncToApi: () => void;
@@ -8170,6 +8390,11 @@ function TrainView({
     { id: "api", label: "API" },
     { id: "workspace", label: "Workspaces" },
     { id: "generate", label: "Generate" },
+    { id: "dataset", label: "Dataset" },
+    { id: "prove", label: "Prove" },
+    { id: "calibrate", label: "Calibrate" },
+    { id: "hosted", label: "Hosted" },
+    { id: "quality", label: "Quality" },
     { id: "patterns", label: "Patterns" },
     { id: "improve", label: "Improve" },
     { id: "screenshots", label: "Screenshots" },
@@ -8213,6 +8438,8 @@ function TrainView({
         onSelect={scrollToTrainSection}
       />
 
+      <ProductCommandCenterPanel report={productCommandCenter} onSelect={scrollToTrainSection} />
+
       <TrainFlowModesPanel modes={trainModeReport} onSelect={scrollToTrainSection} />
 
       <TrainWorkflowAccordionPanel onSelect={scrollToTrainSection} />
@@ -8241,6 +8468,32 @@ function TrainView({
       />
 
       <MeasuredQualitySprintPanel report={measuredQualitySprint} />
+
+      <section className="train-columns">
+        <GeneratePromptFrontDoorPanel
+          report={promptGeneratorV2}
+          onApplyGeneratorVariant={onApplyGeneratorVariant}
+          onCopy={onCopy}
+          copied={copied}
+          onProveGeneratedPrompt={onProveGeneratedPrompt}
+        />
+        <DatasetInboxPanel report={datasetInbox} onDecision={onDatasetInboxDecision} />
+      </section>
+
+      <section className="train-columns">
+        <ProofRunControllerPanel
+          jobs={queueJobs}
+          report={proofRunController}
+          onOperateQueueJob={onOperateQueueJob}
+          onProveGeneratedPrompt={onProveGeneratedPrompt}
+        />
+        <CalibrationProductPanel report={calibrationProduct} onRunCachedModelEvaluation={onRunCachedModelEvaluation} />
+      </section>
+
+      <section className="train-columns">
+        <HostedReadinessProductPanel report={hostedReadinessProduct} onConnectHostedBrain={onConnectHostedBrain} />
+        <QualityRegressionGatePanel report={qualityRegressionGate} />
+      </section>
 
       <section className="train-columns">
         <GoldenBenchmarkHarnessPanel report={goldenBenchmarkHarness} />
@@ -9334,6 +9587,262 @@ function MeasuredQualitySprintPanel({ report }: { report: MeasuredQualitySprintR
         ))}
       </div>
       <FeedbackList title="Sprint notes" items={report.notes} empty="No sprint notes." />
+    </section>
+  );
+}
+
+function ProductCommandCenterPanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: ProductCommandCenterReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Product Command Center</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.cards.map((card) => (
+          <button className="safe-check product-command-card" key={card.id} type="button" data-ready={card.status === "ready" || card.status === "complete" ? "true" : "false"} onClick={() => onSelect(card.target)}>
+            <strong>{card.metric}</strong>
+            <span>{card.label}</span>
+            <p>{card.reason}</p>
+            <small>{card.cta}</small>
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
+      <FeedbackList title="Command notes" items={report.notes} empty="No command notes." />
+    </section>
+  );
+}
+
+function GeneratePromptFrontDoorPanel({
+  copied,
+  onApplyGeneratorVariant,
+  onCopy,
+  onProveGeneratedPrompt,
+  report,
+}: {
+  copied: string;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  onProveGeneratedPrompt: () => void;
+  report: PromptGeneratorV2Report;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.readiness} data-train-section="generate">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Generate Prompt</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.appliedBenchmarks.length)} label="Benchmarks" />
+        <Metric value={formatNumber(report.missingInputs.length)} label="Gaps" />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.sections.map((section) => (
+          <div className="guided-step" key={section.label} data-status={section.ready ? "ready" : "active"}>
+            <strong>{section.label}</strong>
+            <p>{section.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={() => onApplyGeneratorVariant(report.variant)}>Load into editor</button>
+        <button className="ghost-button compact-button" type="button" onClick={onProveGeneratedPrompt}>Prove generated prompt</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.compiledPrompt, "generate-front-door")}>
+          {copied === "generate-front-door" ? <Check size={15} /> : <Copy size={15} />}
+          Copy
+        </button>
+      </div>
+      <FeedbackList title="Generator notes" items={report.notes} empty="No generator notes." />
+    </section>
+  );
+}
+
+function DatasetInboxPanel({
+  onDecision,
+  report,
+}: {
+  onDecision: (promptId: string, action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
+  report: DatasetInboxReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="dataset">
+      <div className="output-header">
+        <div className="panel-header">
+          <Tags size={18} />
+          <h2>Dataset Inbox</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.counts.learn)} label="Learn" />
+        <Metric value={formatNumber(report.counts.gold)} label="Gold" />
+        <Metric value={formatNumber(report.counts.review)} label="Review" />
+        <Metric value={formatNumber(report.counts.quarantine + report.counts.remove)} label="Block" />
+      </div>
+      <div className="version-list compact-list">
+        {report.rows.slice(0, 8).map((row) => (
+          <article className="version-card" key={row.promptId}>
+            <div>
+              <strong>{row.title}</strong>
+              <span>{row.recommendation} / {row.score}</span>
+            </div>
+            <p>{row.reason}</p>
+            {row.warnings.length ? <p className="selected-meta">{row.warnings.slice(0, 2).join(" ")}</p> : null}
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onDecision(row.promptId, "learn")}>Learn</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onDecision(row.promptId, "gold")}>Gold</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onDecision(row.promptId, "review")}>Review</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onDecision(row.promptId, "quarantine")}>Quarantine</button>
+              <button className="icon-button danger" type="button" onClick={() => onDecision(row.promptId, "remove")} aria-label={`Remove ${row.title}`}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </article>
+        ))}
+        {!report.rows.length && <p className="selected-meta">No dataset inbox rows yet.</p>}
+      </div>
+      <FeedbackList title="Inbox notes" items={report.notes} empty="No inbox notes." />
+    </section>
+  );
+}
+
+function ProofRunControllerPanel({
+  jobs,
+  onOperateQueueJob,
+  onProveGeneratedPrompt,
+  report,
+}: {
+  jobs: BuildQueueJob[];
+  onOperateQueueJob: (id: string, action: "retry" | "cancel" | "remove") => void;
+  onProveGeneratedPrompt: () => void;
+  report: ProofRunControllerReport;
+}) {
+  const retryJob = jobs.find((job) => ["failed", "canceled", "cancelled"].includes(job.status));
+  const cancelJob = jobs.find((job) => ["queued", "scaffolded", "building", "capturing"].includes(job.status));
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="prove">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Proof Run Controller</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.currentStage} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.stages.map((stage) => (
+          <div className="guided-step" key={stage.id} data-status={stage.status === "done" ? "ready" : stage.status === "active" ? "active" : "blocked"}>
+            <strong>{stage.label}</strong>
+            <p>{stage.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" disabled={!report.actions.find((action) => action.id === "prove")?.enabled} onClick={onProveGeneratedPrompt}>Prove prompt</button>
+        <button className="ghost-button compact-button" type="button" disabled={!retryJob} onClick={() => retryJob && onOperateQueueJob(retryJob.id, "retry")}>Retry failed job</button>
+        <button className="ghost-button compact-button" type="button" disabled={!cancelJob} onClick={() => cancelJob && onOperateQueueJob(cancelJob.id, "cancel")}>Cancel active job</button>
+      </div>
+      <FeedbackList title="Controller actions" items={report.actions.map((action) => `${action.label}: ${action.detail}`)} empty="No proof actions." />
+      <FeedbackList title="Proof notes" items={report.notes} empty="No proof notes." />
+    </section>
+  );
+}
+
+function CalibrationProductPanel({
+  onRunCachedModelEvaluation,
+  report,
+}: {
+  onRunCachedModelEvaluation: () => void;
+  report: CalibrationProductReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="calibrate">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Calibration</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.rows.map((row) => (
+          <div className="benchmark-row" key={row.label} data-status={row.delta <= 15 ? "aligned" : "missing"}>
+            <strong>{row.label}</strong>
+            <p>Local {row.localScore} / model {row.modelScore} / delta {row.delta}</p>
+            <span>{row.verdict}</span>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>Run cached model evaluation</button>
+      <FeedbackList title={`Recommendation: ${report.recommendation}`} items={report.notes} empty="No calibration notes." />
+    </section>
+  );
+}
+
+function HostedReadinessProductPanel({
+  onConnectHostedBrain,
+  report,
+}: {
+  onConnectHostedBrain: () => void;
+  report: HostedReadinessProductReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.verdict} data-train-section="hosted">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Hosted Readiness</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.verdict} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Fix"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+            {!check.ready ? <small>{check.fix}</small> : null}
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onConnectHostedBrain}>Connect hosted brain</button>
+      <FeedbackList title="Hosted notes" items={report.notes} empty="No hosted notes." />
+    </section>
+  );
+}
+
+function QualityRegressionGatePanel({ report }: { report: QualityRegressionGateReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="quality">
+      <div className="output-header">
+        <div className="panel-header">
+          <Check size={18} />
+          <h2>Quality Regression Gate</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <div className="safe-check" key={row.label} data-ready={row.ready ? "true" : "false"}>
+            <strong>{row.ready ? "Pass" : row.blocking ? "Blocker" : "Report"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Gate notes" items={report.notes} empty="No quality gate notes." />
     </section>
   );
 }
