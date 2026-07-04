@@ -6,7 +6,11 @@ import {
   analyzeArchetypeClusters,
   buildGeneratorPresets,
   buildBenchmarkV2Report,
+  buildBenchmarkLibraryReport,
+  buildBestNextActionReport,
   buildCodexBuildPack,
+  buildBuildResultLearningReport,
+  buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
   buildEvaluationArtifact,
   buildEvaluationHistoryReport,
@@ -24,11 +28,16 @@ import {
   buildModelEvaluationCacheReport,
   buildPromptCandidateTournament,
   buildPromptCoachReport,
+  buildPromptEditorGuidance,
+  buildPromptQualityDnaReport,
+  buildPromptRecipeDistillerReport,
   buildQueueProgressReport,
   buildQualityGateReport,
   buildReusableMemoryPack,
   buildSourceSafetyReport,
   buildSafeToTrainReport,
+  buildGuidedTrainingStepperReport,
+  buildModelJudgeComparisonReport,
   buildTrainingRunSummary,
   buildVisualRegressionReport,
   answerLearnerQuestion,
@@ -499,4 +508,64 @@ const artifact = buildEvaluationArtifact({
 assert.ok(artifact.markdown.includes("Evaluation Artifact"), "Evaluation artifact should be markdown-exportable.");
 assert.ok(JSON.parse(artifact.json), "Evaluation artifact JSON should parse.");
 
-console.log(JSON.stringify({ ok: true, assertions: 86, score: score.score, snapshot: snapshot.label }, null, 2));
+const provenanceFirewall = buildCorpusProvenanceFirewallReport({ examples, curation, leakage: leakageGuard });
+assert.ok(provenanceFirewall.score >= 80, "Provenance firewall should score curated seed prompts as safe.");
+assert.ok(provenanceFirewall.rows.every((row) => row.originHint), "Provenance rows should expose origin hints.");
+
+const buildLearning = buildBuildResultLearningReport({ queueProgress, resultScore: resultArtifact, screenshotQa: screenshotSet, visualRegression });
+assert.ok(buildLearning.score >= 70, "Build result learning should score proven prompts as learnable.");
+assert.ok(buildLearning.nextActions.length >= 0, "Build result learning should expose next actions array.");
+
+const promptQualityDna = buildPromptQualityDnaReport({ dnaExplanation, qualityGate, resultScore: resultArtifact, screenshotQa: screenshotSet });
+assert.ok(promptQualityDna.dimensions.length > dnaExplanation.dimensions.length, "Prompt Quality DNA should add proof dimensions.");
+assert.ok(promptQualityDna.summary[0].includes("Prompt Quality DNA"), "Prompt Quality DNA should explain the score plainly.");
+
+const recipeDistiller = buildPromptRecipeDistillerReport({
+  goldenRecipes: [],
+  patternExtraction,
+  promptMemory: {
+    markdown: "# Memory\n- exact assets win",
+    json: "{}",
+    sections: [{ title: "Rules", items: ["Exact assets win", "Require mobile proof"] }],
+  },
+});
+assert.ok(recipeDistiller.recipes.length > 0, "Recipe distiller should produce reusable recipes.");
+
+const modelComparison = buildModelJudgeComparisonReport({ cacheReport, qualityGate, resultScore: resultArtifact });
+assert.notEqual(modelComparison.alignment, "empty", "Model comparison should use cached model rows.");
+assert.ok(modelComparison.rows.length >= 3, "Model comparison should include model, local, and result rows.");
+
+const benchmarkLibrary = buildBenchmarkLibraryReport({ corpusIntelligence, fixtures: BENCHMARK_FIXTURES });
+assert.equal(benchmarkLibrary.total, BENCHMARK_FIXTURES.length, "Benchmark library should cover all fixtures.");
+assert.ok(benchmarkLibrary.rows.every((row) => row.fix), "Benchmark library rows should include fixes.");
+
+const editorGuidance = buildPromptEditorGuidance(examples[0]);
+assert.ok(editorGuidance.sections.length >= 5, "Editor guidance should split prompt into editable sections.");
+assert.ok(editorGuidance.notes.some((note) => /Regenerate/i.test(note)), "Editor guidance should recommend section-level regeneration.");
+
+const stepper = buildGuidedTrainingStepperReport({
+  benchmarkV2,
+  corpusFirewall: provenanceFirewall,
+  corpusIntelligence,
+  evaluationArtifacts: [artifact],
+  modelCache: cacheReport,
+  queueProgress,
+  safeToTrain,
+  trainingSummary,
+});
+assert.ok(stepper.steps.length >= 7, "Guided stepper should include the full product training path.");
+assert.ok(stepper.currentStep, "Guided stepper should identify the current focus.");
+
+const bestNextAction = buildBestNextActionReport({
+  benchmarkLibrary,
+  buildLearning,
+  corpusFirewall: provenanceFirewall,
+  modelComparison,
+  promptDna: promptQualityDna,
+  safeToTrain,
+  stepper,
+});
+assert.ok(bestNextAction.title.length > 0, "Best next action should pick a clear recommendation.");
+assert.ok(bestNextAction.checklist.length >= 0, "Best next action should expose a checklist array.");
+
+console.log(JSON.stringify({ ok: true, assertions: 110, score: score.score, snapshot: snapshot.label }, null, 2));

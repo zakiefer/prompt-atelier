@@ -35,7 +35,11 @@ import {
   auditVisualPrompt,
   buildCodexSkill,
   buildBenchmarkV2Report,
+  buildBenchmarkLibraryReport,
+  buildBestNextActionReport,
+  buildBuildResultLearningReport,
   buildCorpusCleaningReport,
+  buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
   buildEvaluationArtifact,
   buildEvaluationHistoryReport,
@@ -49,6 +53,9 @@ import {
   buildPromptMemoryExport,
   buildPromptBattle,
   buildPromptCandidateTournament,
+  buildPromptEditorGuidance,
+  buildPromptQualityDnaReport,
+  buildPromptRecipeDistillerReport,
   buildGoldReviewReport,
   buildGeneratorPresets,
   buildExperimentLeaderboard,
@@ -68,6 +75,8 @@ import {
   buildResultGallery,
   buildReusableMemoryPack,
   buildSafeToTrainReport,
+  buildGuidedTrainingStepperReport,
+  buildModelJudgeComparisonReport,
   buildSourceSafetyReport,
   buildTrainingRunSummary,
   buildVisualRegressionReport,
@@ -121,7 +130,10 @@ import {
   titleFromPrompt,
   type ArchetypeMixOptions,
   type ArchetypeCluster,
+  type BenchmarkLibraryReport,
   type BenchmarkV2Report,
+  type BestNextActionReport,
+  type BuildResultLearningReport,
   type BuildRunRecord,
   type BuildFeedbackReport,
   type BuildRunnerPlan,
@@ -132,6 +144,7 @@ import {
   type ComposeOptions,
   type CorpusHealth,
   type CorpusCleaningReport,
+  type CorpusProvenanceFirewallReport,
   type CorpusIntelligenceReport,
   type CorpusCurationReport,
   type DatasetVersion,
@@ -157,6 +170,7 @@ import {
   type HostedSyncReport,
   type ModelEvaluationCacheRecord,
   type ModelEvaluationCacheReport,
+  type ModelJudgeComparisonReport,
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
@@ -167,6 +181,9 @@ import {
   type PromptAnalysis,
   type PromptBattle,
   type PromptCandidateTournamentReport,
+  type PromptEditorGuidanceReport,
+  type PromptQualityDnaReport,
+  type PromptRecipeDistillerReport,
   type PromptDiff,
   type PromptDnaV2,
   type PromptExample,
@@ -191,6 +208,7 @@ import {
   type ResultGalleryItem,
   type ReusableMemoryPack,
   type SafeToTrainReport,
+  type GuidedTrainingStepperReport,
   type ScreenshotQaReport,
   type ScreenshotRecord,
   type SearchResult,
@@ -2482,6 +2500,61 @@ export default function App() {
     [apiHealth?.authRequired, apiHealth?.ok, apiHealth?.sqlitePath, backupSnapshots.length, claudeHealthChecks, datasetVersions.length, modelEvaluation, queueJobs.length, queueProgress.status, trainingRuns.length],
   );
   const latestEvaluationArtifact = evaluationArtifacts[0];
+  const corpusProvenanceFirewall = useMemo(
+    () => buildCorpusProvenanceFirewallReport({ examples, curation: fullCorpusCurationReport, leakage: leakageGuard }),
+    [examples, fullCorpusCurationReport, leakageGuard],
+  );
+  const buildResultLearning = useMemo(
+    () => buildBuildResultLearningReport({ queueProgress, resultScore, screenshotQa, visualRegression }),
+    [queueProgress, resultScore, screenshotQa, visualRegression],
+  );
+  const promptQualityDna = useMemo(
+    () => buildPromptQualityDnaReport({ dnaExplanation, qualityGate, resultScore, screenshotQa }),
+    [dnaExplanation, qualityGate, resultScore, screenshotQa],
+  );
+  const recipeDistiller = useMemo(
+    () => buildPromptRecipeDistillerReport({ goldenRecipes, patternExtraction, promptMemory }),
+    [goldenRecipes, patternExtraction, promptMemory],
+  );
+  const modelJudgeComparison = useMemo(
+    () => buildModelJudgeComparisonReport({ cacheReport: modelEvaluationCacheReport, qualityGate, resultScore }),
+    [modelEvaluationCacheReport, qualityGate, resultScore],
+  );
+  const benchmarkLibrary = useMemo(
+    () => buildBenchmarkLibraryReport({ corpusIntelligence }),
+    [corpusIntelligence],
+  );
+  const promptEditorGuidance = useMemo(
+    () => buildPromptEditorGuidance(selectedPrompt),
+    [selectedPrompt],
+  );
+  const guidedTrainingStepper = useMemo(
+    () =>
+      buildGuidedTrainingStepperReport({
+        benchmarkV2: benchmarkV2Report,
+        corpusFirewall: corpusProvenanceFirewall,
+        corpusIntelligence,
+        evaluationArtifacts,
+        modelCache: modelEvaluationCacheReport,
+        queueProgress,
+        safeToTrain,
+        trainingSummary: trainingRunSummary,
+      }),
+    [benchmarkV2Report, corpusIntelligence, corpusProvenanceFirewall, evaluationArtifacts, modelEvaluationCacheReport, queueProgress, safeToTrain, trainingRunSummary],
+  );
+  const bestNextAction = useMemo(
+    () =>
+      buildBestNextActionReport({
+        benchmarkLibrary,
+        buildLearning: buildResultLearning,
+        corpusFirewall: corpusProvenanceFirewall,
+        modelComparison: modelJudgeComparison,
+        promptDna: promptQualityDna,
+        safeToTrain,
+        stepper: guidedTrainingStepper,
+      }),
+    [benchmarkLibrary, buildResultLearning, corpusProvenanceFirewall, guidedTrainingStepper, modelJudgeComparison, promptQualityDna, safeToTrain],
+  );
   const rewriteComparison = useMemo(
     () => comparePromptImprovement(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
     [coachInput, generatedPrompt, outcomes, profile, resultScore, selectedPrompt],
@@ -5809,6 +5882,15 @@ export default function App() {
               evaluationArtifacts={evaluationArtifacts}
               latestEvaluationArtifact={latestEvaluationArtifact}
               hostedSetupChecks={hostedSetupChecks}
+              corpusProvenanceFirewall={corpusProvenanceFirewall}
+              guidedTrainingStepper={guidedTrainingStepper}
+              buildResultLearning={buildResultLearning}
+              promptQualityDna={promptQualityDna}
+              recipeDistiller={recipeDistiller}
+              modelJudgeComparison={modelJudgeComparison}
+              benchmarkLibrary={benchmarkLibrary}
+              promptEditorGuidance={promptEditorGuidance}
+              bestNextAction={bestNextAction}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -6928,6 +7010,15 @@ function TrainView({
   evaluationArtifacts,
   latestEvaluationArtifact,
   hostedSetupChecks,
+  corpusProvenanceFirewall,
+  guidedTrainingStepper,
+  buildResultLearning,
+  promptQualityDna,
+  recipeDistiller,
+  modelJudgeComparison,
+  benchmarkLibrary,
+  promptEditorGuidance,
+  bestNextAction,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -7168,6 +7259,15 @@ function TrainView({
   evaluationArtifacts: EvaluationArtifact[];
   latestEvaluationArtifact?: EvaluationArtifact;
   hostedSetupChecks: HostedSetupCheck[];
+  corpusProvenanceFirewall: CorpusProvenanceFirewallReport;
+  guidedTrainingStepper: GuidedTrainingStepperReport;
+  buildResultLearning: BuildResultLearningReport;
+  promptQualityDna: PromptQualityDnaReport;
+  recipeDistiller: PromptRecipeDistillerReport;
+  modelJudgeComparison: ModelJudgeComparisonReport;
+  benchmarkLibrary: BenchmarkLibraryReport;
+  promptEditorGuidance: PromptEditorGuidanceReport;
+  bestNextAction: BestNextActionReport;
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -7438,6 +7538,27 @@ function TrainView({
         onTrainFromCorpus={onTrainFromCorpus}
         queueProgress={queueProgress}
       />
+
+      <BestNextActionPanel action={bestNextAction} onSelect={scrollToTrainSection} />
+
+      <GuidedTrainingStepperPanel report={guidedTrainingStepper} />
+
+      <section className="train-columns">
+        <CorpusProvenanceFirewallPanel report={corpusProvenanceFirewall} />
+        <BuildResultLearningPanel report={buildResultLearning} />
+      </section>
+
+      <section className="train-columns">
+        <PromptQualityDnaPanel report={promptQualityDna} />
+        <ModelJudgeComparisonPanel report={modelJudgeComparison} onRunCachedModelEvaluation={onRunCachedModelEvaluation} />
+      </section>
+
+      <section className="train-columns">
+        <PromptRecipeDistillerPanel report={recipeDistiller} />
+        <PromptEditorGuidancePanel report={promptEditorGuidance} />
+      </section>
+
+      <BenchmarkLibraryCoveragePanel report={benchmarkLibrary} />
 
       <GuidedTrainingWorkflowPanel
         benchmarkV2={benchmarkV2Report}
@@ -8346,6 +8467,255 @@ function TrainWorkflowAccordionPanel({ onSelect }: { onSelect: (id: string) => v
           </details>
         ))}
       </div>
+    </section>
+  );
+}
+
+function BestNextActionPanel({ action, onSelect }: { action: BestNextActionReport; onSelect: (id: string) => void }) {
+  const targetMap: Record<string, string> = {
+    Provenance: "workspace",
+    "Hosted setup": "api",
+    "Proof loop": "queue",
+    "Model intelligence": "api",
+    "Benchmark library": "patterns",
+    "Prompt DNA": "workflow",
+    "Evaluation artifacts": "packs",
+    "Guided workflow": "workflow",
+  };
+  return (
+    <section className="panel lab-panel best-next-action-panel" data-priority={action.priority} data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Lightbulb size={18} />
+          <h2>Best next action</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => onSelect(targetMap[action.target] ?? "workflow")}>
+          Jump there
+        </button>
+      </div>
+      <div className="next-action-layout">
+        <div>
+          <span className="workspace-pill">{action.priority} priority</span>
+          <h3>{action.title}</h3>
+          <p>{action.detail}</p>
+        </div>
+        <FeedbackList title={action.target} items={action.checklist} empty="No blocking checklist. Create the next artifact or run guided train." />
+      </div>
+    </section>
+  );
+}
+
+function GuidedTrainingStepperPanel({ report }: { report: GuidedTrainingStepperReport }) {
+  return (
+    <section className="panel lab-panel guided-stepper-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>One-click training run wizard</h2>
+        </div>
+        <span className="workspace-pill">Focus: {report.currentStep}</span>
+      </div>
+      <div className="guided-stepper-grid">
+        {report.steps.map((step, index) => (
+          <article className="guided-stepper-card" data-state={step.status} key={step.id}>
+            <span>{index + 1}</span>
+            <strong>{step.label}</strong>
+            <em>{step.score}</em>
+            <p>{step.detail}</p>
+            <small>{step.fix}</small>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Stepper notes" items={report.notes} empty="No guided stepper notes yet." />
+    </section>
+  );
+}
+
+function CorpusProvenanceFirewallPanel({ report }: { report: CorpusProvenanceFirewallReport }) {
+  return (
+    <section className="panel lab-panel provenance-firewall-panel" data-train-section="workspace">
+      <div className="output-header">
+        <div className="panel-header">
+          <AlertTriangle size={18} />
+          <h2>Corpus provenance firewall</h2>
+        </div>
+        <span className="workspace-pill">{report.score} safe</span>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(report.allowedCount)} label="Allowed" />
+        <Metric value={String(report.reviewCount)} label="Review" />
+        <Metric value={String(report.quarantinedCount)} label="Quarantine" />
+      </div>
+      <div className="provenance-list">
+        {report.rows.slice(0, 6).map((row) => (
+          <article className="provenance-row" data-decision={row.decision} key={row.id}>
+            <div>
+              <strong>{row.title}</strong>
+              <span>{row.source} / {row.decision}</span>
+            </div>
+            <p>{row.reason}</p>
+            <small>{row.originHint}</small>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Firewall actions" items={report.actions} empty="No firewall actions." />
+    </section>
+  );
+}
+
+function BuildResultLearningPanel({ report }: { report: BuildResultLearningReport }) {
+  return (
+    <section className="panel lab-panel build-result-learning-panel" data-train-section="queue">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Real build-result learning loop</h2>
+        </div>
+        <span className="workspace-pill">{report.status}</span>
+      </div>
+      <div className="proof-signal-grid">
+        {report.rows.map((row) => (
+          <article className="candidate-card" data-state={row.state} key={row.label}>
+            <span data-tone={scoreTone(row.value)}>{row.value}</span>
+            <strong>{row.label}</strong>
+            <p>{row.detail}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Next proof actions" items={report.nextActions} empty="Build evidence is ready to learn from." />
+    </section>
+  );
+}
+
+function PromptQualityDnaPanel({ report }: { report: PromptQualityDnaReport }) {
+  return (
+    <section className="panel lab-panel prompt-quality-dna-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Explainable Prompt Quality DNA</h2>
+        </div>
+        <span className="workspace-pill">{report.label}</span>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(report.score)} label="Quality DNA" />
+        <Metric value={String(report.dimensions.filter((dimension) => dimension.score >= 75).length)} label="Strong" />
+        <Metric value={String(report.dimensions.filter((dimension) => dimension.score < 65).length)} label="Patch" />
+      </div>
+      <div className="dna-dimension-grid">
+        {report.dimensions.slice(0, 8).map((dimension) => (
+          <article className="candidate-card" key={dimension.key}>
+            <span data-tone={scoreTone(dimension.score)}>{dimension.score}</span>
+            <strong>{dimension.label}</strong>
+            <p>{dimension.plainEnglish}</p>
+            <small>{dimension.fix}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ModelJudgeComparisonPanel({
+  onRunCachedModelEvaluation,
+  report,
+}: {
+  onRunCachedModelEvaluation: () => void;
+  report: ModelJudgeComparisonReport;
+}) {
+  return (
+    <section className="panel lab-panel model-judge-comparison-panel" data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Claude/local/result comparison</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>
+          Cache eval
+        </button>
+      </div>
+      <div className="proof-signal-grid">
+        {report.rows.map((row) => (
+          <article className="candidate-card" key={row.label}>
+            <span data-tone={scoreTone(row.score)}>{row.score}</span>
+            <strong>{row.label}</strong>
+            <p>{row.detail}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title={`Alignment: ${report.alignment}`} items={report.notes} empty="Run cached evaluation to compare judges." />
+    </section>
+  );
+}
+
+function PromptRecipeDistillerPanel({ report }: { report: PromptRecipeDistillerReport }) {
+  return (
+    <section className="panel lab-panel recipe-distiller-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Prompt recipe distiller</h2>
+        </div>
+        <span className="workspace-pill">{report.score}</span>
+      </div>
+      <div className="recipe-distiller-grid">
+        {report.recipes.slice(0, 4).map((recipe) => (
+          <article className="index-card" key={recipe.title}>
+            <strong>{recipe.title}</strong>
+            <span>{recipe.score}</span>
+            <p>{recipe.ingredients.slice(0, 3).join(" / ")}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Recipe notes" items={report.notes} empty="No recipes distilled yet." />
+    </section>
+  );
+}
+
+function PromptEditorGuidancePanel({ report }: { report: PromptEditorGuidanceReport }) {
+  return (
+    <section className="panel lab-panel prompt-editor-guidance-panel" data-train-section="generate">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Generated prompt section editor</h2>
+        </div>
+        <span className="workspace-pill">{report.score}</span>
+      </div>
+      <div className="editor-guidance-grid">
+        {report.sections.map((section) => (
+          <article className="index-card" data-tone={section.status === "ready" ? "good" : "watch"} key={section.id}>
+            <strong>{section.label}</strong>
+            <span>{section.status}</span>
+            <p>{section.detail}</p>
+            <small>{section.rewriteHint}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BenchmarkLibraryCoveragePanel({ report }: { report: BenchmarkLibraryReport }) {
+  return (
+    <section className="panel lab-panel benchmark-library-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Benchmark library coverage</h2>
+        </div>
+        <span className="workspace-pill">{report.covered}/{report.total}</span>
+      </div>
+      <div className="benchmark-library-grid">
+        {report.rows.map((row) => (
+          <article className="index-card" data-tone={row.status === "covered" ? "good" : "watch"} key={row.id}>
+            <strong>{row.title}</strong>
+            <span>{row.status}</span>
+            <p>{row.status === "covered" ? "Covered by the current corpus." : row.fix}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Coverage notes" items={report.notes} empty="No benchmark coverage notes." />
     </section>
   );
 }
