@@ -25,6 +25,11 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Automated visual QA for desktop/mobile screenshots, console errors, media readiness, text fit, overlap, and horizontal overflow
 - Export presets for Codex, v0, Claude artifacts, Lovable, and raw implementation specs
 - Codex skill and reusable memory pack exports
+- Start-here proof loop that queues a build, blends prompt/result/screenshot/DNA scores, and records whether the prompt learned from real evidence
+- Golden benchmark board for canonical website prompt challenges
+- Claude/local screenshot judge that converts visual proof into repair patches
+- Mutation tournament history so variants can compete before a build run is spent
+- Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, and Markdown packs
 
 ## Development
 
@@ -92,6 +97,7 @@ The app runs at `http://127.0.0.1:5173` and the API runs at `http://127.0.0.1:87
 - Dataset versions are persisted as a first-class collection.
 - Curation decisions and model batch evaluations are persisted as first-class collections.
 - Pairwise reviews are persisted as a first-class collection.
+- Proof-loop runs, screenshot judge runs, mutation tournaments, Claude health checks, prompt comparisons, screenshot prompts, and workspace packs are persisted as first-class collections.
 
 ## Learning Loop
 
@@ -105,6 +111,16 @@ The Train tab now starts with:
 6. A Claude/local prompt coach and project export pack for turning the current state into a reusable handoff.
 7. Guided generator, leaderboard, backup, Codex build-pack, and security/ops panels for running the loop as a product.
 8. Import audits, evaluation history, export presets, and automated visual QA so prompt quality is judged against real build evidence.
+9. A Start Here path: prove the selected prompt, judge screenshots, run a mutation tournament, and refresh the benchmark suite.
+10. A production-hardening checklist covering hosted API, token posture, Claude key visibility, restore points, dataset versions, and proof history.
+
+The tightest improvement cycle is:
+
+```text
+prompt -> queued build -> desktop/mobile screenshots -> screenshot judge -> mutation tournament -> benchmark board -> learned corpus
+```
+
+The app is honest about missing proof. If no build result or screenshot exists yet, the proof loop records a queued run and tells you to import `queue-result.json` or attach screenshots before promoting a prompt to gold.
 
 The corpus should only contain prompts intentionally imported for this project. Recipe, memory, search, and generator learning use curated website prompts by default.
 

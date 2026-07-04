@@ -233,6 +233,9 @@ const CLAUDE_HEALTH_KEY = "prompt-atelier-claude-health-checks";
 const PROMPT_COMPARISON_KEY = "prompt-atelier-prompt-comparisons";
 const SCREENSHOT_PROMPT_KEY = "prompt-atelier-screenshot-prompt-runs";
 const WORKSPACE_PACK_KEY = "prompt-atelier-workspace-pack-runs";
+const PROOF_LOOP_KEY = "prompt-atelier-proof-learning-runs";
+const SCREENSHOT_JUDGE_KEY = "prompt-atelier-screenshot-judge-runs";
+const MUTATION_TOURNAMENT_KEY = "prompt-atelier-mutation-tournament-runs";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -543,6 +546,42 @@ function readStoredWorkspacePackRuns() {
   }
 }
 
+function readStoredProofLearningRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROOF_LOOP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ProofLearningRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.promptId).slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredScreenshotJudgeRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SCREENSHOT_JUDGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ScreenshotJudgeRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.promptId).slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredMutationTournamentRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MUTATION_TOURNAMENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as MutationTournamentRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.winnerTitle).slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
 function readStoredOnboardingMode(): OnboardingMode {
   if (typeof window === "undefined") return "blank";
   const value = window.localStorage.getItem(ONBOARDING_KEY);
@@ -741,6 +780,53 @@ type WorkspacePackRun = {
     markdown: string;
     json: string;
   }[];
+};
+
+type ProofLearningRun = {
+  id: string;
+  createdAt: string;
+  promptId: string;
+  title: string;
+  queueJobId: string;
+  buildRunId?: string;
+  phase: "queued" | "scored" | "learned";
+  promptScore: number;
+  resultScore: number;
+  visualScore: number;
+  dnaScore: number;
+  learnedStatus: OutcomeRecord["status"] | "queued";
+  screenshotCount: number;
+  notes: string[];
+};
+
+type ScreenshotJudgeRun = {
+  id: string;
+  createdAt: string;
+  promptId: string;
+  title: string;
+  modelMode: string;
+  score: number;
+  verdict: string;
+  findings: string[];
+  fixes: string[];
+  promptPatch: string;
+};
+
+type MutationTournamentRun = {
+  id: string;
+  createdAt: string;
+  sourceTitle: string;
+  winnerTitle: string;
+  winnerPrompt: string;
+  winnerScore: number;
+  modelMode: string;
+  variants: {
+    id: string;
+    title: string;
+    score: number;
+    intent: string;
+  }[];
+  notes: string[];
 };
 
 const benchmarkBriefs: BenchmarkBrief[] = [
@@ -1039,6 +1125,26 @@ function formatPromptForTarget(prompt: PromptExample | undefined, target: string
   return [`# ${target}`, "", headers[target] ?? "Use this prompt.", "", source].join("\n");
 }
 
+function buildGoldenChallengeBoard(runs: BenchmarkRun[]) {
+  const latest = runs[0];
+  return benchmarkBriefs.map((brief) => {
+    const rowHistory = runs.map((run) => run.rows.find((row) => row.briefId === brief.id)).filter(Boolean) as BenchmarkRun["rows"];
+    const latestRow = latest?.rows.find((row) => row.briefId === brief.id);
+    const bestScore = rowHistory.length ? Math.max(...rowHistory.map((row) => row.score)) : 0;
+    const latestScore = latestRow?.score ?? 0;
+    return {
+      id: brief.id,
+      title: brief.title,
+      goal: brief.goal,
+      siteType: brief.siteType,
+      latestScore,
+      bestScore,
+      status: latestScore >= 82 ? "gold" : latestScore >= 70 ? "good" : latestScore ? "needs work" : "not run",
+      finding: latestRow?.findings[0] ?? brief.constraints,
+    };
+  });
+}
+
 type ModelBatchEvaluation = {
   id: string;
   promptId: string;
@@ -1078,6 +1184,9 @@ type StoredCollections = {
   promptComparisons: PromptComparisonRun[];
   screenshotPromptRuns: ScreenshotPromptRun[];
   workspacePackRuns: WorkspacePackRun[];
+  proofLearningRuns: ProofLearningRun[];
+  screenshotJudgeRuns: ScreenshotJudgeRun[];
+  mutationTournamentRuns: MutationTournamentRun[];
 };
 
 export default function App() {
@@ -1113,6 +1222,9 @@ export default function App() {
   const [promptComparisons, setPromptComparisons] = useState<PromptComparisonRun[]>(() => readStoredPromptComparisons());
   const [screenshotPromptRuns, setScreenshotPromptRuns] = useState<ScreenshotPromptRun[]>(() => readStoredScreenshotPromptRuns());
   const [workspacePackRuns, setWorkspacePackRuns] = useState<WorkspacePackRun[]>(() => readStoredWorkspacePackRuns());
+  const [proofLearningRuns, setProofLearningRuns] = useState<ProofLearningRun[]>(() => readStoredProofLearningRuns());
+  const [screenshotJudgeRuns, setScreenshotJudgeRuns] = useState<ScreenshotJudgeRun[]>(() => readStoredScreenshotJudgeRuns());
+  const [mutationTournamentRuns, setMutationTournamentRuns] = useState<MutationTournamentRun[]>(() => readStoredMutationTournamentRuns());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
@@ -1487,6 +1599,7 @@ export default function App() {
     () => buildWorkspacePackSnapshot(learningExamples, outcomes),
     [learningExamples, outcomes],
   );
+  const goldenChallengeBoard = useMemo(() => buildGoldenChallengeBoard(benchmarkRuns), [benchmarkRuns]);
   const rewriteComparison = useMemo(
     () => comparePromptImprovement(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
     [coachInput, generatedPrompt, outcomes, profile, resultScore, selectedPrompt],
@@ -1548,6 +1661,9 @@ export default function App() {
       promptComparisons,
       screenshotPromptRuns,
       workspacePackRuns,
+      proofLearningRuns,
+      screenshotJudgeRuns,
+      mutationTournamentRuns,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -1573,6 +1689,9 @@ export default function App() {
       if (Array.isArray(stored.promptComparisons)) setPromptComparisons((stored.promptComparisons as PromptComparisonRun[]).slice(0, 40));
       if (Array.isArray(stored.screenshotPromptRuns)) setScreenshotPromptRuns((stored.screenshotPromptRuns as ScreenshotPromptRun[]).slice(0, 40));
       if (Array.isArray(stored.workspacePackRuns)) setWorkspacePackRuns((stored.workspacePackRuns as WorkspacePackRun[]).slice(0, 20));
+      if (Array.isArray(stored.proofLearningRuns)) setProofLearningRuns((stored.proofLearningRuns as ProofLearningRun[]).slice(0, 40));
+      if (Array.isArray(stored.screenshotJudgeRuns)) setScreenshotJudgeRuns((stored.screenshotJudgeRuns as ScreenshotJudgeRun[]).slice(0, 40));
+      if (Array.isArray(stored.mutationTournamentRuns)) setMutationTournamentRuns((stored.mutationTournamentRuns as MutationTournamentRun[]).slice(0, 40));
     };
 
     async function hydrate() {
@@ -1744,6 +1863,24 @@ export default function App() {
   }, [dbReady, workspacePackRuns]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(PROOF_LOOP_KEY, JSON.stringify(proofLearningRuns));
+    void writeCollection("proofLearningRuns", proofLearningRuns);
+  }, [dbReady, proofLearningRuns]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(SCREENSHOT_JUDGE_KEY, JSON.stringify(screenshotJudgeRuns));
+    void writeCollection("screenshotJudgeRuns", screenshotJudgeRuns);
+  }, [dbReady, screenshotJudgeRuns]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(MUTATION_TOURNAMENT_KEY, JSON.stringify(mutationTournamentRuns));
+    void writeCollection("mutationTournamentRuns", mutationTournamentRuns);
+  }, [dbReady, mutationTournamentRuns]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -1766,12 +1903,15 @@ export default function App() {
         promptComparisons,
         screenshotPromptRuns,
         workspacePackRuns,
+        proofLearningRuns,
+        screenshotJudgeRuns,
+        mutationTournamentRuns,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, buildRuns, claudeHealthChecks, closedLoopRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, promptComparisons, queueJobs, screenshotPromptRuns, screenshots, userPrompts, workspacePackRuns]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, buildRuns, claudeHealthChecks, closedLoopRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, mutationTournamentRuns, outcomes, pairwiseReviews, promptComparisons, proofLearningRuns, queueJobs, screenshotJudgeRuns, screenshotPromptRuns, screenshots, userPrompts, workspacePackRuns]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -2744,6 +2884,195 @@ export default function App() {
     setApiNotice(`Saved ${run.packs.length} workspace prompt pack(s).`);
   }
 
+  function runProofLearningLoop() {
+    if (!selectedPrompt) {
+      setApiNotice("Select a prompt before running the proof loop.");
+      return;
+    }
+    const createdAt = new Date().toISOString();
+    const promptScore = evaluatePrompt(selectedPrompt.text).score;
+    const proofScore = Math.round((promptScore + resultScore.score + screenshotQa.score + dnaV2.overall) / 4);
+    const hasEvidence = Boolean(selectedBuildRun || selectedScreenshots.length);
+    const job = createBuildQueueJob(selectedPrompt, undefined, selectedBuildRun?.resultUrl || "http://127.0.0.1:5173");
+    const learnedStatus: ProofLearningRun["learnedStatus"] = hasEvidence
+      ? proofScore >= 82
+        ? "gold"
+        : proofScore >= 70
+          ? "good"
+          : proofScore >= 52
+            ? "experimental"
+            : "avoid"
+      : "queued";
+    const notes = [
+      hasEvidence ? "Existing build/screenshot evidence was scored into the learning signal." : "Queued a build proof job; import queue-result.json or attach screenshots to finish learning.",
+      `Prompt ${promptScore}/100, result ${resultScore.score}/100, screenshot ${screenshotQa.score}/100, DNA ${dnaV2.overall}/100.`,
+      ...buildFeedback.nextActions.slice(0, 4),
+    ];
+    const run: ProofLearningRun = {
+      id: `proof-loop-${Date.now()}`,
+      createdAt,
+      promptId: selectedPrompt.id,
+      title: selectedPrompt.title,
+      queueJobId: job.id,
+      buildRunId: selectedBuildRun?.id,
+      phase: hasEvidence ? "learned" : "queued",
+      promptScore,
+      resultScore: resultScore.score,
+      visualScore: screenshotQa.score,
+      dnaScore: dnaV2.overall,
+      learnedStatus,
+      screenshotCount: selectedScreenshots.length,
+      notes,
+    };
+    setQueueJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 140));
+    setProofLearningRuns((current) => [run, ...current].slice(0, 40));
+    if (hasEvidence && learnedStatus !== "queued") {
+      updateOutcome(selectedPrompt, {
+        rating: learnedStatus === "gold" ? "great" : learnedStatus === "avoid" ? "bad" : "okay",
+        status: learnedStatus,
+        notes: `Proof loop learned from build evidence. ${notes.join(" ")}`,
+      });
+    }
+    addLineageNode({
+      id: `lineage-proof-loop-${run.id}`,
+      parentId: `lineage-source-${selectedPrompt.id}`,
+      promptId: selectedPrompt.id,
+      kind: hasEvidence ? "outcome" : "build",
+      title: selectedPrompt.title,
+      score: proofScore,
+      status: run.phase,
+      detail: notes.join(" "),
+      createdAt,
+    });
+    setActiveTrainStage(hasEvidence ? "Analyze" : "Run");
+    setApiNotice(hasEvidence ? `Proof loop learned ${selectedPrompt.title} as ${learnedStatus}.` : `Queued proof loop job ${job.id}.`);
+  }
+
+  async function runScreenshotJudge() {
+    if (!selectedPrompt) {
+      setModelNotice("Select a prompt before running screenshot judge.");
+      return;
+    }
+    const screenshotEvidence = selectedScreenshots.map((screenshot) => ({
+      title: screenshot.title,
+      url: screenshot.url.startsWith("data:image/") ? "[uploaded data URL]" : screenshot.url,
+      rating: screenshot.rating,
+      notes: screenshot.notes,
+    }));
+    const localPatch = [
+      "Screenshot judge repair patch:",
+      ...buildFeedback.nextActions.map((item) => `- ${item}`),
+      ...screenshotQa.notes.map((item) => `- ${item}`),
+    ].join("\n");
+    let result: Record<string, unknown>;
+    try {
+      result = await evaluateWithModel({
+        prompt: selectedPrompt.text,
+        memory: promptMemory.markdown,
+        imageDataUrl: selectedScreenshots.find((screenshot) => screenshot.url.startsWith("data:image/"))?.url,
+        context: {
+          task: "Judge whether the screenshot/build output proves this website prompt. Return score, readiness, findings, recommendations, and rewrittenPrompt as the exact repair patch.",
+          buildRun: selectedBuildRun,
+          screenshotEvidence,
+          resultScore,
+          screenshotQa,
+        },
+        settings: modelSettingsPayload(),
+      });
+    } catch (error) {
+      result = {
+        mode: "local-screenshot-judge",
+        score: buildFeedback.score,
+        readiness: buildFeedback.status,
+        findings: buildFeedback.summary,
+        recommendations: [error instanceof Error ? error.message : String(error), ...buildFeedback.nextActions],
+        rewrittenPrompt: localPatch,
+      };
+    }
+    const promptPatch = modelString(result, "rewrittenPrompt", localPatch);
+    const run: ScreenshotJudgeRun = {
+      id: `screenshot-judge-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      promptId: selectedPrompt.id,
+      title: selectedPrompt.title,
+      modelMode: modelString(result, "mode", "local"),
+      score: modelNumber(result, "score", buildFeedback.score),
+      verdict: modelString(result, "readiness", buildFeedback.status),
+      findings: modelStringArray(result, "findings").slice(0, 8),
+      fixes: modelStringArray(result, "recommendations").slice(0, 8),
+      promptPatch,
+    };
+    setScreenshotJudgeRuns((current) => [run, ...current].slice(0, 40));
+    setImproveText(promptPatch);
+    setModelNotice(`Screenshot judge returned ${run.score}/100 via ${run.modelMode}.`);
+  }
+
+  async function runMutationTournament() {
+    if (!selectedPrompt && !mutationSourceText.trim()) {
+      setModelNotice("Mutation tournament needs a source prompt.");
+      return;
+    }
+    setModelNotice("Running mutation tournament...");
+    const variants = promptMutations.slice(0, 6);
+    const rows: MutationTournamentRun["variants"] = [];
+    let modelMode = "local";
+    for (const variant of variants) {
+      try {
+        const result = await evaluateWithModel({
+          prompt: variant.prompt,
+          memory: promptMemory.markdown,
+          context: {
+            task: "Score this mutation tournament variant. Return score, findings, recommendations, and readiness.",
+            variantTitle: variant.title,
+            intent: variant.intent,
+            currentResultScore: resultScore.score,
+          },
+          settings: modelSettingsPayload(),
+        });
+        modelMode = modelString(result, "mode", modelMode);
+        rows.push({
+          id: variant.id,
+          title: variant.title,
+          score: modelNumber(result, "score", variant.score),
+          intent: modelStringArray(result, "findings")[0] ?? variant.intent,
+        });
+      } catch {
+        rows.push({ id: variant.id, title: variant.title, score: variant.score, intent: variant.intent });
+      }
+    }
+    const ranked = rows.length ? [...rows].sort((a, b) => b.score - a.score) : [];
+    const winnerRow = ranked[0] ?? { id: "none", title: "No mutation", score: 0, intent: "No variants generated." };
+    const winnerVariant = variants.find((variant) => variant.id === winnerRow.id) ?? promptBattle.winner;
+    const run: MutationTournamentRun = {
+      id: `mutation-tournament-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      sourceTitle: selectedPrompt?.title ?? "Manual source",
+      winnerTitle: winnerRow.title,
+      winnerPrompt: winnerVariant?.prompt ?? "",
+      winnerScore: winnerRow.score,
+      modelMode,
+      variants: rows,
+      notes: [
+        "Tournament scoring compares mutated prompts before spending a build run.",
+        "Save the winner, then run the proof loop to verify it with screenshots.",
+      ],
+    };
+    setMutationTournamentRuns((current) => [run, ...current].slice(0, 40));
+    if (run.winnerPrompt) {
+      const version: PromptVersion = {
+        id: `tournament-winner-${Date.now()}`,
+        kind: "tournament",
+        title: run.winnerTitle,
+        text: run.winnerPrompt,
+        score: run.winnerScore,
+        createdAt: run.createdAt,
+      };
+      setHistory((current) => [version, ...current].slice(0, 80));
+      setImproveText(run.winnerPrompt);
+    }
+    setModelNotice(`Mutation tournament winner: ${run.winnerTitle} (${run.winnerScore}/100).`);
+  }
+
   function addPairwiseReview(left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) {
     if (!left || !right || !winnerId) return;
     const winner = winnerId === left.id ? left : right;
@@ -2884,6 +3213,9 @@ export default function App() {
     if (Array.isArray(collections.promptComparisons)) setPromptComparisons(collections.promptComparisons);
     if (Array.isArray(collections.screenshotPromptRuns)) setScreenshotPromptRuns(collections.screenshotPromptRuns);
     if (Array.isArray(collections.workspacePackRuns)) setWorkspacePackRuns(collections.workspacePackRuns);
+    if (Array.isArray(collections.proofLearningRuns)) setProofLearningRuns(collections.proofLearningRuns);
+    if (Array.isArray(collections.screenshotJudgeRuns)) setScreenshotJudgeRuns(collections.screenshotJudgeRuns);
+    if (Array.isArray(collections.mutationTournamentRuns)) setMutationTournamentRuns(collections.mutationTournamentRuns);
     if (isWorkspaceKey(collections.activeWorkspace)) setActiveWorkspace(collections.activeWorkspace);
     setApiNotice(`Restored ${backup.label}.`);
   }
@@ -3202,6 +3534,9 @@ export default function App() {
         promptComparisons,
         screenshotPromptRuns,
         workspacePackRuns,
+        proofLearningRuns,
+        screenshotJudgeRuns,
+        mutationTournamentRuns,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -3288,6 +3623,18 @@ export default function App() {
         setWorkspacePackRuns((collections.workspacePackRuns as WorkspacePackRun[]).slice(0, 20));
         restored.push("workspace packs");
       }
+      if (Array.isArray(collections.proofLearningRuns)) {
+        setProofLearningRuns((collections.proofLearningRuns as ProofLearningRun[]).slice(0, 40));
+        restored.push("proof loops");
+      }
+      if (Array.isArray(collections.screenshotJudgeRuns)) {
+        setScreenshotJudgeRuns((collections.screenshotJudgeRuns as ScreenshotJudgeRun[]).slice(0, 40));
+        restored.push("screenshot judges");
+      }
+      if (Array.isArray(collections.mutationTournamentRuns)) {
+        setMutationTournamentRuns((collections.mutationTournamentRuns as MutationTournamentRun[]).slice(0, 40));
+        restored.push("mutation tournaments");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -3311,7 +3658,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace, closedLoopRuns, benchmarkRuns, claudeHealthChecks, promptComparisons, screenshotPromptRuns, workspacePackRuns },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace, closedLoopRuns, benchmarkRuns, claudeHealthChecks, promptComparisons, screenshotPromptRuns, workspacePackRuns, proofLearningRuns, screenshotJudgeRuns, mutationTournamentRuns },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -3402,6 +3749,18 @@ export default function App() {
         setWorkspacePackRuns((collections.workspacePackRuns as WorkspacePackRun[]).slice(0, 20));
         restored.push("workspace packs");
       }
+      if (Array.isArray(collections.proofLearningRuns)) {
+        setProofLearningRuns((collections.proofLearningRuns as ProofLearningRun[]).slice(0, 40));
+        restored.push("proof loops");
+      }
+      if (Array.isArray(collections.screenshotJudgeRuns)) {
+        setScreenshotJudgeRuns((collections.screenshotJudgeRuns as ScreenshotJudgeRun[]).slice(0, 40));
+        restored.push("screenshot judges");
+      }
+      if (Array.isArray(collections.mutationTournamentRuns)) {
+        setMutationTournamentRuns((collections.mutationTournamentRuns as MutationTournamentRun[]).slice(0, 40));
+        restored.push("mutation tournaments");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -3436,6 +3795,9 @@ export default function App() {
           promptComparisons: collections.promptComparisons ?? promptComparisons,
           screenshotPromptRuns: collections.screenshotPromptRuns ?? screenshotPromptRuns,
           workspacePackRuns: collections.workspacePackRuns ?? workspacePackRuns,
+          proofLearningRuns: collections.proofLearningRuns ?? proofLearningRuns,
+          screenshotJudgeRuns: collections.screenshotJudgeRuns ?? screenshotJudgeRuns,
+          mutationTournamentRuns: collections.mutationTournamentRuns ?? mutationTournamentRuns,
         });
       }
       setSnapshotImportText("");
@@ -3952,6 +4314,7 @@ export default function App() {
               interviewBrief={interviewBrief}
               interviewPrompt={interviewPrompt}
               goldenRecipes={goldenRecipes}
+              goldenChallengeBoard={goldenChallengeBoard}
               goldReview={goldReview}
               guidedWizard={guidedWizard}
               generatorPresets={generatorPresets}
@@ -4010,8 +4373,11 @@ export default function App() {
               onRunClosedLoopTrainer={runClosedLoopTrainer}
               onRunCorpusHygieneSweep={runCorpusHygieneSweep}
               onRunHostedClaudeHealthCheck={runHostedClaudeHealthCheck}
+              onRunProofLearningLoop={runProofLearningLoop}
               onRunModelBatchCalibration={runModelBatchCalibration}
               onRunPromptComparison={runPromptComparison}
+              onRunScreenshotJudge={runScreenshotJudge}
+              onRunMutationTournament={runMutationTournament}
               onGeneratePromptFromScreenshot={generatePromptFromScreenshot}
               onSaveWorkspacePackRun={saveWorkspacePackRun}
               onRunPromptCoach={runPromptCoach}
@@ -4037,6 +4403,7 @@ export default function App() {
               patternExtraction={patternExtraction}
               patternDashboard={patternDashboard}
               promptComparisons={promptComparisons}
+              proofLearningRuns={proofLearningRuns}
               promptBattle={promptBattle}
               promptCoach={promptCoach}
               promptMemory={promptMemory}
@@ -4053,6 +4420,7 @@ export default function App() {
               resultScore={resultScore}
               runnerPlan={runnerPlan}
               screenshotQa={screenshotQa}
+              screenshotJudgeRuns={screenshotJudgeRuns}
               screenshotPromptRuns={screenshotPromptRuns}
               scoreBreakdown={scoreBreakdown}
               scoreWeights={scoreWeights}
@@ -4101,6 +4469,7 @@ export default function App() {
               driftReport={driftReport}
               winExplanation={winExplanation}
               workspaceExamples={workspaceExamples}
+              mutationTournamentRuns={mutationTournamentRuns}
               workspacePackRuns={workspacePackRuns}
               workspacePackSnapshot={workspacePackSnapshot}
             />
@@ -5004,6 +5373,7 @@ function TrainView({
   interviewBrief,
   interviewPrompt,
   goldenRecipes,
+  goldenChallengeBoard,
   goldReview,
   guidedWizard,
   generatorPresets,
@@ -5065,8 +5435,11 @@ function TrainView({
   onRunClosedLoopTrainer,
   onRunCorpusHygieneSweep,
   onRunHostedClaudeHealthCheck,
+  onRunProofLearningLoop,
   onRunModelBatchCalibration,
   onRunPromptComparison,
+  onRunScreenshotJudge,
+  onRunMutationTournament,
   onGeneratePromptFromScreenshot,
   onSaveWorkspacePackRun,
   onRunPromptCoach,
@@ -5090,6 +5463,7 @@ function TrainView({
   patternExtraction,
   patternDashboard,
   promptComparisons,
+  proofLearningRuns,
   promptBattle,
   promptCoach,
   promptMemory,
@@ -5106,6 +5480,7 @@ function TrainView({
   resultScore,
   runnerPlan,
   screenshotQa,
+  screenshotJudgeRuns,
   screenshotPromptRuns,
   scoreBreakdown,
   scoreWeights,
@@ -5152,6 +5527,7 @@ function TrainView({
   wizardIdea,
   winExplanation,
   workspaceExamples,
+  mutationTournamentRuns,
   workspacePackRuns,
   workspacePackSnapshot,
 }: {
@@ -5199,6 +5575,7 @@ function TrainView({
   interviewBrief: InterviewBrief;
   interviewPrompt: string;
   goldenRecipes: GoldenRecipe[];
+  goldenChallengeBoard: ReturnType<typeof buildGoldenChallengeBoard>;
   goldReview: GoldReviewReport;
   guidedWizard: GuidedPromptWizardReport;
   generatorPresets: GeneratorPreset[];
@@ -5268,8 +5645,11 @@ function TrainView({
   onRunClosedLoopTrainer: () => void;
   onRunCorpusHygieneSweep: () => void;
   onRunHostedClaudeHealthCheck: () => void;
+  onRunProofLearningLoop: () => void;
   onRunModelBatchCalibration: () => void;
   onRunPromptComparison: (left: PromptExample | undefined, right: PromptExample | undefined) => void;
+  onRunScreenshotJudge: () => void;
+  onRunMutationTournament: () => void;
   onGeneratePromptFromScreenshot: (input: { title: string; url: string; notes: string; siteType: string }) => Promise<ScreenshotPromptRun>;
   onSaveWorkspacePackRun: () => void;
   onRunPromptCoach: () => void;
@@ -5293,6 +5673,7 @@ function TrainView({
   patternExtraction: PatternExtractionReport;
   patternDashboard: PatternDashboardReport;
   promptComparisons: PromptComparisonRun[];
+  proofLearningRuns: ProofLearningRun[];
   promptBattle: PromptBattle;
   promptCoach: PromptCoachReport;
   promptMemory: PromptMemoryExport;
@@ -5309,6 +5690,7 @@ function TrainView({
   resultScore: ResultScore;
   runnerPlan?: BuildRunnerPlan;
   screenshotQa: ScreenshotQaReport;
+  screenshotJudgeRuns: ScreenshotJudgeRun[];
   screenshotPromptRuns: ScreenshotPromptRun[];
   scoreBreakdown: ScoreBreakdown;
   scoreWeights: ScoreWeights;
@@ -5365,6 +5747,7 @@ function TrainView({
   wizardIdea: string;
   winExplanation: PromptWinExplanationReport;
   workspaceExamples: PromptExample[];
+  mutationTournamentRuns: MutationTournamentRun[];
   workspacePackRuns: WorkspacePackRun[];
   workspacePackSnapshot: WorkspacePackRun["packs"];
 }) {
@@ -5439,6 +5822,33 @@ function TrainView({
         outcomes={outcomes}
         queueJobs={queueJobs}
       />
+
+      <StartHereProofLoopPanel
+        buildFeedback={buildFeedback}
+        onRunBenchmarkSuite={onRunBenchmarkSuite}
+        onRunMutationTournament={onRunMutationTournament}
+        onRunProofLearningLoop={onRunProofLearningLoop}
+        onRunScreenshotJudge={onRunScreenshotJudge}
+        proofLearningRuns={proofLearningRuns}
+        selectedPrompt={selectedPrompt}
+        screenshotJudgeRuns={screenshotJudgeRuns}
+      />
+
+      <section className="train-columns">
+        <GoldenBenchmarkBoardPanel
+          board={goldenChallengeBoard}
+          benchmarkRuns={benchmarkRuns}
+          onRunBenchmarkSuite={onRunBenchmarkSuite}
+        />
+        <ProductionHardeningPanel
+          apiHealth={apiHealth}
+          backupSnapshots={backupSnapshots}
+          datasetVersions={datasetVersions}
+          modelEnvStatus={modelEnvStatus}
+          proofLearningRuns={proofLearningRuns}
+          screenshotJudgeRuns={screenshotJudgeRuns}
+        />
+      </section>
 
       <BackendApiPanel
         apiBaseDraft={apiBaseDraft}
@@ -5805,8 +6215,13 @@ function TrainView({
           onRunAutonomousBattle={onRunAutonomousBattle}
           promptBattle={promptBattle}
         />
-        <PromptWinInsightPanel winExplanation={winExplanation} />
+        <MutationTournamentHistoryPanel
+          mutationTournamentRuns={mutationTournamentRuns}
+          onRunMutationTournament={onRunMutationTournament}
+        />
       </section>
+
+      <PromptWinInsightPanel winExplanation={winExplanation} />
 
       <ExperimentLeaderboardPanel
         experimentLeaderboard={experimentLeaderboard}
@@ -6292,6 +6707,144 @@ function TrainModeLauncherPanel({
             <span>{mode.value}</span>
             <p>{mode.detail}</p>
           </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function StartHereProofLoopPanel({
+  buildFeedback,
+  onRunBenchmarkSuite,
+  onRunMutationTournament,
+  onRunProofLearningLoop,
+  onRunScreenshotJudge,
+  proofLearningRuns,
+  screenshotJudgeRuns,
+  selectedPrompt,
+}: {
+  buildFeedback: BuildFeedbackReport;
+  onRunBenchmarkSuite: () => void;
+  onRunMutationTournament: () => void;
+  onRunProofLearningLoop: () => void;
+  onRunScreenshotJudge: () => void;
+  proofLearningRuns: ProofLearningRun[];
+  screenshotJudgeRuns: ScreenshotJudgeRun[];
+  selectedPrompt?: PromptExample;
+}) {
+  const latestProof = proofLearningRuns[0];
+  const latestJudge = screenshotJudgeRuns[0];
+  const steps = [
+    { label: "1. Prove", detail: latestProof ? `${latestProof.phase} / ${latestProof.learnedStatus}` : "Queue or score the selected prompt.", action: onRunProofLearningLoop, cta: "Run proof loop" },
+    { label: "2. Judge", detail: latestJudge ? `${latestJudge.score}/100 ${latestJudge.verdict}` : "Ask Claude/local judge to repair from screenshots.", action: onRunScreenshotJudge, cta: "Run screenshot judge" },
+    { label: "3. Mutate", detail: "Run a mutation tournament before spending another build.", action: onRunMutationTournament, cta: "Run tournament" },
+    { label: "4. Benchmark", detail: "Refresh canonical challenges to see if the learner improved.", action: onRunBenchmarkSuite, cta: "Run benchmark" },
+  ];
+  return (
+    <section className="panel lab-panel start-here-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Start here: prove and improve</h2>
+        </div>
+        <ScoreRing score={buildFeedback.score} label="proof" />
+      </div>
+      <p className="selected-meta">
+        {selectedPrompt ? `Selected: ${selectedPrompt.title}.` : "Select or generate a prompt first."} This path turns a prompt into a queued build, judges the result, mutates the wording, and tracks benchmark movement.
+      </p>
+      <div className="proof-loop-grid">
+        {steps.map((step) => (
+          <article className="proof-loop-card" key={step.label}>
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+            <button className="ghost-button compact-button" type="button" onClick={step.action} disabled={!selectedPrompt && step.label !== "4. Benchmark"}>
+              {step.cta}
+            </button>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Current proof actions" items={buildFeedback.nextActions} empty="No proof actions yet." />
+    </section>
+  );
+}
+
+function GoldenBenchmarkBoardPanel({
+  benchmarkRuns,
+  board,
+  onRunBenchmarkSuite,
+}: {
+  benchmarkRuns: BenchmarkRun[];
+  board: ReturnType<typeof buildGoldenChallengeBoard>;
+  onRunBenchmarkSuite: () => void;
+}) {
+  const latest = benchmarkRuns[0];
+  return (
+    <section className="panel lab-panel benchmark-board-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Golden benchmark board</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunBenchmarkSuite}>
+          <Sparkles size={15} />
+          Run suite
+        </button>
+      </div>
+      <p className="selected-meta">
+        {latest ? `${latest.count} challenge(s), ${latest.averageScore} average, ${latest.modelMode}.` : "Run the canonical challenges to get a product-level improvement scoreboard."}
+      </p>
+      <div className="benchmark-board-grid">
+        {board.map((item) => (
+          <article className="version-card" key={item.id}>
+            <div className="dna-v2-topline">
+              <strong>{item.title}</strong>
+              <span data-tone={scoreTone(item.latestScore)}>{item.latestScore || "--"}</span>
+            </div>
+            <small>{item.status} / best {item.bestScore || "--"}</small>
+            <p>{item.finding}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProductionHardeningPanel({
+  apiHealth,
+  backupSnapshots,
+  datasetVersions,
+  modelEnvStatus,
+  proofLearningRuns,
+  screenshotJudgeRuns,
+}: {
+  apiHealth?: ApiHealth;
+  backupSnapshots: TrainingBackupSnapshot[];
+  datasetVersions: DatasetVersion[];
+  modelEnvStatus?: Record<string, boolean>;
+  proofLearningRuns: ProofLearningRun[];
+  screenshotJudgeRuns: ScreenshotJudgeRun[];
+}) {
+  const checks = [
+    { label: "Hosted API", ready: Boolean(apiHealth?.ok), detail: apiHealth?.ok ? "Reachable" : "Run Check API before trusting sync." },
+    { label: "Token posture", ready: Boolean(apiHealth?.authRequired), detail: apiHealth?.authRequired ? "Bearer auth enabled" : "Set PROMPT_LAB_API_TOKEN for hosted use." },
+    { label: "Claude key", ready: Boolean(modelEnvStatus?.anthropicApiKeyConfigured), detail: modelEnvStatus?.anthropicApiKeyConfigured ? "Server key detected" : "Local fallback is active." },
+    { label: "Restore points", ready: backupSnapshots.length > 0, detail: `${backupSnapshots.length} backup snapshot(s).` },
+    { label: "Dataset versions", ready: datasetVersions.length > 0, detail: `${datasetVersions.length} dataset version(s).` },
+    { label: "Proof history", ready: proofLearningRuns.length > 0 && screenshotJudgeRuns.length > 0, detail: `${proofLearningRuns.length} proof loop(s), ${screenshotJudgeRuns.length} judge run(s).` },
+  ];
+  return (
+    <section className="panel lab-panel production-hardening-panel" data-train-section="sync">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Production hardening</h2>
+      </div>
+      <div className="hardening-grid">
+        {checks.map((check) => (
+          <article className="sync-check-card" data-ready={check.ready} key={check.label}>
+            <strong>{check.ready ? "Ready" : "Watch"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </article>
         ))}
       </div>
     </section>
@@ -8701,6 +9254,52 @@ function AutonomousBattlePanel({
         <p>{autoBattleResult ? `Processed ${String(autoBattleResult.processed ?? 0)} run(s), winner score ${String(autoBattleResult.winnerScore ?? promptBattle.winner.score)}.` : promptBattle.explanation.join(" ")}</p>
       </div>
       <textarea className="generated-output mini-output" readOnly value={autoBattleResult ? JSON.stringify(autoBattleResult, null, 2) : promptBattle.queuePlan.join("\n")} />
+    </section>
+  );
+}
+
+function MutationTournamentHistoryPanel({
+  mutationTournamentRuns,
+  onRunMutationTournament,
+}: {
+  mutationTournamentRuns: MutationTournamentRun[];
+  onRunMutationTournament: () => void;
+}) {
+  const latest = mutationTournamentRuns[0];
+  return (
+    <section className="panel lab-panel mutation-tournament-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Mutation tournament history</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunMutationTournament}>
+          <Shuffle size={15} />
+          Run mutation tournament
+        </button>
+      </div>
+      {latest ? (
+        <div className="winner-card">
+          <span>{latest.modelMode}</span>
+          <strong>{latest.winnerTitle}</strong>
+          <em>{latest.winnerScore}</em>
+          <p>{latest.notes.join(" ")}</p>
+        </div>
+      ) : (
+        <p className="selected-meta">Run mutations through a lightweight tournament, save the winner, then prove it with screenshots.</p>
+      )}
+      <div className="version-list compact-list">
+        {mutationTournamentRuns.slice(0, 4).map((run) => (
+          <article className="version-card" key={run.id}>
+            <div className="dna-v2-topline">
+              <strong>{run.sourceTitle}</strong>
+              <span data-tone={scoreTone(run.winnerScore)}>{run.winnerScore}</span>
+            </div>
+            <p>{run.winnerTitle}</p>
+            <small>{run.variants.map((variant) => `${variant.title}: ${variant.score}`).join(" / ")}</small>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }

@@ -8,7 +8,15 @@ const base = `http://127.0.0.1:${port}`;
 const dataDir = mkdtempSync(join(tmpdir(), "prompt-atelier-api-test-"));
 const child = spawn(process.execPath, ["scripts/promptLabApi.mjs"], {
   cwd: process.cwd(),
-  env: { ...process.env, PROMPT_LAB_API_PORT: String(port), PROMPT_LAB_API_TOKEN: "test-token", PROMPT_LAB_DATA_DIR: dataDir },
+  env: {
+    ...process.env,
+    ANTHROPIC_API_KEY: "",
+    CLAUDE_API_KEY: "",
+    PROMPT_LAB_MODEL_API_KEY: "",
+    PROMPT_LAB_API_PORT: String(port),
+    PROMPT_LAB_API_TOKEN: "test-token",
+    PROMPT_LAB_DATA_DIR: dataDir,
+  },
   stdio: ["ignore", "pipe", "pipe"],
 });
 
@@ -46,6 +54,9 @@ try {
     "promptComparisons",
     "screenshotPromptRuns",
     "workspacePackRuns",
+    "proofLearningRuns",
+    "screenshotJudgeRuns",
+    "mutationTournamentRuns",
     "healthChecks",
   ];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
@@ -123,6 +134,44 @@ try {
           title: "Workspace packs",
           packs: [],
         }],
+        proofLearningRuns: [{
+          id: "proof-loop-test",
+          createdAt: new Date().toISOString(),
+          promptId: "prompt-test",
+          title: "Proof loop",
+          queueJobId: "queue-test",
+          phase: "queued",
+          promptScore: 70,
+          resultScore: 0,
+          visualScore: 0,
+          dnaScore: 72,
+          learnedStatus: "queued",
+          screenshotCount: 0,
+          notes: ["fixture"],
+        }],
+        screenshotJudgeRuns: [{
+          id: "screenshot-judge-test",
+          createdAt: new Date().toISOString(),
+          promptId: "prompt-test",
+          title: "Screenshot judge",
+          modelMode: "local-fallback",
+          score: 71,
+          verdict: "needs-proof",
+          findings: ["fixture"],
+          fixes: ["fixture"],
+          promptPatch: "Add screenshot repair rules.",
+        }],
+        mutationTournamentRuns: [{
+          id: "mutation-tournament-test",
+          createdAt: new Date().toISOString(),
+          sourceTitle: "Source",
+          winnerTitle: "Winner",
+          winnerPrompt: "Build the winner.",
+          winnerScore: 81,
+          modelMode: "local-fallback",
+          variants: [{ id: "variant-a", title: "Variant A", score: 81, intent: "fixture" }],
+          notes: ["fixture"],
+        }],
         healthChecks: [{ id: "health-test", createdAt: new Date().toISOString(), kind: "fixture" }],
       },
     }),
@@ -137,6 +186,20 @@ try {
   const evaluation = await evaluate.json();
   if (!evaluate.ok || evaluation.mode !== "local-fallback") throw new Error("Local model fallback route failed.");
 
+  const anthropicFallback = await fetch(`${base}/api/model/evaluate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      prompt: "Build a React Tailwind hero with exact assets and responsive QA.",
+      memory: "Great prompts are exact.",
+      settings: { provider: "anthropic", endpoint: "https://api.anthropic.com/v1/messages", apiKey: "" },
+    }),
+  });
+  const anthropicFallbackPayload = await anthropicFallback.json();
+  if (!anthropicFallback.ok || anthropicFallbackPayload.mode !== "local-fallback" || !anthropicFallbackPayload.fallbackReason) {
+    throw new Error("Anthropic missing-key fallback should return a clean local evaluator response.");
+  }
+
   const authedSnapshot = await fetch(`${base}/api/snapshot`, { headers: { "x-prompt-lab-token": "test-token" } });
   const payload = await authedSnapshot.json();
   if (
@@ -150,6 +213,9 @@ try {
     !payload.collections?.promptComparisons?.length ||
     !payload.collections?.screenshotPromptRuns?.length ||
     !payload.collections?.workspacePackRuns?.length ||
+    !payload.collections?.proofLearningRuns?.length ||
+    !payload.collections?.screenshotJudgeRuns?.length ||
+    !payload.collections?.mutationTournamentRuns?.length ||
     !payload.collections?.healthChecks?.length ||
     payload.collections?.activeWorkspace !== "hero"
   ) throw new Error("Snapshot route did not include synced collections.");

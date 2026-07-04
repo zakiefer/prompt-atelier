@@ -33,6 +33,9 @@ const COLLECTION_KEYS = [
   "promptComparisons",
   "screenshotPromptRuns",
   "workspacePackRuns",
+  "proofLearningRuns",
+  "screenshotJudgeRuns",
+  "mutationTournamentRuns",
   "healthChecks",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
@@ -571,6 +574,18 @@ async function handle(request, response) {
       const provider = body.settings?.provider || process.env.PROMPT_LAB_MODEL_PROVIDER || "";
       const endpoint = body.settings?.endpoint || process.env.PROMPT_LAB_MODEL_ENDPOINT;
       if (provider === "anthropic" || endpoint?.includes("api.anthropic.com")) {
+        const hasAnthropicKey = Boolean(body.settings?.apiKey || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || process.env.PROMPT_LAB_MODEL_API_KEY);
+        if (!hasAnthropicKey) {
+          const local = localModelEvaluation(body);
+          const result = {
+            ...local,
+            mode: "local-fallback",
+            fallbackReason: "Missing Anthropic API key; used local evaluator.",
+          };
+          logEvent("model-evaluate", { mode: result.mode, fallback: "anthropic-missing-key", score: result.score });
+          jsonResponse(response, 200, result);
+          return;
+        }
         const result = await anthropicModelEvaluation(body);
         logEvent("model-evaluate", { mode: "anthropic", ok: result.ok, score: result.score ?? 0 });
         jsonResponse(response, result.ok ? 200 : 502, result);

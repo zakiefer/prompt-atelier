@@ -1,6 +1,6 @@
 # Hosted Prompt Atelier API
 
-Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, closed-loop trainer results, benchmark runs, Claude health checks, prompt comparisons, screenshot-generated prompts, workspace packs, and backups across browsers.
+Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, closed-loop trainer results, benchmark runs, Claude health checks, prompt comparisons, screenshot-generated prompts, workspace packs, proof-loop runs, screenshot judge results, mutation tournaments, and backups across browsers.
 
 ## Render Blueprint
 
@@ -38,6 +38,9 @@ The hosted API advertises all durable collection keys from `/api/health` and sto
 - `promptComparisons`: Claude/local A/B decisions plus hybrid prompts that are written back into the improvement flow.
 - `screenshotPromptRuns`: prompts generated from a screenshot URL, uploaded data URL, or visual notes.
 - `workspacePackRuns`: saved snapshots of workspace-specific prompt packs.
+- `proofLearningRuns`: prompt -> build queue -> screenshot/result score -> label learning records.
+- `screenshotJudgeRuns`: Claude/local visual judge results that turn screenshots into repair patches.
+- `mutationTournamentRuns`: variant tournament histories and winners before spending another build run.
 - `healthChecks`: lightweight write probes used by the hosted readiness check.
 
 Screenshot uploads are sent to `/api/model/evaluate` as data URL image blocks only when the API route has access to the model key. Do not put image-generation or Claude keys in browser-visible environment variables.

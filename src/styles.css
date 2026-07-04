@@ -1525,6 +1525,23 @@ button:disabled {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.proof-loop-grid,
+.benchmark-board-grid,
+.hardening-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.proof-loop-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.benchmark-board-grid,
+.hardening-grid {
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+}
+
 .mode-launcher-card {
   background: var(--panel-soft);
   border: 1px solid var(--line);
@@ -1563,6 +1580,27 @@ button:disabled {
   color: var(--muted);
   font-size: 0.74rem;
   line-height: 1.38;
+}
+
+.proof-loop-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 12px;
+}
+
+.proof-loop-card strong {
+  font-size: 0.82rem;
+}
+
+.proof-loop-card p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  margin: 0;
 }
 
 .simple-front-door-grid {
@@ -2949,6 +2987,10 @@ button.preset-card {
 
   .mode-launcher-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .proof-loop-grid {
+    grid-template-columns: 1fr;
   }
 
   .left-panel {

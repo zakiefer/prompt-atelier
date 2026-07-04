@@ -21,7 +21,10 @@ export type CollectionKey =
   | "claudeHealthChecks"
   | "promptComparisons"
   | "screenshotPromptRuns"
-  | "workspacePackRuns";
+  | "workspacePackRuns"
+  | "proofLearningRuns"
+  | "screenshotJudgeRuns"
+  | "mutationTournamentRuns";
 
 type StoredCollection<T> = {
   key: CollectionKey;
