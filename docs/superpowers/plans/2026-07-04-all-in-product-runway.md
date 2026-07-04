@@ -274,6 +274,6 @@ Use Playwright to confirm Train renders:
 - Hosted Readiness
 - Quality Regression Gate
 
-- [ ] **Step 4: Commit, push, PR, CI, deploy**
+- [x] **Step 4: Commit, push, PR, CI, deploy**
 
 Commit implementation, push branch, create PR, wait for CI, merge, wait for Pages, and smoke the hosted URL.
