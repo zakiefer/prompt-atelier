@@ -55,9 +55,12 @@ Hosted readiness can be checked without opening the browser:
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
 PROMPT_LAB_API_TOKEN=replace-me npm run verify:hosted-api -- --url https://your-api.example.com --evaluate
 npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --train --out output/playwright/hosted-smoke
+npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hosted-api-deploy
 ```
 
 The verifier reports API health, token posture, SQLite persistence, worker allowlists, model-route status, and optional evaluator health while redacting token and model-key values.
+
+`deploy:hosted-api` validates the Blueprint/Dockerfile/API script contract, persistent disk posture, server-side model-key requirements, optional Render deploy hooks, and optional hosted API reachability. It does not print bearer tokens or model keys. In release automation, use `--require-deploy` to fail when neither `RENDER_DEPLOY_HOOK_URL` nor a reachable `--url` is present.
 
 Do not commit real API keys. `.env`, `.env.*`, and local data folders are ignored.
 
@@ -102,6 +105,10 @@ npm run check:corpus-safety
 npm run check:quality-gate
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
 npm run smoke:hosted -- --url http://127.0.0.1:4173 --train --out output/playwright/learning-machine-local
+npm run deploy:hosted-api -- --out output/hosted-api-deploy
+npm run export:training-v2 -- --out output/training-dataset-v2
+npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-gallery
+npm run proof:batch -- --url http://127.0.0.1:8787 --limit 1 --allow-fail --out output/autonomous-proof-batch
 npm run test:api
 npm run build
 for file in scripts/*.mjs; do node --check "$file"; done

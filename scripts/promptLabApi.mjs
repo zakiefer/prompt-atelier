@@ -79,15 +79,15 @@ db.exec(`
   );
 `);
 
-const upsertCollection = db.prepare(`
+const UPSERT_COLLECTION_SQL = `
   INSERT INTO collections (key, value, updated_at)
   VALUES (?, ?, ?)
   ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
-`);
-const getCollection = db.prepare("SELECT value FROM collections WHERE key = ?");
-const getAllCollections = db.prepare("SELECT key, value, updated_at FROM collections ORDER BY key");
-const insertEvent = db.prepare("INSERT INTO api_events (kind, detail, created_at) VALUES (?, ?, ?)");
-const getRecentEvents = db.prepare("SELECT id, kind, detail, created_at FROM api_events ORDER BY id DESC LIMIT ?");
+`;
+const GET_COLLECTION_SQL = "SELECT value FROM collections WHERE key = ?";
+const GET_ALL_COLLECTIONS_SQL = "SELECT key, value, updated_at FROM collections ORDER BY key";
+const INSERT_EVENT_SQL = "INSERT INTO api_events (kind, detail, created_at) VALUES (?, ?, ?)";
+const GET_RECENT_EVENTS_SQL = "SELECT id, kind, detail, created_at FROM api_events ORDER BY id DESC LIMIT ?";
 const rateLimitBuckets = new Map();
 const MODEL_EVALUATION_SCHEMA_VERSION = "prompt-atelier.model-evaluation.v1";
 const MODEL_EVALUATION_SCHEMA = {
@@ -100,7 +100,15 @@ function now() {
 }
 
 function logEvent(kind, detail) {
-  insertEvent.run(kind, JSON.stringify(redactSensitiveValue(detail).value), now());
+  db.prepare(INSERT_EVENT_SQL).run(kind, JSON.stringify(redactSensitiveValue(detail).value), now());
+}
+
+function logEventBestEffort(kind, detail) {
+  try {
+    logEvent(kind, detail);
+  } catch {
+    // Auth rejection should stay reliable even if event persistence is unavailable.
+  }
 }
 
 function jsonResponse(response, status, payload) {
@@ -169,7 +177,7 @@ function readBody(request) {
 }
 
 function readCollections() {
-  const rows = getAllCollections.all();
+  const rows = db.prepare(GET_ALL_COLLECTIONS_SQL).all();
   return Object.fromEntries(
     rows.map((row) => {
       try {
@@ -182,7 +190,7 @@ function readCollections() {
 }
 
 function writeCollection(key, value) {
-  upsertCollection.run(key, JSON.stringify(redactSensitiveValue(value).value), now());
+  db.prepare(UPSERT_COLLECTION_SQL).run(key, JSON.stringify(redactSensitiveValue(value).value), now());
 }
 
 function appendCollectionRecord(key, record, limit = 100) {
@@ -745,7 +753,7 @@ async function handle(request, response) {
     }
 
     if (!requestIsAuthorized(request) && url.pathname !== "/api/health") {
-      logEvent("unauthorized", { path: url.pathname, client: clientKey(request) });
+      logEventBestEffort("unauthorized", { path: url.pathname, client: clientKey(request) });
       jsonResponse(response, 401, { ok: false, error: "Unauthorized. Set Authorization: Bearer <token> or x-prompt-lab-token." });
       return;
     }
@@ -776,7 +784,7 @@ async function handle(request, response) {
     if (request.method === "GET" && url.pathname === "/api/collections") {
       const key = url.searchParams.get("key");
       if (key) {
-        const row = getCollection.get(key);
+        const row = db.prepare(GET_COLLECTION_SQL).get(key);
         jsonResponse(response, 200, { key, value: row ? JSON.parse(row.value) : null });
         return;
       }
@@ -786,7 +794,7 @@ async function handle(request, response) {
 
     if (request.method === "GET" && url.pathname === "/api/events") {
       const limit = Math.max(1, Math.min(100, Number(url.searchParams.get("limit") || 30)));
-      const events = getRecentEvents.all(limit).map((event) => {
+      const events = db.prepare(GET_RECENT_EVENTS_SQL).all(limit).map((event) => {
         let detail = null;
         try {
           detail = JSON.parse(event.detail);

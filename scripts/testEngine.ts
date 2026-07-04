@@ -5,6 +5,7 @@ import {
   analyzeCorpus,
   analyzeArchetypeClusters,
   buildAllInRunwayReport,
+  buildAutonomousProofBatchProductReport,
   buildAutonomousProofLoopReport,
   buildGeneratorPresets,
   buildBenchmarkExpansionReport,
@@ -39,6 +40,8 @@ import {
   buildGoldenDatasetV1LockReport,
   buildGoldenBenchmarkHarnessReport,
   buildGeneratorV3Report,
+  buildGeneratorModeTestProductReport,
+  buildHostedApiDeploymentProductReport,
   buildHostedCiSmokeReport,
   buildHostedBackendKitReport,
   buildGuidedPromptWizardReport,
@@ -53,9 +56,11 @@ import {
   buildLeakageGuardReport,
   buildLearningExplanationReport,
   buildLearningMachineReport,
+  buildNextProductLayerReport,
   buildPatternDashboard,
   buildMeasuredQualitySprintReport,
   buildProjectExportPack,
+  buildPreferenceDatasetV2ProductReport,
   buildPreferenceTrainingReport,
   buildPromptMemoryDiffReport,
   buildModelEvaluationCacheReport,
@@ -73,6 +78,8 @@ import {
   buildQueueProgressReport,
   buildQualityGateReport,
   buildResultQualityDashboardReport,
+  buildResultGalleryHydrationProductReport,
+  buildRegressionDashboardV2ProductReport,
   buildRegressionHistoryProductReport,
   buildDatasetReviewQueueReport,
   buildReusableMemoryPack,
@@ -1140,7 +1147,7 @@ const publicDemoPolish = buildPublicDemoPolishReport({
 assert.ok(publicDemoPolish.checks.some((check) => check.label === "Result gallery" && check.ready), "Public demo polish should require gallery proof.");
 
 const hostedCiSmoke = buildHostedCiSmokeReport({
-  expectedHeadings: ["All-in product runway", "Learning machine control plane", "Autonomous proof loop", "Prompt generator v3", "Training export readiness"],
+  expectedHeadings: ["All-in product runway", "Learning machine control plane", "Next product layer", "Autonomous proof loop", "Prompt generator v3", "Training export readiness"],
   hasWorkflow: true,
   publicUrl: "https://zakiefer.github.io/prompt-atelier/",
 });
@@ -1170,4 +1177,70 @@ const learningMachine = buildLearningMachineReport({
 assert.equal(learningMachine.items.length, 10, "Learning machine should track the ten requested upgrades.");
 assert.ok(learningMachine.summary.some((item) => /learning-machine/i.test(item)), "Learning machine should summarize the full upgrade set.");
 
-console.log(JSON.stringify({ ok: true, assertions: 240, score: score.score, snapshot: snapshot.label }, null, 2));
+const hostedApiDeploymentProduct = buildHostedApiDeploymentProductReport({
+  hostedBackend: hostedBackendKit,
+  hostedCi: hostedCiSmoke,
+});
+assert.ok(hostedApiDeploymentProduct.command.includes("deploy:hosted-api"), "Hosted API deployment should expose the deploy script.");
+assert.equal(hostedApiDeploymentProduct.checks.length, 5, "Hosted API deployment should track deploy, storage, auth, model, and smoke checks.");
+
+const autonomousProofBatchProduct = buildAutonomousProofBatchProductReport({
+  autonomousProof: autonomousProofLoop,
+  generatorV3,
+  hostedWorker: hostedWorkerOps,
+  promptToProof: promptToProofWorkflow,
+});
+assert.ok(autonomousProofBatchProduct.command.includes("proof:batch"), "Autonomous proof batch should expose the proof batch script.");
+assert.ok(["ready", "needs-worker", "needs-prompts"].includes(autonomousProofBatchProduct.status), "Autonomous proof batch should classify readiness.");
+
+const preferenceDatasetV2Product = buildPreferenceDatasetV2ProductReport({
+  closedLoopRunCount: 3,
+  exampleCount: examples.length,
+  outcomeCount: outcomes.length,
+  pairwiseCount: Math.max(5, pairwiseReviews.length),
+});
+assert.equal(preferenceDatasetV2Product.status, "ready", "Preference dataset v2 should pass with fixture labels and repairs.");
+assert.ok(preferenceDatasetV2Product.command.includes("export:training-v2"), "Preference dataset v2 should expose the export script.");
+assert.ok(preferenceDatasetV2Product.counts.supervised >= examples.length, "Preference dataset v2 should count supervised rows.");
+
+const generatorModeTestProduct = buildGeneratorModeTestProductReport({
+  benchmarkExpansion,
+  generatorV3,
+  proofRunCount: screenshots.length,
+});
+assert.ok(generatorModeTestProduct.rows.length >= generatorV3.modes.length, "Generator mode tests should cover every generator mode.");
+assert.ok(generatorModeTestProduct.command.includes("proof:batch"), "Generator mode tests should reuse proof batch execution.");
+
+const resultGalleryHydrationProduct = buildResultGalleryHydrationProductReport({
+  buildRunCount: buildRuns.length,
+  proofArtifactCount: 2,
+  resultGalleryCount: 10,
+  screenshotCount: screenshots.length,
+});
+assert.equal(resultGalleryHydrationProduct.status, "ready", "Result gallery hydration should be ready at 10 gallery rows.");
+assert.ok(resultGalleryHydrationProduct.command.includes("gallery:hydrate"), "Result gallery hydration should expose the hydrate script.");
+
+const regressionDashboardV2Product = buildRegressionDashboardV2ProductReport({
+  benchmarkRunCount: 1,
+  benchmarkV2RunCount: 1,
+  evaluationEventCount: evaluationHistory.items.length,
+  modelCacheCount: cacheReport.items.length,
+  trainingRunCount: trainingSummary.latest ? 1 : 0,
+});
+assert.notEqual(regressionDashboardV2Product.status, "empty", "Regression dashboard v2 should use benchmark, model, and training history.");
+assert.ok(regressionDashboardV2Product.metrics.some((metric) => metric.label === "Evaluation events"), "Regression dashboard v2 should expose evaluation event metrics.");
+
+const nextProductLayer = buildNextProductLayerReport({
+  autonomousProofBatch: autonomousProofBatchProduct,
+  galleryHydration: resultGalleryHydrationProduct,
+  generatorModeTest: generatorModeTestProduct,
+  hostedDeployment: hostedApiDeploymentProduct,
+  preferenceDataset: preferenceDatasetV2Product,
+  regressionDashboard: regressionDashboardV2Product,
+  trainingExports: trainingExportReadiness,
+});
+assert.equal(nextProductLayer.items.length, 7, "Next product layer should track all seven delivery lanes.");
+assert.ok(nextProductLayer.items.every((item) => item.command), "Every next product layer lane should include a runnable command.");
+assert.ok(nextProductLayer.summary.some((item) => /next-layer/i.test(item)), "Next product layer should summarize automation readiness.");
+
+console.log(JSON.stringify({ ok: true, assertions: 256, score: score.score, snapshot: snapshot.label }, null, 2));
