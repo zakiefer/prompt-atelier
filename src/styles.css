@@ -1663,6 +1663,147 @@ button:disabled {
   margin-top: 12px;
 }
 
+.draft-preflight {
+  border-color: rgba(245, 158, 11, 0.36);
+}
+
+.draft-preflight[data-status="block"] {
+  border-color: rgba(220, 38, 38, 0.42);
+}
+
+.mode-flow-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.mode-flow-grid button {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  min-height: 128px;
+  padding: 12px;
+  text-align: left;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.mode-flow-grid button:hover {
+  border-color: rgba(22, 116, 100, 0.35);
+  transform: translateY(-1px);
+}
+
+.mode-flow-grid span,
+.proof-progress-step span {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  justify-self: start;
+  min-width: 36px;
+  padding: 0 9px;
+}
+
+.mode-flow-grid strong,
+.proof-progress-step strong {
+  font-size: 0.9rem;
+}
+
+.mode-flow-grid p,
+.proof-progress-step p {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.proof-progress-track {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 12px 0;
+}
+
+.proof-progress-step {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+}
+
+.proof-progress-step[data-state="done"] {
+  border-color: rgba(22, 116, 100, 0.28);
+}
+
+.proof-progress-step[data-state="active"] {
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+.proof-progress-step[data-state="failed"] {
+  border-color: rgba(220, 38, 38, 0.42);
+}
+
+.proof-progress-step span {
+  background: rgba(22, 116, 100, 0.08);
+  color: var(--teal);
+}
+
+.trend-chart {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  min-height: 190px;
+  margin: 12px 0;
+}
+
+.trend-chart article {
+  align-items: center;
+  display: grid;
+  gap: 6px;
+  grid-template-rows: auto 1fr auto auto;
+  min-height: 180px;
+}
+
+.trend-chart span {
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.trend-chart i {
+  align-self: end;
+  background: linear-gradient(180deg, rgba(22, 116, 100, 0.85), rgba(22, 116, 100, 0.18));
+  border-radius: 999px 999px 4px 4px;
+  display: block;
+  min-height: 10px;
+  width: 100%;
+  height: var(--score);
+}
+
+.trend-chart small,
+.trend-chart em {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-style: normal;
+  text-align: center;
+}
+
+.generator-front-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  margin-top: 12px;
+}
+
 .simple-front-door-grid {
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
 }
@@ -3051,7 +3192,14 @@ button.preset-card {
 
   .proof-loop-grid,
   .evolution-track,
-  .compact-scoreboard {
+  .compact-scoreboard,
+  .mode-flow-grid,
+  .proof-progress-track,
+  .trend-chart {
+    grid-template-columns: 1fr;
+  }
+
+  .generator-front-grid {
     grid-template-columns: 1fr;
   }
 

@@ -11,6 +11,7 @@ Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labe
 5. Set the API base to your Render URL and paste the token.
 6. Click Check API, then Push API.
 7. Use Connect hosted brain in the Train tab to verify health, SQLite writes, auth posture, and configured model settings before running calibration or one-click proof work.
+8. Use Claude readiness without browser secrets to confirm API health, bearer auth, SQLite write visibility, model route behavior, and whether image judging can run through the server-side key.
 
 ## Required Environment
 
@@ -51,3 +52,7 @@ Screenshot uploads are sent to `/api/model/evaluate` as data URL image blocks on
 The Train tab's Run proof now action uses `/api/queue/run` with scaffold, install, build, and screenshot capture enabled. It imports the returned build run, desktop/mobile screenshot records, and proof-learning score into the browser state.
 
 Run this only against a trusted API worker. The hosted static frontend never receives shell access or model secrets; it sends the selected prompt and queue options to the API, and the API decides whether queue execution is allowed in that environment.
+
+## Training Export Pack
+
+The Train tab can export a full training pack containing Golden Dataset v1 rows, JSONL data, learned prompt memory, the prompt quality grader report, benchmark trend, project boundary state, reusable memory, and the Codex build pack. This is intended for handoff to another agent or model without giving that agent browser-local secrets.

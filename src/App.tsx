@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type Dispatch, type DragEvent, type ReactNode, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties, type Dispatch, type DragEvent, type ReactNode, type SetStateAction } from "react";
 import {
   Archive,
   AlertTriangle,
@@ -1423,6 +1423,350 @@ function buildPromptEvolutionSteps({
   ];
 }
 
+type DraftContaminationReport = {
+  status: "clean" | "review" | "block";
+  score: number;
+  warnings: string[];
+  actions: string[];
+};
+
+function buildDraftContaminationReport(text: string): DraftContaminationReport {
+  const normalized = text.trim();
+  if (!normalized) return { status: "clean", score: 100, warnings: [], actions: [] };
+  const lower = normalized.toLowerCase();
+  const checks = [
+    {
+      severity: "block" as const,
+      label: "Possible API key or secret detected.",
+      matched: /(sk-ant-api\d+-[a-z0-9_-]{20,}|sk-[a-z0-9_-]{20,}|github_pat_[a-z0-9_]{20,}|ghp_[a-z0-9]{20,})/i.test(normalized),
+      action: "Remove secrets before importing. Keys should only live on the API host.",
+    },
+    {
+      severity: "review" as const,
+      label: "Looks like repo or deployment work, not a website prompt.",
+      matched: ["git push", "github actions", "pull request", "commit", "ci", "deploy pages", "render blueprint", "merge lane", "worktree"].some((term) => lower.includes(term)),
+      action: "Paste only the reusable website prompt, or quarantine this item after import.",
+    },
+    {
+      severity: "review" as const,
+      label: "Looks like a log, traceback, or command transcript.",
+      matched: ["error:", "stack trace", "traceback", "npm run", "process exited", "exit code", "stdout", "stderr"].some((term) => lower.includes(term)),
+      action: "Summarize the design target instead of training on operational output.",
+    },
+    {
+      severity: "review" as const,
+      label: "Website intent is thin.",
+      matched: !/(hero|landing|website|page|section|navbar|layout|responsive|tailwind|react|vite|video|font|cta)/i.test(normalized),
+      action: "Add site type, stack, visual direction, layout, assets, responsive rules, and proof requirements.",
+    },
+  ].filter((check) => check.matched);
+  const blocked = checks.some((check) => check.severity === "block");
+  const score = Math.max(0, 100 - checks.filter((check) => check.severity === "block").length * 55 - checks.filter((check) => check.severity === "review").length * 18);
+  return {
+    status: blocked ? "block" : checks.length ? "review" : "clean",
+    score,
+    warnings: checks.map((check) => check.label),
+    actions: checks.map((check) => check.action),
+  };
+}
+
+type TrainModeReport = {
+  id: string;
+  label: string;
+  score: number;
+  detail: string;
+  target: string;
+}[];
+
+function buildTrainModeReport({
+  curationReport,
+  guidedWizard,
+  proofLearningRuns,
+  benchmarkRegression,
+  promptMemory,
+  projectBoundaryReport,
+}: {
+  curationReport: CorpusCurationReport;
+  guidedWizard: GuidedPromptWizardReport;
+  proofLearningRuns: ProofLearningRun[];
+  benchmarkRegression: BenchmarkRegressionReport;
+  promptMemory: PromptMemoryExport;
+  projectBoundaryReport: ProjectBoundaryReport;
+}): TrainModeReport {
+  return [
+    {
+      id: "ingest",
+      label: "Ingest",
+      score: curationReport.counts.learn,
+      detail: `${curationReport.counts.learn} learning / ${curationReport.counts.review} review / ${curationReport.counts.quarantine} quarantine.`,
+      target: "workspace",
+    },
+    {
+      id: "curate",
+      label: "Curate",
+      score: Math.max(0, 100 - projectBoundaryReport.outOfScopeCount * 2 - curationReport.counts.review * 4),
+      detail: `${projectBoundaryReport.mode} workspace with ${projectBoundaryReport.outOfScopeCount} off-project prompt(s).`,
+      target: "workspace",
+    },
+    {
+      id: "generate",
+      label: "Generate",
+      score: guidedWizard.variants[0]?.score ?? 0,
+      detail: guidedWizard.variants[0] ? `${guidedWizard.variants[0].title} is the current best generated variant.` : "Complete the generator brief.",
+      target: "generate",
+    },
+    {
+      id: "prove",
+      label: "Prove",
+      score: proofLearningRuns[0] ? 100 : 0,
+      detail: proofLearningRuns[0] ? `${proofLearningRuns[0].learnedStatus} proof from ${proofLearningRuns[0].screenshotCount} screenshot(s).` : "Run proof to tie prompts to build evidence.",
+      target: "queue",
+    },
+    {
+      id: "improve",
+      label: "Improve",
+      score: Math.max(0, Math.min(100, 72 + benchmarkRegression.delta)),
+      detail: `${benchmarkRegression.delta >= 0 ? "+" : ""}${benchmarkRegression.delta} benchmark delta across ${benchmarkRegression.rows.length} briefs.`,
+      target: "patterns",
+    },
+    {
+      id: "export",
+      label: "Export",
+      score: promptMemory.sections.length,
+      detail: `${promptMemory.sections.length} memory section(s) ready for packs and JSONL.`,
+      target: "packs",
+    },
+  ];
+}
+
+type GoldenDatasetReport = {
+  label: string;
+  readyScore: number;
+  goldCount: number;
+  trainCount: number;
+  testCount: number;
+  rows: { id: string; title: string; split: "train" | "test"; score: number; status: string }[];
+  jsonl: string;
+  notes: string[];
+};
+
+function buildGoldenDatasetReport(examples: PromptExample[], outcomes: OutcomeRecord[], datasetVersions: DatasetVersion[]): GoldenDatasetReport {
+  const outcomeById = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const ranked = examples
+    .map((example) => {
+      const outcome = outcomeById.get(example.id);
+      const baseScore = evaluatePrompt(example.text).score;
+      const score = Math.min(100, baseScore + (outcome?.status === "gold" ? 16 : outcome?.status === "good" ? 8 : 0) + (outcome?.rating === "great" ? 10 : 0));
+      return { example, outcome, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 24);
+  const rows = ranked.map((item, index) => ({
+    id: item.example.id,
+    title: item.example.title,
+    split: index % 5 === 0 ? "test" as const : "train" as const,
+    score: item.score,
+    status: item.outcome?.status ?? "candidate",
+  }));
+  const jsonl = ranked
+    .map((item, index) =>
+      JSON.stringify({
+        messages: [
+          { role: "system", content: "Write high-fidelity, build-ready website prompts with exact stack, assets, layout, motion, constraints, responsive behavior, and proof requirements." },
+          { role: "user", content: `Create a ${index % 5 === 0 ? "test" : "training"} website prompt inspired by ${item.example.title}.` },
+          { role: "assistant", content: item.example.text },
+        ],
+        metadata: {
+          id: item.example.id,
+          title: item.example.title,
+          split: index % 5 === 0 ? "test" : "train",
+          score: item.score,
+          status: item.outcome?.status ?? "candidate",
+        },
+      }),
+    )
+    .join("\n");
+  const locked = datasetVersions.some((version) => version.label.toLowerCase() === "golden dataset v1");
+  return {
+    label: locked ? "Golden Dataset v1 locked" : "Golden Dataset v1 draft",
+    readyScore: Math.min(100, Math.round((rows.length / 24) * 45 + rows.filter((row) => row.score >= 80).length * 3 + (locked ? 20 : 0))),
+    goldCount: rows.filter((row) => row.status === "gold").length,
+    trainCount: rows.filter((row) => row.split === "train").length,
+    testCount: rows.filter((row) => row.split === "test").length,
+    rows,
+    jsonl,
+    notes: [
+      locked ? "Dataset version exists and can be exported as a stable training baseline." : "Lock the dataset before calibrating or exporting model training rows.",
+      "Train/test split is deterministic so benchmark prompts are not silently mixed with training prompts.",
+      "Rows favor gold/great outcomes first, then high-scoring curated prompt examples.",
+    ],
+  };
+}
+
+type ProofProgressReport = {
+  status: "idle" | "queued" | "running" | "capturing" | "complete" | "failed";
+  steps: { label: string; state: "todo" | "active" | "done" | "failed"; detail: string }[];
+  latest?: BuildQueueJob;
+};
+
+function buildProofProgressReport(queueJobs: BuildQueueJob[], buildRuns: BuildRunRecord[], screenshots: ScreenshotRecord[], proofLearningRuns: ProofLearningRun[], selectedPrompt?: PromptExample): ProofProgressReport {
+  const latest = queueJobs.find((job) => !selectedPrompt || job.promptId === selectedPrompt.id) ?? queueJobs[0];
+  const run = buildRuns.find((item) => !selectedPrompt || item.promptId === selectedPrompt.id);
+  const shotCount = screenshots.filter((item) => !selectedPrompt || item.promptId === selectedPrompt.id).length;
+  const proof = proofLearningRuns.find((item) => !selectedPrompt || item.promptId === selectedPrompt.id);
+  const queueDone = Boolean(latest);
+  const buildDone = Boolean(run);
+  const captureDone = shotCount > 0;
+  const learnDone = Boolean(proof);
+  const failed = latest?.status === "failed" || run?.status === "failed";
+  const status: ProofProgressReport["status"] = failed ? "failed" : learnDone ? "complete" : captureDone ? "capturing" : buildDone ? "running" : queueDone ? "queued" : "idle";
+  return {
+    status,
+    latest,
+    steps: [
+      { label: "Queue", state: queueDone ? "done" : "todo", detail: latest?.runFolder || "No proof job queued yet." },
+      { label: "Build", state: failed ? "failed" : buildDone ? "done" : queueDone ? "active" : "todo", detail: run?.status || latest?.status || "Waiting for queue." },
+      { label: "Capture", state: captureDone ? "done" : buildDone ? "active" : "todo", detail: captureDone ? `${shotCount} screenshot(s) attached.` : "Desktop/mobile screenshots pending." },
+      { label: "Learn", state: learnDone ? "done" : captureDone ? "active" : "todo", detail: proof?.learnedStatus || "Proof has not been written into the ledger." },
+    ],
+  };
+}
+
+type EvolutionDiffReport = {
+  fromTitle: string;
+  toTitle: string;
+  scoreDelta: number;
+  addedSignals: string[];
+  removedSignals: string[];
+  summary: string[];
+};
+
+function buildEvolutionDiffReport(selectedPrompt: PromptExample | undefined, history: PromptVersion[], closedLoopRuns: ClosedLoopRun[]): EvolutionDiffReport {
+  const target = closedLoopRuns[0]?.winnerPrompt || history[0]?.text || "";
+  const fromText = selectedPrompt?.text || "";
+  if (!fromText || !target) {
+    return {
+      fromTitle: selectedPrompt?.title ?? "No source prompt",
+      toTitle: "No improved prompt yet",
+      scoreDelta: 0,
+      addedSignals: [],
+      removedSignals: [],
+      summary: ["Run a closed-loop trainer, mutation tournament, or save an improved prompt to compare evolution."],
+    };
+  }
+  const diff = diffPrompts(
+    { id: "from", title: selectedPrompt?.title ?? "Source prompt", text: fromText, source: "user", createdAt: "" },
+    { id: "to", title: closedLoopRuns[0]?.winnerTitle || history[0]?.title || "Latest improved prompt", text: target, source: "user", createdAt: "" },
+  );
+  return {
+    fromTitle: selectedPrompt?.title ?? "Source prompt",
+    toTitle: closedLoopRuns[0]?.winnerTitle || history[0]?.title || "Latest improved prompt",
+    scoreDelta: evaluatePrompt(target).score - evaluatePrompt(fromText).score,
+    addedSignals: diff.categories.flatMap((category) => category.rightOnly.map((item) => `${category.label}: ${item}`)).slice(0, 8),
+    removedSignals: diff.categories.flatMap((category) => category.leftOnly.map((item) => `${category.label}: ${item}`)).slice(0, 8),
+    summary: diff.summary,
+  };
+}
+
+type BenchmarkTrendReport = {
+  points: { label: string; score: number; delta: number }[];
+  bestScore: number;
+  currentScore: number;
+  trend: "up" | "flat" | "down" | "empty";
+  notes: string[];
+};
+
+function buildBenchmarkTrendReport(runs: BenchmarkRun[]): BenchmarkTrendReport {
+  const chronological = [...runs].reverse().slice(-8);
+  const points = chronological.map((run, index) => {
+    const previous = chronological[index - 1]?.averageScore ?? run.averageScore;
+    return {
+      label: `Run ${Math.max(1, runs.length - chronological.length + index + 1)}`,
+      score: run.averageScore,
+      delta: run.averageScore - previous,
+    };
+  });
+  const currentScore = points[points.length - 1]?.score ?? 0;
+  const bestScore = Math.max(0, ...points.map((point) => point.score));
+  const firstScore = points[0]?.score ?? 0;
+  return {
+    points,
+    bestScore,
+    currentScore,
+    trend: points.length < 2 ? "empty" : currentScore > firstScore ? "up" : currentScore < firstScore ? "down" : "flat",
+    notes: points.length ? [`Best average ${bestScore}.`, `Latest average ${currentScore}.`, `${points.filter((point) => point.delta < 0).length} regression point(s) in the visible trend.`] : ["Run the benchmark suite to draw the first trend line."],
+  };
+}
+
+type HostedBrainReadinessReport = {
+  score: number;
+  rows: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+function buildHostedBrainReadinessReport(apiHealth: ApiHealth | undefined, modelEnvStatus: Record<string, boolean> | undefined, claudeHealthChecks: HostedClaudeHealthCheck[]): HostedBrainReadinessReport {
+  const latest = claudeHealthChecks[0];
+  const rows = [
+    { label: "API health", ready: Boolean(apiHealth?.ok || latest?.apiOnline), detail: apiHealth?.sqlitePath || latest?.sqlitePath || "Not checked" },
+    { label: "Bearer auth", ready: Boolean(apiHealth?.authRequired || latest?.tokenValid), detail: apiHealth?.authRequired || latest?.tokenValid ? "Token path verified" : "Open local mode; require token before hosting" },
+    { label: "SQLite writes", ready: Boolean(apiHealth?.sqlitePath || latest?.sqliteWritable), detail: latest?.sqliteWritable ? "Writable" : apiHealth?.sqlitePath ? "Path detected" : "Unchecked" },
+    { label: "Claude key", ready: Boolean(modelEnvStatus?.anthropicApiKeyConfigured || latest?.claudeConfigured), detail: modelEnvStatus?.anthropicApiKeyConfigured || latest?.claudeConfigured ? "Configured on server" : "Local evaluator fallback" },
+    { label: "Model route", ready: Boolean(latest?.modelRouteWorking), detail: latest ? `${latest.modelMode} / ${latest.modelScore}` : "Run deep health check" },
+    { label: "Image judging", ready: Boolean(modelEnvStatus?.anthropicApiKeyConfigured || latest?.claudeConfigured), detail: "Available only when the model key is server-side" },
+  ];
+  const score = Math.round((rows.filter((row) => row.ready).length / rows.length) * 100);
+  return {
+    score,
+    rows,
+    notes: [
+      score >= 80 ? "Hosted brain is ready for calibration and screenshot judging." : "Finish API/token/model checks before trusting hosted learning.",
+      "Never paste model keys into the browser; keep them on the API host.",
+    ],
+  };
+}
+
+function buildOneClickExportPackText({
+  goldenDataset,
+  promptMemory,
+  qualityGrader,
+  benchmarkTrend,
+  projectBoundaryReport,
+  reusableMemoryPack,
+  codexBuildPack,
+}: {
+  goldenDataset: GoldenDatasetReport;
+  promptMemory: PromptMemoryExport;
+  qualityGrader: QualityGraderV2;
+  benchmarkTrend: BenchmarkTrendReport;
+  projectBoundaryReport: ProjectBoundaryReport;
+  reusableMemoryPack: ReusableMemoryPack;
+  codexBuildPack: CodexBuildPack;
+}) {
+  return JSON.stringify(
+    {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      contents: ["goldenDataset", "jsonl", "promptMemory", "qualityGrader", "benchmarkTrend", "projectBoundary", "reusableMemoryPack", "codexBuildPack"],
+      goldenDataset: {
+        label: goldenDataset.label,
+        readyScore: goldenDataset.readyScore,
+        trainCount: goldenDataset.trainCount,
+        testCount: goldenDataset.testCount,
+        rows: goldenDataset.rows,
+        jsonl: goldenDataset.jsonl,
+      },
+      promptMemory,
+      qualityGrader,
+      benchmarkTrend,
+      projectBoundary: projectBoundaryReport,
+      reusableMemoryPack,
+      codexBuildPack,
+    },
+    null,
+    2,
+  );
+}
+
 type ModelBatchEvaluation = {
   id: string;
   promptId: string;
@@ -1617,6 +1961,7 @@ export default function App() {
     () => auditPromptImportBatch(draftBatchCandidates, examples),
     [draftBatchCandidates, examples],
   );
+  const draftContaminationReport = useMemo(() => buildDraftContaminationReport(draftPrompt), [draftPrompt]);
   const selectedPrompt = examples.find((example) => example.id === selectedId) ?? examples[0];
   const selectedAnalysis = useMemo(
     () => (selectedPrompt ? analyzePrompt(selectedPrompt.text, examples.filter((item) => item.id !== selectedPrompt.id)) : undefined),
@@ -1900,6 +2245,35 @@ export default function App() {
       }),
     [benchmarkRuns, closedLoopRuns, history, mutationTournamentRuns, proofLearningRuns, screenshotJudgeRuns, selectedPrompt],
   );
+  const trainModeReport = useMemo(
+    () =>
+      buildTrainModeReport({
+        benchmarkRegression,
+        curationReport,
+        guidedWizard,
+        projectBoundaryReport,
+        promptMemory,
+        proofLearningRuns,
+      }),
+    [benchmarkRegression, curationReport, guidedWizard, projectBoundaryReport, promptMemory, proofLearningRuns],
+  );
+  const goldenDataset = useMemo(
+    () => buildGoldenDatasetReport(learningExamples, outcomes, datasetVersions),
+    [datasetVersions, learningExamples, outcomes],
+  );
+  const proofProgress = useMemo(
+    () => buildProofProgressReport(queueJobs, buildRuns, screenshots, proofLearningRuns, selectedPrompt),
+    [buildRuns, proofLearningRuns, queueJobs, screenshots, selectedPrompt],
+  );
+  const evolutionDiff = useMemo(
+    () => buildEvolutionDiffReport(selectedPrompt, history, closedLoopRuns),
+    [closedLoopRuns, history, selectedPrompt],
+  );
+  const benchmarkTrend = useMemo(() => buildBenchmarkTrendReport(benchmarkRuns), [benchmarkRuns]);
+  const hostedBrainReadiness = useMemo(
+    () => buildHostedBrainReadinessReport(apiHealth, modelEnvStatus, claudeHealthChecks),
+    [apiHealth, claudeHealthChecks, modelEnvStatus],
+  );
   const rewriteComparison = useMemo(
     () => comparePromptImprovement(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
     [coachInput, generatedPrompt, outcomes, profile, resultScore, selectedPrompt],
@@ -1936,6 +2310,19 @@ export default function App() {
   const learnerAnswer = useMemo(
     () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
     [archetypePromptPacks, learnerQuestion, patternExtraction, profile],
+  );
+  const oneClickExportPack = useMemo(
+    () =>
+      buildOneClickExportPackText({
+        benchmarkTrend,
+        codexBuildPack,
+        goldenDataset,
+        projectBoundaryReport,
+        promptMemory,
+        qualityGrader: qualityGraderV2,
+        reusableMemoryPack,
+      }),
+    [benchmarkTrend, codexBuildPack, goldenDataset, projectBoundaryReport, promptMemory, qualityGraderV2, reusableMemoryPack],
   );
 
   useEffect(() => {
@@ -2649,6 +3036,26 @@ export default function App() {
     });
     setDatasetVersions((current) => [version, ...current].slice(0, 20));
     setApiNotice(`Created dataset version ${version.label}.`);
+  }
+
+  function lockGoldenDatasetV1() {
+    const version = createDatasetVersionSnapshot({
+      buildRuns,
+      examples: goldenDataset.rows
+        .map((row) => learningExamples.find((example) => example.id === row.id))
+        .filter(Boolean) as PromptExample[],
+      label: "Golden Dataset v1",
+      outcomes,
+      score: scoreBreakdown,
+      screenshots,
+    });
+    const lockedVersion: DatasetVersion = {
+      ...version,
+      label: "Golden Dataset v1",
+      notes: [...version.notes, `${goldenDataset.trainCount} train / ${goldenDataset.testCount} test split.`, `${goldenDataset.goldCount} gold-labeled row(s).`],
+    };
+    setDatasetVersions((current) => [lockedVersion, ...current.filter((item) => item.label.toLowerCase() !== "golden dataset v1")].slice(0, 20));
+    setApiNotice(`Locked Golden Dataset v1 with ${goldenDataset.rows.length} row(s).`);
   }
 
   function applyCurationRecommendations() {
@@ -3437,6 +3844,14 @@ export default function App() {
     downloadText(`codex-build-pack-${Date.now()}.md`, codexBuildPack.markdown, "text/markdown");
     downloadText(`codex-build-pack-${Date.now()}.json`, codexBuildPack.json, "application/json");
     setApiNotice("Exported Codex build pack with task, queue, prompt, memory, and QA gates.");
+  }
+
+  function exportOneClickTrainingPack() {
+    downloadText(`prompt-atelier-full-training-pack-${Date.now()}.json`, oneClickExportPack, "application/json");
+    if (goldenDataset.jsonl) {
+      downloadText(`prompt-atelier-golden-dataset-v1-${Date.now()}.jsonl`, goldenDataset.jsonl, "application/x-ndjson");
+    }
+    setApiNotice("Exported full training pack with golden dataset, JSONL, memory, grader, benchmark trend, and build pack.");
   }
 
   function exportPreset(preset: ExportPreset) {
@@ -4488,6 +4903,7 @@ export default function App() {
               onChange={(event) => setDraftPrompt(event.target.value)}
               placeholder="Paste another excellent website prompt here..."
             />
+            <DraftIngestionPreflight report={draftContaminationReport} />
             {draftAnalysis ? <SmartIngestion analysis={draftAnalysis} /> : null}
             {draftBatchCandidates.length > 1 ? <BatchIngestionPreview audit={draftImportAudit} candidates={draftBatchCandidates} /> : null}
             <div className="import-actions">
@@ -4520,7 +4936,7 @@ export default function App() {
                 className="primary-button"
                 type="button"
                 onClick={addDraftPrompt}
-                disabled={draftAnalysis?.duplicate.kind === "exact"}
+                disabled={draftAnalysis?.duplicate.kind === "exact" || draftContaminationReport.status === "block"}
               >
                 <Plus size={15} />
                 Add
@@ -4715,6 +5131,7 @@ export default function App() {
               apiTokenDraft={apiTokenDraft}
               backupSnapshots={backupSnapshots}
               benchmarkRuns={benchmarkRuns}
+              benchmarkTrend={benchmarkTrend}
               buildFeedback={buildFeedback}
               buildRuns={buildRuns}
               closedLoopRuns={closedLoopRuns}
@@ -4740,6 +5157,7 @@ export default function App() {
               diffRightId={diffRightId}
               examples={examples}
               evaluationHistory={evaluationHistory}
+              evolutionDiff={evolutionDiff}
               exportPresets={exportPresets}
               failureMemory={failureMemory}
               improvedPrompt={improvedPrompt}
@@ -4748,12 +5166,14 @@ export default function App() {
               interviewPrompt={interviewPrompt}
               goldenRecipes={goldenRecipes}
               goldenChallengeBoard={goldenChallengeBoard}
+              goldenDataset={goldenDataset}
               goldReview={goldReview}
               guidedWizard={guidedWizard}
               qualityGraderV2={qualityGraderV2}
               generatorPresets={generatorPresets}
               generatorInput={generatorInput}
               hostedSyncReport={hostedSyncReport}
+              hostedBrainReadiness={hostedBrainReadiness}
               learnerAnswer={learnerAnswer}
               learnerQuestion={learnerQuestion}
               learnedGeneratorVariants={learnedGeneratorVariants}
@@ -4792,13 +5212,16 @@ export default function App() {
               onExportPreset={exportPreset}
               onExportQueue={exportQueue}
               onExportMemoryPack={exportReusableMemoryPack}
+              onExportOneClickTrainingPack={exportOneClickTrainingPack}
               onExportProjectPack={exportProjectPack}
               onExportTrainingSnapshot={exportTrainingSnapshot}
               onImportTrainingSnapshot={importTrainingSnapshotText}
               onImportResultJson={importResultJson}
               onInstallSkill={installSkillFromApi}
               onLoadDemoMode={loadDemoMode}
+              onLockGoldenDatasetV1={lockGoldenDatasetV1}
               onModelEvaluate={runModelEvaluation}
+              oneClickExportPack={oneClickExportPack}
               onOneClickLearningLoop={runOneClickLearningLoop}
               onRunOneClickBuildProof={runOneClickBuildProof}
               onPullFromApi={pullFromApi}
@@ -4841,6 +5264,7 @@ export default function App() {
               patternDashboard={patternDashboard}
               projectBoundaryReport={projectBoundaryReport}
               promptComparisons={promptComparisons}
+              proofProgress={proofProgress}
               proofLearningRuns={proofLearningRuns}
               promptBattle={promptBattle}
               promptCoach={promptCoach}
@@ -4867,6 +5291,7 @@ export default function App() {
               searchResults={semanticResults}
               selectedPrompt={selectedPrompt}
               promptEvolutionSteps={promptEvolutionSteps}
+              trainModeReport={trainModeReport}
               selectedLineage={selectedLineage}
               semanticQuery={semanticQuery}
               sourceSafety={sourceSafety}
@@ -4972,6 +5397,28 @@ function TabButton({
       {icon}
       {children}
     </button>
+  );
+}
+
+function DraftIngestionPreflight({ report }: { report: DraftContaminationReport }) {
+  if (report.status === "clean" && !report.warnings.length) return null;
+  return (
+    <div className="analysis-card draft-preflight" data-status={report.status}>
+      <div>
+        <strong>{report.status === "block" ? "Import blocked" : "Review before import"}</strong>
+        <span>{report.score}/100 source safety</span>
+      </div>
+      <div className="mini-stat-row">
+        {report.warnings.map((warning) => (
+          <span key={warning}>{warning}</span>
+        ))}
+      </div>
+      <div className="batch-recommendations">
+        {report.actions.slice(0, 3).map((action) => (
+          <span key={action}>{action}</span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -5780,6 +6227,7 @@ function TrainView({
   apiTokenDraft,
   backupSnapshots,
   benchmarkRuns,
+  benchmarkTrend,
   buildFeedback,
   buildRuns,
   claudeHealthChecks,
@@ -5806,6 +6254,7 @@ function TrainView({
   driftReport,
   examples,
   evaluationHistory,
+  evolutionDiff,
   exportPresets,
   failureMemory,
   improvedPrompt,
@@ -5814,12 +6263,14 @@ function TrainView({
   interviewPrompt,
   goldenRecipes,
   goldenChallengeBoard,
+  goldenDataset,
   goldReview,
   guidedWizard,
   qualityGraderV2,
   generatorPresets,
   generatorInput,
   hostedSyncReport,
+  hostedBrainReadiness,
   learnerAnswer,
   learnerQuestion,
   learnedGeneratorVariants,
@@ -5858,6 +6309,7 @@ function TrainView({
   onExportCodexBuildPack,
   onExportPreset,
   onExportMemoryPack,
+  onExportOneClickTrainingPack,
   onExportProjectPack,
   onExportQueue,
   onExportTrainingSnapshot,
@@ -5865,7 +6317,9 @@ function TrainView({
   onImportResultJson,
   onInstallSkill,
   onLoadDemoMode,
+  onLockGoldenDatasetV1,
   onModelEvaluate,
+  oneClickExportPack,
   onOneClickLearningLoop,
   onRunOneClickBuildProof,
   onPullFromApi,
@@ -5908,6 +6362,7 @@ function TrainView({
   patternDashboard,
   projectBoundaryReport,
   promptComparisons,
+  proofProgress,
   proofLearningRuns,
   promptBattle,
   promptCoach,
@@ -5934,6 +6389,7 @@ function TrainView({
   searchResults,
   selectedPrompt,
   promptEvolutionSteps,
+  trainModeReport,
   selectedLineage,
   semanticQuery,
   sourceSafety,
@@ -5989,6 +6445,7 @@ function TrainView({
   apiTokenDraft: string;
   backupSnapshots: TrainingBackupSnapshot[];
   benchmarkRuns: BenchmarkRun[];
+  benchmarkTrend: BenchmarkTrendReport;
   buildFeedback: BuildFeedbackReport;
   buildRuns: BuildRunRecord[];
   claudeHealthChecks: HostedClaudeHealthCheck[];
@@ -6015,6 +6472,7 @@ function TrainView({
   driftReport: DriftReport;
   examples: PromptExample[];
   evaluationHistory: EvaluationHistoryReport;
+  evolutionDiff: EvolutionDiffReport;
   exportPresets: ExportPreset[];
   failureMemory: FailureMemoryReport;
   improvedPrompt: string;
@@ -6023,12 +6481,14 @@ function TrainView({
   interviewPrompt: string;
   goldenRecipes: GoldenRecipe[];
   goldenChallengeBoard: ReturnType<typeof buildGoldenChallengeBoard>;
+  goldenDataset: GoldenDatasetReport;
   goldReview: GoldReviewReport;
   guidedWizard: GuidedPromptWizardReport;
   qualityGraderV2: QualityGraderV2;
   generatorPresets: GeneratorPreset[];
   generatorInput: LearnedGeneratorInput;
   hostedSyncReport: HostedSyncReport;
+  hostedBrainReadiness: HostedBrainReadinessReport;
   learnerAnswer: LearnerAnswerReport;
   learnerQuestion: string;
   learnedGeneratorVariants: LearnedGeneratorVariant[];
@@ -6075,6 +6535,7 @@ function TrainView({
   onExportCodexBuildPack: () => void;
   onExportPreset: (preset: ExportPreset) => void;
   onExportMemoryPack: () => void;
+  onExportOneClickTrainingPack: () => void;
   onExportProjectPack: () => void;
   onExportQueue: () => void;
   onExportTrainingSnapshot: () => void;
@@ -6082,7 +6543,9 @@ function TrainView({
   onImportResultJson: () => void;
   onInstallSkill: () => void;
   onLoadDemoMode: () => void;
+  onLockGoldenDatasetV1: () => void;
   onModelEvaluate: () => void;
+  oneClickExportPack: string;
   onOneClickLearningLoop: () => void;
   onRunOneClickBuildProof: () => void;
   onPullFromApi: () => void;
@@ -6125,6 +6588,7 @@ function TrainView({
   patternDashboard: PatternDashboardReport;
   projectBoundaryReport: ProjectBoundaryReport;
   promptComparisons: PromptComparisonRun[];
+  proofProgress: ProofProgressReport;
   proofLearningRuns: ProofLearningRun[];
   promptBattle: PromptBattle;
   promptCoach: PromptCoachReport;
@@ -6151,6 +6615,7 @@ function TrainView({
   searchResults: SearchResult[];
   selectedPrompt?: PromptExample;
   promptEvolutionSteps: PromptEvolutionStep[];
+  trainModeReport: TrainModeReport;
   selectedLineage: PromptLineageNode[];
   semanticQuery: string;
   sourceSafety: SourceSafetyReport;
@@ -6254,6 +6719,8 @@ function TrainView({
         onSelect={scrollToTrainSection}
       />
 
+      <TrainFlowModesPanel modes={trainModeReport} onSelect={scrollToTrainSection} />
+
       <TrainCommandCenter
         corpusCleaning={corpusCleaning}
         curationReport={curationReport}
@@ -6289,7 +6756,11 @@ function TrainView({
         screenshotJudgeRuns={screenshotJudgeRuns}
       />
 
+      <ProofRunnerProgressPanel progress={proofProgress} />
+
       <PromptEvolutionTimelinePanel steps={promptEvolutionSteps} />
+
+      <PromptEvolutionDiffPanel report={evolutionDiff} />
 
       <section className="train-columns">
         <GoldenBenchmarkBoardPanel
@@ -6299,6 +6770,8 @@ function TrainView({
         />
         <BenchmarkRegressionPanel report={benchmarkRegression} />
       </section>
+
+      <BenchmarkTrendChartPanel report={benchmarkTrend} />
 
       <section className="train-columns">
         <ProductionHardeningPanel
@@ -6322,6 +6795,8 @@ function TrainView({
           setApiTokenDraft={setApiTokenDraft}
         />
       </section>
+
+      <HostedBrainReadinessPanel report={hostedBrainReadiness} onRunHostedClaudeHealthCheck={onRunHostedClaudeHealthCheck} />
 
       <BackendApiPanel
         apiBaseDraft={apiBaseDraft}
@@ -6379,6 +6854,14 @@ function TrainView({
         projectBoundaryReport={projectBoundaryReport}
       />
 
+      <GoldenDatasetLockPanel
+        copied={copied}
+        dataset={goldenDataset}
+        onCopy={onCopy}
+        onDownload={onDownload}
+        onLockGoldenDatasetV1={onLockGoldenDatasetV1}
+      />
+
       <OneClickLearningLoopPanel
         guidedWizard={guidedWizard}
         onOneClickLearningLoop={onOneClickLearningLoop}
@@ -6394,6 +6877,16 @@ function TrainView({
         onApplyGeneratorVariant={onApplyGeneratorVariant}
         onCopy={onCopy}
         onRunClosedLoopTrainer={onRunClosedLoopTrainer}
+        onSave={onSave}
+        setGeneratorInput={setGeneratorInput}
+      />
+
+      <PromptGeneratorFrontDoorPanel
+        copied={copied}
+        generatorInput={generatorInput}
+        guidedWizard={guidedWizard}
+        onApplyGeneratorVariant={onApplyGeneratorVariant}
+        onCopy={onCopy}
         onSave={onSave}
         setGeneratorInput={setGeneratorInput}
       />
@@ -6571,6 +7064,14 @@ function TrainView({
         packs={archetypePromptPacks}
         promptMemory={promptMemory}
         selectedPrompt={selectedPrompt}
+      />
+
+      <OneClickExportPackPanel
+        copied={copied}
+        goldenDataset={goldenDataset}
+        onCopy={onCopy}
+        onExportOneClickTrainingPack={onExportOneClickTrainingPack}
+        packText={oneClickExportPack}
       />
 
       <section className="train-columns">
@@ -7039,6 +7540,192 @@ function TrainSectionNavigator({
           <button key={section.id} type="button" onClick={() => onSelect(section.id)}>
             {section.label}
           </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TrainFlowModesPanel({ modes, onSelect }: { modes: TrainModeReport; onSelect: (id: string) => void }) {
+  return (
+    <section className="panel lab-panel train-flow-panel" data-train-section="workflow">
+      <div className="panel-header">
+        <SlidersHorizontal size={18} />
+        <h2>Training modes</h2>
+      </div>
+      <div className="mode-flow-grid">
+        {modes.map((mode) => (
+          <button type="button" key={mode.id} onClick={() => onSelect(mode.target)}>
+            <span data-tone={scoreTone(mode.score)}>{mode.score}</span>
+            <strong>{mode.label}</strong>
+            <p>{mode.detail}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProofRunnerProgressPanel({ progress }: { progress: ProofProgressReport }) {
+  return (
+    <section className="panel lab-panel proof-progress-panel" data-train-section="queue">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Proof runner progress</h2>
+        </div>
+        <span className="workspace-pill">{progress.status}</span>
+      </div>
+      <div className="proof-progress-track">
+        {progress.steps.map((step, index) => (
+          <article className="proof-progress-step" data-state={step.state} key={step.label}>
+            <span>{index + 1}</span>
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+          </article>
+        ))}
+      </div>
+      <p className="selected-meta">
+        {progress.latest ? `Latest proof job: ${progress.latest.variantTitle} in ${progress.latest.runFolder}.` : "No proof job has been queued for the selected prompt yet."}
+      </p>
+    </section>
+  );
+}
+
+function PromptEvolutionDiffPanel({ report }: { report: EvolutionDiffReport }) {
+  return (
+    <section className="panel lab-panel evolution-diff-panel" data-train-section="improve">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Prompt diff and evolution</h2>
+        </div>
+        <span data-tone={scoreTone(50 + report.scoreDelta)}>{report.scoreDelta >= 0 ? `+${report.scoreDelta}` : report.scoreDelta}</span>
+      </div>
+      <div className="train-columns nested-train-columns">
+        <FeedbackList title={`Added in ${report.toTitle}`} items={report.addedSignals} empty="No added signals yet." />
+        <FeedbackList title={`Removed from ${report.fromTitle}`} items={report.removedSignals} empty="No removed signals yet." />
+      </div>
+      <FeedbackList title="Evolution summary" items={report.summary} empty="No evolution summary yet." />
+    </section>
+  );
+}
+
+function BenchmarkTrendChartPanel({ report }: { report: BenchmarkTrendReport }) {
+  return (
+    <section className="panel lab-panel benchmark-trend-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Benchmark trend chart</h2>
+        </div>
+        <span className="workspace-pill">{report.trend}</span>
+      </div>
+      <div className="trend-chart" aria-label="Benchmark score trend">
+        {report.points.length ? (
+          report.points.map((point) => (
+            <article key={point.label} style={{ "--score": `${Math.max(8, point.score)}%` } as CSSProperties}>
+              <span>{point.score}</span>
+              <i data-tone={scoreTone(point.score)} />
+              <small>{point.label}</small>
+              <em>{point.delta >= 0 ? `+${point.delta}` : point.delta}</em>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">Run the benchmark suite to create the first trend point.</p>
+        )}
+      </div>
+      <FeedbackList title="Trend notes" items={report.notes} empty="No trend notes yet." />
+    </section>
+  );
+}
+
+function HostedBrainReadinessPanel({
+  onRunHostedClaudeHealthCheck,
+  report,
+}: {
+  onRunHostedClaudeHealthCheck: () => void;
+  report: HostedBrainReadinessReport;
+}) {
+  return (
+    <section className="panel lab-panel hosted-readiness-panel" data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Claude readiness without browser secrets</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunHostedClaudeHealthCheck}>
+          <Check size={15} />
+          Deep check
+        </button>
+      </div>
+      <ScoreRing score={report.score} label="ready" />
+      <div className="hardening-grid">
+        {report.rows.map((row) => (
+          <article className="sync-check-card" data-ready={row.ready} key={row.label}>
+            <strong>{row.ready ? "Ready" : "Watch"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Readiness notes" items={report.notes} empty="No readiness notes." />
+    </section>
+  );
+}
+
+function GoldenDatasetLockPanel({
+  copied,
+  dataset,
+  onCopy,
+  onDownload,
+  onLockGoldenDatasetV1,
+}: {
+  copied: string;
+  dataset: GoldenDatasetReport;
+  onCopy: (value: string, key: string) => void;
+  onDownload: (filename: string, text: string, type?: string) => void;
+  onLockGoldenDatasetV1: () => void;
+}) {
+  return (
+    <section className="panel lab-panel golden-dataset-panel" data-train-section="workspace">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Locked Golden Dataset v1</h2>
+        </div>
+        <ScoreRing score={dataset.readyScore} label="ready" />
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(dataset.rows.length)} label="Rows" />
+        <Metric value={String(dataset.trainCount)} label="Train" />
+        <Metric value={String(dataset.testCount)} label="Test" />
+        <Metric value={String(dataset.goldCount)} label="Gold" />
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onLockGoldenDatasetV1}>
+          <Save size={15} />
+          Lock v1
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(dataset.jsonl, "golden-dataset-jsonl")} disabled={!dataset.jsonl}>
+          {copied === "golden-dataset-jsonl" ? <Check size={15} /> : <Copy size={15} />}
+          Copy JSONL
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onDownload("golden-dataset-v1.jsonl", dataset.jsonl, "application/x-ndjson")} disabled={!dataset.jsonl}>
+          <Download size={15} />
+          Export JSONL
+        </button>
+      </div>
+      <FeedbackList title={dataset.label} items={dataset.notes} empty="No dataset notes yet." />
+      <div className="version-list compact-list">
+        {dataset.rows.slice(0, 8).map((row) => (
+          <article className="version-card" key={row.id}>
+            <div className="dna-v2-topline">
+              <strong>{row.title}</strong>
+              <span data-tone={scoreTone(row.score)}>{row.score}</span>
+            </div>
+            <p>{row.split} / {row.status}</p>
+          </article>
         ))}
       </div>
     </section>
@@ -7651,6 +8338,92 @@ function SimplePromptFrontDoorPanel({
             <button className="primary-button compact-button" type="button" disabled={!best} onClick={onRunClosedLoopTrainer}>
               <Sparkles size={15} />
               Refine with Claude
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function PromptGeneratorFrontDoorPanel({
+  copied,
+  generatorInput,
+  guidedWizard,
+  onApplyGeneratorVariant,
+  onCopy,
+  onSave,
+  setGeneratorInput,
+}: {
+  copied: string;
+  generatorInput: LearnedGeneratorInput;
+  guidedWizard: GuidedPromptWizardReport;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
+}) {
+  const best = guidedWizard.variants[0];
+  function update<K extends keyof LearnedGeneratorInput>(key: K, value: LearnedGeneratorInput[K]) {
+    setGeneratorInput((current) => ({ ...current, [key]: value }));
+  }
+  const fields: { key: keyof LearnedGeneratorInput; label: string; multiline?: boolean }[] = [
+    { key: "industry", label: "Industry" },
+    { key: "audience", label: "Audience" },
+    { key: "goal", label: "Goal", multiline: true },
+    { key: "stack", label: "Stack" },
+    { key: "visualStyle", label: "Visual style", multiline: true },
+    { key: "assets", label: "Assets", multiline: true },
+    { key: "constraints", label: "Constraints and proof", multiline: true },
+  ];
+  return (
+    <section className="panel lab-panel prompt-generator-front-door-panel" data-train-section="generate">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Prompt generator front door</h2>
+        </div>
+        <span className="workspace-pill">{generatorInput.outputTarget}</span>
+      </div>
+      <p className="selected-meta">Fill the brief once, then use the best generated prompt as a build task, Claude prompt, or JSONL training row.</p>
+      <div className="generator-front-grid">
+        <div className="simple-brief-fields">
+          <div className="two-field-grid">
+            <Field label="Brand">
+              <input value={generatorInput.brandName} onChange={(event) => update("brandName", event.target.value)} />
+            </Field>
+            <Field label="Site type">
+              <input value={generatorInput.siteType} onChange={(event) => update("siteType", event.target.value)} />
+            </Field>
+          </div>
+          {fields.map((field) => (
+            <Field label={field.label} key={field.key}>
+              {field.multiline ? (
+                <textarea value={String(generatorInput[field.key])} onChange={(event) => update(field.key, event.target.value as never)} />
+              ) : (
+                <input value={String(generatorInput[field.key])} onChange={(event) => update(field.key, event.target.value as never)} />
+              )}
+            </Field>
+          ))}
+        </div>
+        <article className="simple-prompt-preview">
+          <div className="dna-v2-topline">
+            <strong>{best?.title ?? "No generated prompt yet"}</strong>
+            <span data-tone={scoreTone(best?.score ?? 0)}>{best?.score ?? 0}</span>
+          </div>
+          <FeedbackList title="Brief gaps" items={guidedWizard.nextActions} empty="Brief is ready enough to generate." />
+          <textarea className="generated-output style-guide-output" readOnly value={best?.prompt ?? ""} />
+          <div className="button-row">
+            <button className="primary-button compact-button" type="button" disabled={!best} onClick={() => best && onApplyGeneratorVariant(best)}>
+              Use best
+            </button>
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onCopy(best.prompt, "generator-front-door")}>
+              {copied === "generator-front-door" ? <Check size={15} /> : <Copy size={15} />}
+              Copy
+            </button>
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onSave("generated", best.title, best.prompt, best.score)}>
+              <Save size={15} />
+              Save
             </button>
           </div>
         </article>
@@ -8437,6 +9210,57 @@ function ExportFormatStudioPanel({
         ))}
       </div>
       <textarea className="generated-output style-guide-output" readOnly value={formatted} />
+    </section>
+  );
+}
+
+function OneClickExportPackPanel({
+  copied,
+  goldenDataset,
+  onCopy,
+  onExportOneClickTrainingPack,
+  packText,
+}: {
+  copied: string;
+  goldenDataset: GoldenDatasetReport;
+  onCopy: (value: string, key: string) => void;
+  onExportOneClickTrainingPack: () => void;
+  packText: string;
+}) {
+  const sizeKb = Math.max(1, Math.round(packText.length / 1024));
+  return (
+    <section className="panel lab-panel one-click-export-panel" data-train-section="packs">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>One-click export pack</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(packText, "one-click-export-pack")}>
+            {copied === "one-click-export-pack" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={onExportOneClickTrainingPack}>
+            <Download size={15} />
+            Export all
+          </button>
+        </div>
+      </div>
+      <div className="source-safety-grid">
+        <article className="index-card">
+          <strong>{sizeKb}kb</strong>
+          <span>pack size</span>
+        </article>
+        <article className="index-card">
+          <strong>{goldenDataset.rows.length}</strong>
+          <span>dataset rows</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Included</h3>
+          <p>Golden prompts, JSONL, bad/avoid signals, DNA rules, benchmark trend, project boundary report, reusable memory, and Codex build pack.</p>
+        </article>
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={packText.slice(0, 2500)} />
     </section>
   );
 }
