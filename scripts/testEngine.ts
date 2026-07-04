@@ -10,9 +10,14 @@ import {
   buildBestNextActionReport,
   buildCodexBuildPack,
   buildBuildResultLearningReport,
+  buildApiAdminHardeningReport,
+  buildBeginnerPromptMakerReport,
   buildBenchmarkBattleReport,
+  buildBulkImportPipelineReport,
   buildCorpusProvenanceFirewallReport,
   buildCalibrationDashboardReport,
+  buildClaudeCalibrationSetReport,
+  buildClosedLoopRunDetailReport,
   buildCorpusIntelligenceReport,
   buildEvaluationArtifact,
   buildEvaluationHistoryReport,
@@ -20,10 +25,14 @@ import {
   buildExportPresets,
   buildBuildFeedbackReport,
   buildArchetypePromptPacks,
+  buildFailureMemory,
+  buildGoldenDatasetV1LockReport,
   buildGuidedPromptWizardReport,
   buildHostedSyncReport,
   buildHostedHardeningReport,
+  buildHostedBuildWorkerReport,
   buildImportWizardReport,
+  buildFailureMemoryAutopilotReport,
   buildLearnedGeneratorVariants,
   buildLeakageGuardReport,
   buildPatternDashboard,
@@ -42,9 +51,11 @@ import {
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
   buildModelJudgeComparisonReport,
+  buildModelProviderRouterReport,
   buildOperatorModeReport,
   buildTrainingRunSummary,
   buildTrueClosedLoopReport,
+  buildVisualProofComparisonReport,
   buildVisualRegressionReport,
   buildPromptSectionRegenerationReport,
   buildSpeedLabelingReport,
@@ -645,4 +656,79 @@ const operatorMode = buildOperatorModeReport({
 assert.equal(operatorMode.mode, "beginner", "Operator mode should simplify non-trained workflows.");
 assert.ok(operatorMode.cards.length >= 4, "Operator mode should expose workflow cards.");
 
-console.log(JSON.stringify({ ok: true, assertions: 126, score: score.score, snapshot: snapshot.label }, null, 2));
+const hostedBuildWorker = buildHostedBuildWorkerReport({
+  apiOnline: true,
+  authRequired: true,
+  hasBuildCommand: true,
+  queueStatus: queueProgress.status,
+  trueClosedLoop,
+});
+assert.ok(hostedBuildWorker.workerPlan.some((item) => /queue worker/i.test(item)), "Hosted build worker should describe real queue execution.");
+assert.notEqual(hostedBuildWorker.readiness, "needs-api", "Hosted build worker should pass API readiness with health.");
+
+const claudeCalibrationSet = buildClaudeCalibrationSetReport({ modelCache: cacheReport });
+assert.ok(claudeCalibrationSet.rows.length >= 5, "Claude calibration set should include stable fixtures.");
+assert.ok(claudeCalibrationSet.rows.some((row) => row.expected > 80), "Claude calibration should include gold expected rows.");
+
+const bulkImportPipeline = buildBulkImportPipelineReport({ audit: importAudit, contamination: { status: "clean", warnings: [], actions: [] } });
+assert.ok(bulkImportPipeline.stages.length >= 5, "Bulk import pipeline should expose parse/dedupe/classify/safety/commit stages.");
+assert.ok(bulkImportPipeline.previewRows.length > 0, "Bulk import pipeline should preview candidates.");
+
+const closedLoopDetail = buildClosedLoopRunDetailReport({
+  buildRuns,
+  runs: [{ id: "loop-1", sourceTitle: "Source", winnerTitle: "Winner", originalScore: 60, improvedScore: 82, modelMode: "local", findings: ["better"], recommendations: ["build"] }],
+  screenshots,
+});
+assert.equal(closedLoopDetail.latest?.status, "improved", "Closed-loop detail should classify positive deltas.");
+assert.ok(closedLoopDetail.timeline.length >= 4, "Closed-loop detail should include proof timeline.");
+
+const goldenDatasetV1 = buildGoldenDatasetV1LockReport({ goldCount: 6, trainCount: 5, testCount: 1, versions: [{ ...snapshot, label: "Golden Dataset v1" }] });
+assert.equal(goldenDatasetV1.locked, true, "Golden Dataset v1 report should detect the locked version.");
+assert.ok(goldenDatasetV1.checklist.every((item) => item.ready), "Golden Dataset v1 report should pass a complete lock.");
+
+const beginnerPromptMaker = buildBeginnerPromptMakerReport({
+  input: {
+    brandName: "Atlas",
+    industry: "AI research",
+    audience: "research founders",
+    goal: "prove the product is serious",
+    stack: "React + TypeScript + Tailwind CSS",
+    siteType: "single-page hero",
+    vibe: "cinematic",
+    visualStyle: "cinematic video hero",
+    assets: "exact video URL",
+    constraints: "no placeholders",
+    outputTarget: "Codex build prompt",
+    strictness: 9,
+  },
+  promptMemory,
+});
+assert.equal(beginnerPromptMaker.readiness, "ready", "Beginner prompt maker should be ready with complete input.");
+assert.ok(beginnerPromptMaker.suggestedPrompt.includes("desktop/mobile verification"), "Beginner prompt maker should include proof gates.");
+
+const failureMemory = buildFailureMemory(outcomes, buildRuns, screenshots);
+const failureAutopilot = buildFailureMemoryAutopilotReport({ buildLearning, failureMemory, resultScore: resultArtifact });
+assert.ok(failureAutopilot.patch.includes("FAILURE MEMORY PATCH"), "Failure autopilot should expose the repair patch.");
+assert.ok(failureAutopilot.notes.length >= 2, "Failure autopilot should explain next steps.");
+
+const visualProofComparison = buildVisualProofComparisonReport({ buildRuns, screenshots });
+assert.ok(["ready", "needs-before", "needs-after"].includes(visualProofComparison.status), "Visual proof comparison should classify screenshot readiness.");
+assert.ok(visualProofComparison.notes.some((note) => /screenshot/i.test(note)), "Visual proof comparison should mention screenshots.");
+
+const providerRouter = buildModelProviderRouterReport({
+  cache: cacheReport,
+  settings: { provider: "anthropic", endpoint: "https://api.anthropic.com/v1/messages", model: "claude-sonnet-5" },
+});
+assert.equal(providerRouter.route, "server-claude", "Provider router should prefer server-side Claude.");
+assert.ok(providerRouter.checks.some((check) => /Server route/i.test(check.label)), "Provider router should expose key-posture checks.");
+
+const apiAdminHardening = buildApiAdminHardeningReport({
+  backupCount: 1,
+  eventCount: 2,
+  health: { ok: true, authRequired: true, sqlitePath: "prompt-atelier.sqlite", rateLimitPerMinute: 240 },
+  hostedHardening,
+});
+assert.equal(apiAdminHardening.readiness, "ready", "API admin hardening should pass a complete hosted posture.");
+assert.ok(apiAdminHardening.actions.some((action) => /restore point/i.test(action)), "API admin hardening should include backup actions.");
+
+console.log(JSON.stringify({ ok: true, assertions: 146, score: score.score, snapshot: snapshot.label }, null, 2));

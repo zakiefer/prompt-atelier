@@ -51,6 +51,8 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Best-next-action guidance, one-click training stepper, corpus provenance firewall, build-result learning loop, Claude/local/result comparison, prompt recipe distiller, section editor coaching, explainable Prompt Quality DNA, and benchmark-library coverage
 - Beginner/expert operator mode, large-paste import wizard, golden/bad speed labeling, training-run replay, benchmark battles, score calibration, and hosted hardening panels
 - True closed-loop runner that can generate, build-queue, screenshot-proof, judge, rewrite, and save the winning prompt through the hosted API when available
+- Hosted proof worker that chains closed-loop judging into scaffold/build/capture queue execution through `/api/closed-loop/prove`
+- Calibration fixtures, closed-loop run details, bulk-ingest pipeline preview, Golden Dataset v1 lock posture, beginner prompt maker, failure-memory autopilot, before/after proof comparison, provider routing, and API admin hardening
 
 ## Development
 
@@ -145,6 +147,8 @@ The Train tab now starts with:
 16. A beginner/expert operator layer that turns the noisy training workspace into import, label, prove, rewrite, and export cards.
 17. A true closed-loop runway that connects prompt generation, build queue creation, screenshot proof, server-side Claude/local judging, section regeneration, winner saving, and artifact export.
 18. Calibration, benchmark battle, replay, and hosted-hardening panels that show whether model scores, labels, API posture, backups, and real build proof are strong enough to keep learning.
+19. A hosted proof worker and admin layer that can run `/api/closed-loop/prove`, scaffold a Vite app, build, capture screenshots, record proof rows, and keep API health/backups/rate-limit/key posture visible.
+20. A beginner product path with one-click prompt generation, bulk-ingest preview, Golden Dataset v1 lock status, failure-memory autopilot, before/after visual proof, and provider routing for Claude, external evaluators, or local fallback.
 
 The tightest improvement cycle is:
 
@@ -167,6 +171,8 @@ Use Run guided train when you want the product workflow rather than the expert l
 Use the best-next-action panel when the system feels noisy. It prioritizes the next move from curation status, safe-to-train posture, model agreement, proof history, benchmark coverage, and available build evidence. The provenance firewall and Prompt Quality DNA panels explain why a prompt is safe, risky, thin, or ready so you can correct the corpus before spending another build run.
 
 Use Run true closed loop when you want the product path. It creates a local proof ledger entry, tries `/api/closed-loop/run` for server-side Claude/local judging, saves the rewritten winner as a user prompt, and queues the winner for real build proof. Use Run server judge when you only want the hosted evaluator to rewrite and persist a winner without creating a queue job.
+
+Use Run hosted proof worker when the API is trusted to execute builds. It calls `/api/closed-loop/prove`, creates the rewritten winner, writes a queue job under the API data directory, runs the scaffold/build/capture worker, and returns closed-loop, queue, and proof-learning rows to the browser.
 
 ## Prompt Corpus
 

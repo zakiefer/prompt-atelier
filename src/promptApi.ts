@@ -179,6 +179,13 @@ export function runClosedLoopViaApi(payload: Record<string, unknown>) {
   });
 }
 
+export function runClosedLoopProofViaApi(payload: Record<string, unknown>) {
+  return requestJson<Record<string, unknown>>("/api/closed-loop/prove", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createTrainingRun(payload: Record<string, unknown>) {
   return requestJson<Record<string, unknown>>("/api/training/run", {
     method: "POST",
