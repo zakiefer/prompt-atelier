@@ -242,6 +242,27 @@ try {
     throw new Error("Closed-loop route should redact prompt secrets.");
   }
 
+  const closedLoopProof = await fetch(`${base}/api/closed-loop/prove`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      title: "Closed-loop proof fixture",
+      prompt: "Build a React Tailwind hero with exact assets, responsive QA, and no leaked token sk-ant-api03-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.",
+      memory: "Exact assets win.",
+      buildCommand: "true",
+      install: false,
+      capture: false,
+      settings: { provider: "anthropic", endpoint: "https://api.anthropic.com/v1/messages", apiKey: "" },
+    }),
+  });
+  const closedLoopProofPayload = await closedLoopProof.json();
+  if (!closedLoopProof.ok || !closedLoopProofPayload.job?.id || !closedLoopProofPayload.proofRun?.id || closedLoopProofPayload.queueResult?.progressStage === "failed") {
+    throw new Error("Closed-loop proof route should create and run a hosted queue proof job.");
+  }
+  if (!closedLoopProofPayload.redactions?.some((finding) => finding.kind === "anthropic-key") || JSON.stringify(closedLoopProofPayload).includes("sk-ant-api03-")) {
+    throw new Error("Closed-loop proof route should redact prompt secrets.");
+  }
+
   const trainingRun = await fetch(`${base}/api/training/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },

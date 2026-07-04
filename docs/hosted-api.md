@@ -40,6 +40,8 @@ The Claude/local/result comparison panel reads cached model rows, local DNA scor
 
 The true closed-loop route is `POST /api/closed-loop/run`. It redacts the prompt payload, scores the original prompt, requests or creates a rewritten prompt, scores the rewrite, persists a `closedLoopRuns` row, writes a `closed-loop-run` API event, and returns `{ run, original, improved, winnerPrompt, redactions, collections.closedLoopRuns }`. When `ANTHROPIC_API_KEY` is present on the API host, the route uses Claude through the same normalized schema as `/api/model/evaluate`; when it is absent, it returns a deterministic local fallback without exposing browser secrets.
 
+The hosted proof worker route is `POST /api/closed-loop/prove`. It performs the same redacted original-vs-rewrite judging, then creates a queue job, writes a queue file under `PROMPT_LAB_DATA_DIR`, invokes `scripts/runQueue.mjs` with scaffold/build/capture options, stores `closedLoopRuns`, `queueJobs`, and `proofLearningRuns`, and returns `{ run, job, proofRun, queueResult, winnerPrompt, collections }`. Treat this as a trusted-worker route: only enable it behind bearer auth on infrastructure where running scaffold/build commands is acceptable.
+
 ## Training Artifacts
 
 The hosted API advertises all durable collection keys from `/api/health` and stores each collection through `/api/collections`. The Train view now persists these higher-order artifacts in addition to the raw corpus:
@@ -91,6 +93,7 @@ The top of the Train tab can run without a model key, then enrich through API ro
 - `GET /api/training/runs`: returns stored guided training runs.
 - `POST /api/model/evaluate-cached`: redacts prompt/model payloads, checks the cache, and appends a schema-versioned cache row when needed.
 - `POST /api/closed-loop/run`: performs server-side original-vs-rewrite judging and appends a closed-loop winner row.
+- `POST /api/closed-loop/prove`: chains closed-loop judging into the queue worker and appends proof-learning rows.
 - `POST /api/corpus/analyze`: creates a deterministic corpus intelligence run from supplied examples.
 - `POST /api/benchmark/v2`: creates a deterministic benchmark v2 run from supplied examples.
 - `POST /api/artifact/create`: creates a markdown/JSON evaluation artifact for the selected prompt.

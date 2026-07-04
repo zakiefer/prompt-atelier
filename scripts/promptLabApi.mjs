@@ -897,6 +897,114 @@ async function handle(request, response) {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/closed-loop/prove") {
+      const body = await readBody(request);
+      const redacted = redactModelBody(body);
+      const safeBody = redacted.body;
+      const sourceTitle = String(safeBody.title || safeBody.context?.sourceTitle || "Closed-loop proof prompt");
+      const original = await evaluatePromptForClosedLoop({
+        ...safeBody,
+        context: {
+          ...(safeBody.context || {}),
+          task: "Hosted proof worker pass 1. Score the original website prompt and return rewrittenPrompt with exact repair sections.",
+          sourceTitle,
+        },
+      });
+      const rewrittenPrompt = String(original.rewrittenPrompt || localClosedLoopRewrite(safeBody.prompt, safeBody.memory, { sourceTitle }));
+      const improved = await evaluatePromptForClosedLoop({
+        ...safeBody,
+        prompt: rewrittenPrompt,
+        context: {
+          ...(safeBody.context || {}),
+          task: "Hosted proof worker pass 2. Score the rewritten website prompt before build proof.",
+          sourceTitle,
+          originalScore: original.score,
+        },
+      });
+      const originalScore = Number(original.score || localPromptScore(safeBody.prompt));
+      const improvedScore = Number(improved.score || localPromptScore(rewrittenPrompt));
+      const winnerPrompt = improvedScore >= originalScore ? rewrittenPrompt : String(safeBody.prompt || "");
+      const createdAt = now();
+      const run = {
+        id: `closed-loop-proof-${Date.now()}`,
+        createdAt,
+        sourceTitle,
+        originalScore,
+        improvedScore,
+        winnerTitle: `${sourceTitle} hosted proof winner`,
+        winnerPrompt,
+        modelMode: improved.mode || original.mode || "local-fallback",
+        findings: [...(original.findings || []), ...(improved.findings || [])].slice(0, 8),
+        recommendations: [...(original.recommendations || []), ...(improved.recommendations || [])].slice(0, 8),
+        redactions: redacted.findings,
+      };
+      const jobId = `hosted-proof-${Date.now()}`;
+      const runFolder = join(DATA_DIR, "proof-runs", jobId);
+      const job = {
+        id: jobId,
+        promptId: String(safeBody.promptId || jobId),
+        promptTitle: sourceTitle,
+        promptText: winnerPrompt,
+        variantTitle: run.winnerTitle,
+        status: "queued",
+        runFolder,
+        resultUrl: String(safeBody.resultUrl || ""),
+        score: improvedScore,
+        commands: [],
+        notes: ["Created by /api/closed-loop/prove."],
+        createdAt,
+        updatedAt: createdAt,
+      };
+      const queue = { jobs: [job], createdAt };
+      const queuePath = join(DATA_DIR, `${jobId}.json`);
+      writeFileSync(queuePath, `${JSON.stringify(queue, null, 2)}\n`);
+      const args = ["--queue", queuePath, "--job", jobId, "--scaffold", "--build", String(safeBody.buildCommand || process.env.PROMPT_LAB_BUILD_COMMAND || "npm run build")];
+      if (safeBody.install !== false) args.push("--install");
+      if (safeBody.capture !== false) args.push("--capture");
+      if (safeBody.agentCommand || process.env.PROMPT_LAB_AGENT_COMMAND) args.push("--agent", String(safeBody.agentCommand || process.env.PROMPT_LAB_AGENT_COMMAND));
+      logEvent("closed-loop-proof", { id: run.id, jobId, stage: "queued", mode: run.modelMode });
+      const queueResult = runNodeScript("runQueue.mjs", args, Number(safeBody.timeoutMs || 240000));
+      const parsedResult = Array.isArray(queueResult.parsed?.results) ? queueResult.parsed.results[0] : null;
+      const proofRun = {
+        id: `proof-${jobId}`,
+        createdAt,
+        promptId: job.promptId,
+        title: run.winnerTitle,
+        queueJobId: jobId,
+        phase: queueResult.ok ? "complete" : "failed",
+        promptScore: improvedScore,
+        resultScore: Number(parsedResult?.score || 0),
+        visualScore: parsedResult?.screenshotUrl ? 80 : 0,
+        dnaScore: improvedScore,
+        learnedStatus: queueResult.ok ? "proof-ready" : "needs-review",
+        screenshotCount: parsedResult?.screenshotUrl ? 1 : 0,
+        notes: [
+          queueResult.ok ? "Hosted proof worker completed." : "Hosted proof worker failed.",
+          parsedResult?.resultUrl ? `Result URL: ${parsedResult.resultUrl}` : "No result URL returned.",
+        ],
+      };
+      const closedLoopRuns = appendCollectionRecord("closedLoopRuns", run, 40);
+      const current = readCollections();
+      const queueJobs = [job, ...((current.queueJobs || []).filter((item) => item.id !== job.id))].slice(0, 140);
+      const proofLearningRuns = [proofRun, ...(current.proofLearningRuns || [])].slice(0, 80);
+      writeCollection("queueJobs", queueJobs);
+      writeCollection("proofLearningRuns", proofLearningRuns);
+      logEvent("closed-loop-proof", { id: run.id, jobId, stage: queueResult.ok ? "complete" : "failed", ok: queueResult.ok });
+      jsonResponse(response, queueResult.ok ? 200 : 500, {
+        ok: queueResult.ok,
+        run,
+        job,
+        proofRun,
+        original,
+        improved,
+        winnerPrompt,
+        queueResult,
+        redactions: redacted.findings,
+        collections: { closedLoopRuns, queueJobs, proofLearningRuns },
+      });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/training/run") {
       const body = await readBody(request);
       const createdAt = now();

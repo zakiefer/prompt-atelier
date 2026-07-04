@@ -39,7 +39,12 @@ import {
   buildBenchmarkBattleReport,
   buildBestNextActionReport,
   buildBuildResultLearningReport,
+  buildApiAdminHardeningReport,
+  buildBeginnerPromptMakerReport,
+  buildBulkImportPipelineReport,
   buildCalibrationDashboardReport,
+  buildClaudeCalibrationSetReport,
+  buildClosedLoopRunDetailReport,
   buildCorpusCleaningReport,
   buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
@@ -47,6 +52,7 @@ import {
   buildEvaluationHistoryReport,
   buildExportPresets,
   buildFailureMemory,
+  buildFailureMemoryAutopilotReport,
   buildModelEvaluationCacheReport,
   buildLocalEmbeddingIndex,
   buildOutcomeSummary,
@@ -60,6 +66,7 @@ import {
   buildPromptRecipeDistillerReport,
   buildPromptSectionRegenerationReport,
   buildGoldReviewReport,
+  buildGoldenDatasetV1LockReport,
   buildGeneratorPresets,
   buildExperimentLeaderboard,
   buildBuildFeedbackReport,
@@ -67,6 +74,7 @@ import {
   buildLearnedGeneratorVariants,
   buildGuidedPromptWizardReport,
   buildHostedHardeningReport,
+  buildHostedBuildWorkerReport,
   buildHostedSyncReport,
   buildImportWizardReport,
   buildArchetypePromptPacks,
@@ -82,11 +90,13 @@ import {
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
   buildModelJudgeComparisonReport,
+  buildModelProviderRouterReport,
   buildOperatorModeReport,
   buildSourceSafetyReport,
   buildSpeedLabelingReport,
   buildTrainingRunSummary,
   buildTrueClosedLoopReport,
+  buildVisualProofComparisonReport,
   buildVisualRegressionReport,
   answerLearnerQuestion,
   buildRecipePrompt,
@@ -143,6 +153,8 @@ import {
   type BenchmarkV2Report,
   type BestNextActionReport,
   type BuildResultLearningReport,
+  type ApiAdminHardeningReport,
+  type BeginnerPromptMakerReport,
   type BuildRunRecord,
   type BuildFeedbackReport,
   type BuildRunnerPlan,
@@ -156,6 +168,7 @@ import {
   type CorpusProvenanceFirewallReport,
   type CorpusIntelligenceReport,
   type CorpusCurationReport,
+  type BulkImportPipelineReport,
   type DatasetVersion,
   type DatasetVersionComparison,
   type DnaCalibrationReport,
@@ -166,9 +179,12 @@ import {
   type EvaluationArtifact,
   type EvaluationHistoryReport,
   type CalibrationDashboardReport,
+  type ClaudeCalibrationSetReport,
+  type ClosedLoopRunDetailReport,
   type ExportPreset,
   type ExperimentLeaderboardReport,
   type FailureMemoryReport,
+  type FailureMemoryAutopilotReport,
   type Feature,
   type InterviewBrief,
   type ImportWizardReport,
@@ -179,10 +195,12 @@ import {
   type LeakageGuardReport,
   type GuidedPromptWizardReport,
   type HostedHardeningReport,
+  type HostedBuildWorkerReport,
   type HostedSyncReport,
   type ModelEvaluationCacheRecord,
   type ModelEvaluationCacheReport,
   type ModelJudgeComparisonReport,
+  type ModelProviderRouterReport,
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
@@ -212,6 +230,7 @@ import {
   type GoldenRecipe,
   type GeneratorPreset,
   type GoldReviewReport,
+  type GoldenDatasetV1LockReport,
   type PromptTemplate,
   type PromptWinExplanationReport,
   type QualityGateReport,
@@ -241,6 +260,7 @@ import {
   type SpeedLabelingReport,
   type TrainingRunRecord,
   type TrueClosedLoopReport,
+  type VisualProofComparisonReport,
 } from "./promptEngine";
 import {
   analyzeScreenshots,
@@ -259,6 +279,7 @@ import {
   getTrainingSnapshot,
   importResult,
   installSkill,
+  runClosedLoopProofViaApi,
   runClosedLoopViaApi,
   runQueue,
   runBenchmarkV2ViaApi,
@@ -2646,6 +2667,65 @@ export default function App() {
     () => buildOperatorModeReport({ bestNextAction, buildLearning: buildResultLearning, importWizard, mode: onboardingMode, stepper: guidedTrainingStepper }),
     [bestNextAction, buildResultLearning, guidedTrainingStepper, importWizard, onboardingMode],
   );
+  const hostedBuildWorker = useMemo(
+    () =>
+      buildHostedBuildWorkerReport({
+        apiOnline: Boolean(apiHealth?.ok),
+        authRequired: Boolean(apiHealth?.authRequired),
+        hasBuildCommand: Boolean(modelSettings.buildCommand || "npm run build"),
+        queueStatus: queueProgress.status,
+        trueClosedLoop,
+      }),
+    [apiHealth?.authRequired, apiHealth?.ok, modelSettings.buildCommand, queueProgress.status, trueClosedLoop],
+  );
+  const claudeCalibrationSet = useMemo(
+    () => buildClaudeCalibrationSetReport({ modelCache: modelEvaluationCacheReport }),
+    [modelEvaluationCacheReport],
+  );
+  const bulkImportPipeline = useMemo(
+    () => buildBulkImportPipelineReport({ audit: draftImportAudit, contamination: draftContaminationReport }),
+    [draftContaminationReport, draftImportAudit],
+  );
+  const closedLoopRunDetail = useMemo(
+    () => buildClosedLoopRunDetailReport({ runs: closedLoopRuns, buildRuns, screenshots }),
+    [buildRuns, closedLoopRuns, screenshots],
+  );
+  const goldenDatasetV1Lock = useMemo(
+    () =>
+      buildGoldenDatasetV1LockReport({
+        goldCount: goldenDataset.goldCount,
+        trainCount: goldenDataset.trainCount,
+        testCount: goldenDataset.testCount,
+        versions: datasetVersions,
+      }),
+    [datasetVersions, goldenDataset.goldCount, goldenDataset.testCount, goldenDataset.trainCount],
+  );
+  const beginnerPromptMaker = useMemo(
+    () => buildBeginnerPromptMakerReport({ input: generatorInput, promptMemory }),
+    [generatorInput, promptMemory],
+  );
+  const failureMemoryAutopilot = useMemo(
+    () => buildFailureMemoryAutopilotReport({ buildLearning: buildResultLearning, failureMemory, resultScore }),
+    [buildResultLearning, failureMemory, resultScore],
+  );
+  const visualProofComparison = useMemo(
+    () => buildVisualProofComparisonReport({ buildRuns, screenshots }),
+    [buildRuns, screenshots],
+  );
+  const modelProviderRouter = useMemo(
+    () => buildModelProviderRouterReport({ cache: modelEvaluationCacheReport, settings: modelSettings }),
+    [modelEvaluationCacheReport, modelSettings],
+  );
+  const apiAdminHardening = useMemo(
+    () =>
+      buildApiAdminHardeningReport({
+        backupCount: backupSnapshots.length,
+        eventCount: apiEvents.length,
+        health: apiHealth,
+        hostedHardening,
+      }),
+    [apiEvents.length, apiHealth, backupSnapshots.length, hostedHardening],
+  );
   const learnerAnswer = useMemo(
     () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
     [archetypePromptPacks, learnerQuestion, patternExtraction, profile],
@@ -3847,6 +3927,51 @@ export default function App() {
     setImproveText(winnerPrompt);
     setActiveTrainStage("Run");
     setApiNotice(`True closed loop saved ${prompt.title} and queued proof job ${job.id}.`);
+  }
+
+  async function runHostedProofWorker() {
+    const source = selectedPrompt ?? {
+      id: `generated-${Date.now()}`,
+      title: promptCandidateTournament.winner?.title || "Generated prompt",
+      text: promptCandidateTournament.finalPrompt || generatedPrompt,
+      source: "user" as const,
+      createdAt: new Date().toISOString(),
+    };
+    setApiNotice("Running hosted proof worker: judge, rewrite, scaffold, build, and capture...");
+    try {
+      const result = await runClosedLoopProofViaApi({
+        promptId: source.id,
+        title: source.title,
+        prompt: source.text,
+        memory: promptMemory.markdown,
+        buildCommand: modelSettings.buildCommand || "npm run build",
+        agentCommand: modelSettings.agentCommand,
+        install: true,
+        capture: true,
+        context: {
+          sourceTitle: source.title,
+          mode: "hosted-proof-worker",
+          promptQualityDna,
+          failureMemory: failureMemory.promptPatch,
+        },
+        settings: modelSettingsPayload(),
+      });
+      const run = result.run as ClosedLoopRun | undefined;
+      const job = result.job as BuildQueueJob | undefined;
+      const proofRun = result.proofRun as ProofLearningRun | undefined;
+      const collections = result.collections as { closedLoopRuns?: unknown[]; queueJobs?: unknown[]; proofLearningRuns?: unknown[] } | undefined;
+      if (run) setClosedLoopRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 40));
+      if (job) setQueueJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 140));
+      if (proofRun) setProofLearningRuns((current) => [proofRun, ...current.filter((item) => item.id !== proofRun.id)].slice(0, 80));
+      if (Array.isArray(collections?.closedLoopRuns)) setClosedLoopRuns(collections.closedLoopRuns as ClosedLoopRun[]);
+      if (Array.isArray(collections?.queueJobs)) setQueueJobs((collections.queueJobs as BuildQueueJob[]).slice(0, 140));
+      if (Array.isArray(collections?.proofLearningRuns)) setProofLearningRuns((collections.proofLearningRuns as ProofLearningRun[]).slice(0, 80));
+      setActiveTrainStage("Run");
+      setApiNotice(result.ok ? `Hosted proof worker completed ${job?.id || "the queue job"}. Import returned queue-result screenshots if needed.` : "Hosted proof worker returned a failed queue result.");
+      void refreshApiEvents();
+    } catch (error) {
+      setApiNotice(`Hosted proof worker failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   function applySectionRegeneration(sectionId: string) {
@@ -6165,6 +6290,16 @@ export default function App() {
               calibrationDashboard={calibrationDashboard}
               hostedHardening={hostedHardening}
               operatorMode={operatorMode}
+              hostedBuildWorker={hostedBuildWorker}
+              claudeCalibrationSet={claudeCalibrationSet}
+              bulkImportPipeline={bulkImportPipeline}
+              closedLoopRunDetail={closedLoopRunDetail}
+              goldenDatasetV1Lock={goldenDatasetV1Lock}
+              beginnerPromptMaker={beginnerPromptMaker}
+              failureMemoryAutopilot={failureMemoryAutopilot}
+              visualProofComparison={visualProofComparison}
+              modelProviderRouter={modelProviderRouter}
+              apiAdminHardening={apiAdminHardening}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -6232,6 +6367,7 @@ export default function App() {
               onRunCandidateQualityLoop={runCandidateQualityLoop}
               onRunTrueClosedLoop={runTrueClosedLoop}
               onRunServerClosedLoopJudge={runServerClosedLoopJudge}
+              onRunHostedProofWorker={runHostedProofWorker}
               onApplySectionRegeneration={applySectionRegeneration}
               onApplySpeedLabel={applySpeedLabel}
               onRunBenchmarkBattles={runBenchmarkBattles}
@@ -7306,6 +7442,16 @@ function TrainView({
   calibrationDashboard,
   hostedHardening,
   operatorMode,
+  hostedBuildWorker,
+  claudeCalibrationSet,
+  bulkImportPipeline,
+  closedLoopRunDetail,
+  goldenDatasetV1Lock,
+  beginnerPromptMaker,
+  failureMemoryAutopilot,
+  visualProofComparison,
+  modelProviderRouter,
+  apiAdminHardening,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -7376,6 +7522,7 @@ function TrainView({
   onRunCandidateQualityLoop,
   onRunTrueClosedLoop,
   onRunServerClosedLoopJudge,
+  onRunHostedProofWorker,
   onApplySectionRegeneration,
   onApplySpeedLabel,
   onRunBenchmarkBattles,
@@ -7568,6 +7715,16 @@ function TrainView({
   calibrationDashboard: CalibrationDashboardReport;
   hostedHardening: HostedHardeningReport;
   operatorMode: OperatorModeReport;
+  hostedBuildWorker: HostedBuildWorkerReport;
+  claudeCalibrationSet: ClaudeCalibrationSetReport;
+  bulkImportPipeline: BulkImportPipelineReport;
+  closedLoopRunDetail: ClosedLoopRunDetailReport;
+  goldenDatasetV1Lock: GoldenDatasetV1LockReport;
+  beginnerPromptMaker: BeginnerPromptMakerReport;
+  failureMemoryAutopilot: FailureMemoryAutopilotReport;
+  visualProofComparison: VisualProofComparisonReport;
+  modelProviderRouter: ModelProviderRouterReport;
+  apiAdminHardening: ApiAdminHardeningReport;
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -7646,6 +7803,7 @@ function TrainView({
   onRunCandidateQualityLoop: () => void;
   onRunTrueClosedLoop: () => void;
   onRunServerClosedLoopJudge: () => void;
+  onRunHostedProofWorker: () => void;
   onApplySectionRegeneration: (sectionId: string) => void;
   onApplySpeedLabel: (candidateId: string) => void;
   onRunBenchmarkBattles: () => void;
@@ -7850,6 +8008,40 @@ function TrainView({
         report={trueClosedLoop}
         onRunTrueClosedLoop={onRunTrueClosedLoop}
         onRunServerClosedLoopJudge={onRunServerClosedLoopJudge}
+      />
+
+      <HostedBuildWorkerPanel report={hostedBuildWorker} onRunHostedProofWorker={onRunHostedProofWorker} onRunQueueViaApi={onRunQueueViaApi} />
+
+      <section className="train-columns">
+        <ClosedLoopRunDetailPanel report={closedLoopRunDetail} />
+        <ClaudeCalibrationSetPanel report={claudeCalibrationSet} onRunCachedModelEvaluation={onRunCachedModelEvaluation} />
+      </section>
+
+      <section className="train-columns">
+        <BulkImportPipelinePanel report={bulkImportPipeline} onSelect={scrollToTrainSection} />
+        <BeginnerPromptMakerPanel
+          report={beginnerPromptMaker}
+          generatorInput={generatorInput}
+          onApplyGeneratorVariant={onApplyGeneratorVariant}
+          setGeneratorInput={setGeneratorInput}
+        />
+      </section>
+
+      <section className="train-columns">
+        <GoldenDatasetV1ProductPanel report={goldenDatasetV1Lock} onLockGoldenDatasetV1={onLockGoldenDatasetV1} />
+        <FailureMemoryAutopilotPanel report={failureMemoryAutopilot} onApplyResultLearningPatch={onApplyResultLearningPatch} onCopy={onCopy} copied={copied} />
+      </section>
+
+      <section className="train-columns">
+        <BeforeAfterVisualProofPanel report={visualProofComparison} />
+        <ModelProviderRouterPanel report={modelProviderRouter} onApplyProviderPreset={onApplyProviderPreset} />
+      </section>
+
+      <ApiAdminHardeningPanel
+        report={apiAdminHardening}
+        onCheckApi={onCheckApi}
+        onCreateBackupSnapshot={onCreateBackupSnapshot}
+        onSyncToApi={onSyncToApi}
       />
 
       <section className="train-columns">
@@ -8802,6 +8994,357 @@ function TrainWorkflowAccordionPanel({ onSelect }: { onSelect: (id: string) => v
           </details>
         ))}
       </div>
+    </section>
+  );
+}
+
+function HostedBuildWorkerPanel({
+  onRunHostedProofWorker,
+  onRunQueueViaApi,
+  report,
+}: {
+  onRunHostedProofWorker: () => void;
+  onRunQueueViaApi: () => void;
+  report: HostedBuildWorkerReport;
+}) {
+  return (
+    <section className="panel lab-panel hosted-worker-panel" data-readiness={report.readiness} data-train-section="queue">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Real hosted build worker</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Needs work"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </div>
+        ))}
+      </div>
+      <FeedbackList title="Worker plan" items={report.workerPlan} empty="No worker plan." />
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onRunHostedProofWorker}>Run hosted proof worker</button>
+        <button className="ghost-button compact-button" type="button" onClick={onRunQueueViaApi}>Run existing queue</button>
+      </div>
+      <FeedbackList title="Worker notes" items={report.notes} empty="No worker notes." />
+    </section>
+  );
+}
+
+function ClosedLoopRunDetailPanel({ report }: { report: ClosedLoopRunDetailReport }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Closed-loop run detail page</h2>
+        </div>
+        <ScoreRing score={report.score} label="detail" />
+      </div>
+      {report.latest ? (
+        <div className="metric-grid compact-metrics">
+          <Metric value={report.latest.delta > 0 ? `+${report.latest.delta}` : String(report.latest.delta)} label="Score delta" />
+          <Metric value={report.latest.status} label="Status" />
+          <Metric value={report.latest.modelMode} label="Judge" />
+        </div>
+      ) : (
+        <p className="selected-meta">Run a closed loop to populate the detail view.</p>
+      )}
+      <div className="guided-stepper-grid">
+        {report.timeline.map((item) => (
+          <div className="guided-step" key={item.label} data-status={item.ready ? "ready" : "active"}>
+            <strong>{item.label}</strong>
+            <p>{item.detail}</p>
+          </div>
+        ))}
+      </div>
+      {report.latest ? <FeedbackList title="Recommendations" items={[...report.latest.findings, ...report.latest.recommendations].slice(0, 8)} empty="No recommendations." /> : null}
+      <FeedbackList title="Run notes" items={report.notes} empty="No run notes." />
+    </section>
+  );
+}
+
+function ClaudeCalibrationSetPanel({ onRunCachedModelEvaluation, report }: { onRunCachedModelEvaluation: () => void; report: ClaudeCalibrationSetReport }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Claude scoring calibration set</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.rows.map((row) => (
+          <div className="benchmark-row" key={row.id} data-status={row.status}>
+            <strong>{row.title}</strong>
+            <p>Expected {row.expected} / observed {row.observed} / delta {row.delta}</p>
+            <span>{row.status}</span>
+          </div>
+        ))}
+      </div>
+      <button className="ghost-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>Run cached calibration</button>
+      <FeedbackList title="Calibration notes" items={report.notes} empty="No calibration notes." />
+    </section>
+  );
+}
+
+function BulkImportPipelinePanel({ onSelect, report }: { onSelect: (id: string) => void; report: BulkImportPipelineReport }) {
+  return (
+    <section className="panel lab-panel import-pipeline-panel" data-mode={report.readiness}>
+      <div className="output-header">
+        <div className="panel-header">
+          <Upload size={18} />
+          <h2>Prompt ingestion pipeline</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.stages.map((stage) => (
+          <div className="guided-step" key={stage.label} data-status={stage.status}>
+            <strong>{stage.label}</strong>
+            <p>{stage.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="label-candidate-list">
+        {report.previewRows.map((row) => (
+          <button className="label-candidate" type="button" key={`${row.title}-${row.decision}`} onClick={() => onSelect("workspace")}>
+            <strong>{row.title}</strong>
+            <span>{row.decision} / {row.score}</span>
+            <p>{row.reason}</p>
+          </button>
+        ))}
+      </div>
+      <FeedbackList title="Pipeline notes" items={report.notes} empty="No pipeline notes." />
+    </section>
+  );
+}
+
+function BeginnerPromptMakerPanel({
+  generatorInput,
+  onApplyGeneratorVariant,
+  report,
+  setGeneratorInput,
+}: {
+  generatorInput: LearnedGeneratorInput;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  report: BeginnerPromptMakerReport;
+  setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
+}) {
+  const variant: LearnedGeneratorVariant = {
+    id: "beginner-one-click",
+    title: `${generatorInput.brandName || "Project"} one-click prompt`,
+    bestFor: "Beginner guided prompt",
+    prompt: report.suggestedPrompt,
+    score: report.score,
+    signals: report.notes,
+  };
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>One-click make me a great prompt</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="field-grid two">
+        <Field label="Brand">
+          <input value={generatorInput.brandName} onChange={(event) => setGeneratorInput((current) => ({ ...current, brandName: event.target.value }))} />
+        </Field>
+        <Field label="Goal">
+          <input value={generatorInput.goal} onChange={(event) => setGeneratorInput((current) => ({ ...current, goal: event.target.value }))} />
+        </Field>
+      </div>
+      <div className="safe-check-grid">
+        {report.brief.map((item) => (
+          <div className="safe-check" key={item.label} data-ready={item.ready ? "true" : "false"}>
+            <strong>{item.ready ? "Ready" : "Missing"}</strong>
+            <span>{item.label}</span>
+            <p>{item.value || "Add this to improve the generated prompt."}</p>
+          </div>
+        ))}
+      </div>
+      <pre className="compact-pre">{report.suggestedPrompt}</pre>
+      <button className="primary-button compact-button" type="button" onClick={() => onApplyGeneratorVariant(variant)}>Use this prompt</button>
+      <FeedbackList title="Beginner notes" items={report.notes} empty="No beginner notes." />
+    </section>
+  );
+}
+
+function GoldenDatasetV1ProductPanel({ onLockGoldenDatasetV1, report }: { onLockGoldenDatasetV1: () => void; report: GoldenDatasetV1LockReport }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Golden Dataset v1 lock</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.locked ? "locked" : "draft"} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={String(report.counts.gold)} label="Gold" />
+        <Metric value={String(report.counts.train)} label="Train" />
+        <Metric value={String(report.counts.test)} label="Test" />
+        <Metric value={report.locked ? "Locked" : "Draft"} label="State" />
+      </div>
+      <div className="safe-check-grid">
+        {report.checklist.map((item) => (
+          <div className="safe-check" key={item.label} data-ready={item.ready ? "true" : "false"}>
+            <strong>{item.ready ? "Ready" : "Needs work"}</strong>
+            <span>{item.label}</span>
+            <p>{item.detail}</p>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onLockGoldenDatasetV1}>Lock Golden Dataset v1</button>
+      <FeedbackList title="Dataset notes" items={report.notes} empty="No dataset notes." />
+    </section>
+  );
+}
+
+function FailureMemoryAutopilotPanel({
+  copied,
+  onApplyResultLearningPatch,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onApplyResultLearningPatch: () => void;
+  onCopy: (value: string, key: string) => void;
+  report: FailureMemoryAutopilotReport;
+}) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <AlertTriangle size={18} />
+          <h2>Failure memory autopilot</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.topFailures.map((failure) => (
+          <div className="benchmark-row" key={failure.label}>
+            <strong>{failure.label}</strong>
+            <p>{failure.fix}</p>
+            <span>{failure.severity}</span>
+          </div>
+        ))}
+      </div>
+      <pre className="compact-pre">{report.patch}</pre>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onApplyResultLearningPatch}>Apply failure patch</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.patch, "failure-autopilot")}>
+          {copied === "failure-autopilot" ? <Check size={15} /> : <Copy size={15} />} Copy
+        </button>
+      </div>
+      <FeedbackList title="Autopilot notes" items={report.notes} empty="No autopilot notes." />
+    </section>
+  );
+}
+
+function BeforeAfterVisualProofPanel({ report }: { report: VisualProofComparisonReport }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Visual proof before/after comparison</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="comparison-grid">
+        <div>
+          <strong>Before</strong>
+          <p>{report.before ? `${report.before.title} / ${report.before.score}` : "Capture an earlier screenshot."}</p>
+          {report.before?.url ? <code>{report.before.url}</code> : null}
+        </div>
+        <div>
+          <strong>After</strong>
+          <p>{report.after ? `${report.after.title} / ${report.after.score}` : "Capture a rewritten screenshot."}</p>
+          {report.after?.url ? <code>{report.after.url}</code> : null}
+        </div>
+      </div>
+      <FeedbackList title="Visual comparison notes" items={report.notes} empty="No visual comparison notes." />
+    </section>
+  );
+}
+
+function ModelProviderRouterPanel({ onApplyProviderPreset, report }: { onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void; report: ModelProviderRouterReport }) {
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Model/provider abstraction router</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.route} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={report.provider} label="Provider" />
+        <Metric value={report.route} label="Route" />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Needs work"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("anthropic")}>Claude server</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("openai-compatible")}>OpenAI-compatible</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("local")}>Local fallback</button>
+      </div>
+      <FeedbackList title="Router notes" items={report.notes} empty="No router notes." />
+    </section>
+  );
+}
+
+function ApiAdminHardeningPanel({
+  onCheckApi,
+  onCreateBackupSnapshot,
+  onSyncToApi,
+  report,
+}: {
+  onCheckApi: () => void;
+  onCreateBackupSnapshot: (label?: string) => void;
+  onSyncToApi: () => void;
+  report: ApiAdminHardeningReport;
+}) {
+  return (
+    <section className="panel lab-panel api-admin-hardening-panel" data-readiness={report.readiness} data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Hosted API admin hardening</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.readiness} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Needs work"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={onCheckApi}>Check API</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCreateBackupSnapshot("Admin hardening restore point")}>Create restore point</button>
+        <button className="primary-button compact-button" type="button" onClick={onSyncToApi}>Push API</button>
+      </div>
+      <FeedbackList title="Admin actions" items={report.actions} empty="No admin actions." />
+      <FeedbackList title="Admin notes" items={report.notes} empty="No admin notes." />
     </section>
   );
 }

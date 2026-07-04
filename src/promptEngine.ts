@@ -1166,6 +1166,92 @@ export type OperatorModeReport = {
   notes: string[];
 };
 
+export type HostedBuildWorkerReport = {
+  score: number;
+  readiness: "ready" | "needs-api" | "needs-command" | "blocked";
+  checks: { label: string; ready: boolean; detail: string }[];
+  workerPlan: string[];
+  notes: string[];
+};
+
+export type ClaudeCalibrationSetReport = {
+  score: number;
+  readiness: "ready" | "needs-model" | "needs-labels";
+  rows: { id: string; title: string; expected: number; observed: number; delta: number; status: "aligned" | "watch" | "missing" }[];
+  notes: string[];
+};
+
+export type BulkImportPipelineReport = {
+  score: number;
+  readiness: "ready" | "review" | "blocked" | "empty";
+  stages: { label: string; status: "done" | "active" | "blocked"; detail: string }[];
+  previewRows: { title: string; decision: string; score: number; reason: string }[];
+  notes: string[];
+};
+
+export type ClosedLoopRunDetailReport = {
+  score: number;
+  latest?: {
+    id: string;
+    title: string;
+    delta: number;
+    modelMode: string;
+    status: "improved" | "flat" | "regressed";
+    findings: string[];
+    recommendations: string[];
+  };
+  timeline: { label: string; detail: string; ready: boolean }[];
+  notes: string[];
+};
+
+export type GoldenDatasetV1LockReport = {
+  score: number;
+  locked: boolean;
+  counts: { gold: number; train: number; test: number; versions: number };
+  checklist: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type BeginnerPromptMakerReport = {
+  score: number;
+  readiness: "ready" | "needs-input";
+  brief: { label: string; value: string; ready: boolean }[];
+  suggestedPrompt: string;
+  notes: string[];
+};
+
+export type FailureMemoryAutopilotReport = {
+  score: number;
+  readiness: "ready" | "watch" | "empty";
+  topFailures: { label: string; severity: number; fix: string }[];
+  patch: string;
+  notes: string[];
+};
+
+export type VisualProofComparisonReport = {
+  score: number;
+  status: "ready" | "needs-before" | "needs-after";
+  before?: { title: string; url: string; score: number };
+  after?: { title: string; url: string; score: number };
+  notes: string[];
+};
+
+export type ModelProviderRouterReport = {
+  score: number;
+  provider: string;
+  route: "server-claude" | "external-endpoint" | "local-fallback" | "browser-legacy";
+  checks: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type ApiAdminHardeningReport = {
+  score: number;
+  readiness: "ready" | "needs-work" | "local-only";
+  checks: { label: string; ready: boolean; detail: string }[];
+  actions: string[];
+  notes: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -4712,6 +4798,39 @@ export const BENCHMARK_FIXTURES = [
   },
 ] as const;
 
+export const CLAUDE_CALIBRATION_FIXTURES = [
+  {
+    id: "gold-video-hero",
+    title: "Gold cinematic video hero",
+    prompt: "Build a React + TypeScript + Tailwind fullscreen video hero with exact video URL, fonts, colors, responsive nav, CTA states, mobile proof, desktop/mobile screenshots, console checks, media readiness, and no placeholder assets.",
+    expected: 92,
+  },
+  {
+    id: "gold-dashboard",
+    title: "Gold dashboard surface",
+    prompt: "Create a dense analytics dashboard with tables, filters, empty states, chart specs, accessible controls, responsive density, exact colors, loading states, and verification steps.",
+    expected: 86,
+  },
+  {
+    id: "mid-marketing",
+    title: "Mid generic marketing prompt",
+    prompt: "Make a modern SaaS landing page with a nice hero, good copy, pricing cards, and some animations.",
+    expected: 52,
+  },
+  {
+    id: "bad-vague",
+    title: "Bad vague website request",
+    prompt: "Make it look amazing and premium.",
+    expected: 24,
+  },
+  {
+    id: "bad-contaminated",
+    title: "Bad repo task contamination",
+    prompt: "Fix the failing deploy, push the branch, update GitHub CI, and do not worry about the website design.",
+    expected: 18,
+  },
+] as const;
+
 export function buildQueueProgressReport({
   apiEvents = [],
   buildRuns = [],
@@ -5798,6 +5917,330 @@ export function buildOperatorModeReport({
     notes: [
       beginner ? "Beginner mode keeps the main path short: import, label, prove, export." : "Expert mode exposes calibration, hosted hardening, and benchmark internals.",
       `Best next action: ${bestNextAction.title}.`,
+    ],
+  };
+}
+
+export function buildHostedBuildWorkerReport({
+  apiOnline = false,
+  authRequired = false,
+  hasBuildCommand = false,
+  queueStatus = "empty",
+  trueClosedLoop,
+}: {
+  apiOnline?: boolean;
+  authRequired?: boolean;
+  hasBuildCommand?: boolean;
+  queueStatus?: string;
+  trueClosedLoop: TrueClosedLoopReport;
+}): HostedBuildWorkerReport {
+  const checks = [
+    { label: "API reachable", ready: apiOnline, detail: apiOnline ? "Hosted worker route can be called." : "Run or configure the hosted API first." },
+    { label: "Bearer auth posture", ready: authRequired, detail: authRequired ? "API reports bearer auth is enabled." : "Set PROMPT_LAB_API_TOKEN before trusting hosted execution." },
+    { label: "Build command", ready: hasBuildCommand, detail: hasBuildCommand ? "Build command is configured for worker runs." : "Use scaffold mode or configure a build command." },
+    { label: "Closed-loop runway", ready: trueClosedLoop.readiness !== "blocked", detail: trueClosedLoop.notes[0] },
+    { label: "Queue history", ready: queueStatus !== "empty", detail: queueStatus === "empty" ? "No worker/queue proof has been recorded yet." : `Queue state is ${queueStatus}.` },
+  ];
+  const readyCount = checks.filter((check) => check.ready).length;
+  const readiness: HostedBuildWorkerReport["readiness"] = !apiOnline ? "needs-api" : !hasBuildCommand ? "needs-command" : trueClosedLoop.readiness === "blocked" ? "blocked" : "ready";
+  return {
+    score: Math.round((readyCount / checks.length) * 100),
+    readiness,
+    checks,
+    workerPlan: [
+      "Call /api/closed-loop/prove with the selected prompt and learned memory.",
+      "Use the server-side evaluator to pick the rewritten winner.",
+      "Write a queue job under the API data directory.",
+      "Run the queue worker with scaffold, install, build, and capture options.",
+      "Import queue-result.json or returned screenshots into the learning ledger.",
+    ],
+    notes: [
+      readiness === "ready" ? "Hosted worker is ready for real proof runs." : `Hosted worker needs attention: ${checks.find((check) => !check.ready)?.label || "review checks"}.`,
+      "This worker never requires browser-visible model keys.",
+    ],
+  };
+}
+
+export function buildClaudeCalibrationSetReport({
+  fixtures = CLAUDE_CALIBRATION_FIXTURES,
+  modelCache,
+}: {
+  fixtures?: typeof CLAUDE_CALIBRATION_FIXTURES;
+  modelCache: ModelEvaluationCacheReport;
+}): ClaudeCalibrationSetReport {
+  const rows = fixtures.map((fixture, index) => {
+    const cached = modelCache.items[index];
+    const observed = cached?.score ?? evaluatePrompt(fixture.prompt).score;
+    const delta = Math.round(observed - fixture.expected);
+    const status: ClaudeCalibrationSetReport["rows"][number]["status"] = cached ? (Math.abs(delta) <= 10 ? "aligned" : "watch") : "missing";
+    return { id: fixture.id, title: fixture.title, expected: fixture.expected, observed, delta, status };
+  });
+  const missing = rows.filter((row) => row.status === "missing").length;
+  const avgDelta = Math.round(rows.reduce((sum, row) => sum + Math.abs(row.delta), 0) / Math.max(1, rows.length));
+  return {
+    score: Math.max(0, Math.min(100, 100 - avgDelta - missing * 6)),
+    readiness: missing === rows.length ? "needs-model" : rows.some((row) => row.status === "watch") ? "needs-labels" : "ready",
+    rows,
+    notes: [
+      `${rows.length} calibration fixture(s) cover gold, mid, vague, and contaminated prompts.`,
+      missing ? `${missing} fixture(s) still need cached model scores.` : `Average model/local calibration delta is ${avgDelta}.`,
+    ],
+  };
+}
+
+export function buildBulkImportPipelineReport({
+  audit,
+  contamination,
+}: {
+  audit: PromptImportAudit;
+  contamination?: { status?: string; warnings?: string[]; actions?: string[] };
+}): BulkImportPipelineReport {
+  const blocked = contamination?.status === "block" || audit.quarantineCandidates > audit.importable;
+  const readiness: BulkImportPipelineReport["readiness"] = !audit.total ? "empty" : blocked ? "blocked" : audit.reviewCandidates || audit.nearDuplicates ? "review" : "ready";
+  const stages = [
+    { label: "Split", status: audit.total ? "done" as const : "active" as const, detail: `${audit.total} candidate prompt(s) parsed.` },
+    { label: "Dedupe", status: audit.exactDuplicates ? "blocked" as const : audit.nearDuplicates ? "active" as const : audit.total ? "done" as const : "active" as const, detail: `${audit.exactDuplicates} exact and ${audit.nearDuplicates} near duplicate(s).` },
+    { label: "Classify", status: audit.reviewCandidates ? "active" as const : audit.total ? "done" as const : "active" as const, detail: `${audit.goldCandidates} gold / ${audit.reviewCandidates} review / ${audit.quarantineCandidates} quarantine.` },
+    { label: "Safety", status: blocked ? "blocked" as const : audit.total ? "done" as const : "active" as const, detail: contamination?.warnings?.[0] || "No blocking contamination detected." },
+    { label: "Commit", status: audit.importable ? "active" as const : "blocked" as const, detail: `${audit.importable} prompt(s) are safe to add.` },
+  ];
+  return {
+    score: audit.total ? Math.max(0, Math.min(100, audit.averageScore + audit.importable * 2 - audit.exactDuplicates * 12 - audit.quarantineCandidates * 8)) : 0,
+    readiness,
+    stages,
+    previewRows: audit.items.slice(0, 8).map((item) => ({
+      title: item.candidate.title,
+      decision: item.decision,
+      score: item.candidate.score,
+      reason: item.reasons[0] || item.cluster,
+    })),
+    notes: [
+      readiness === "ready" ? "Bulk import is clean enough for one-click curated import." : "Review the preview rows before adding this batch.",
+      ...(contamination?.actions ?? []),
+    ].slice(0, 5),
+  };
+}
+
+export function buildClosedLoopRunDetailReport({
+  runs = [],
+  buildRuns = [],
+  screenshots = [],
+}: {
+  runs?: { id: string; winnerTitle?: string; sourceTitle: string; originalScore: number; improvedScore: number; modelMode: string; findings?: string[]; recommendations?: string[] }[];
+  buildRuns?: BuildRunRecord[];
+  screenshots?: ScreenshotRecord[];
+}): ClosedLoopRunDetailReport {
+  const latest = runs[0];
+  const delta = latest ? latest.improvedScore - latest.originalScore : 0;
+  return {
+    score: latest ? Math.max(0, Math.min(100, latest.improvedScore + Math.min(12, buildRuns.length * 3) + Math.min(8, screenshots.length * 2))) : 0,
+    latest: latest
+      ? {
+          id: latest.id,
+          title: latest.winnerTitle || latest.sourceTitle,
+          delta,
+          modelMode: latest.modelMode,
+          status: delta > 0 ? "improved" : delta < 0 ? "regressed" : "flat",
+          findings: latest.findings || [],
+          recommendations: latest.recommendations || [],
+        }
+      : undefined,
+    timeline: [
+      { label: "Original scored", detail: latest ? `${latest.originalScore}/100` : "No closed-loop run yet.", ready: Boolean(latest) },
+      { label: "Rewrite scored", detail: latest ? `${latest.improvedScore}/100` : "Run closed loop first.", ready: Boolean(latest) },
+      { label: "Build proof", detail: buildRuns.length ? `${buildRuns.length} build run(s) recorded.` : "No build proof attached.", ready: buildRuns.length > 0 },
+      { label: "Screenshot proof", detail: screenshots.length ? `${screenshots.length} screenshot(s) recorded.` : "No screenshots attached.", ready: screenshots.length > 0 },
+    ],
+    notes: latest ? [`Latest run changed score by ${delta}.`, "Use this detail view before promoting a rewritten prompt to gold."] : ["No closed-loop run has been recorded yet."],
+  };
+}
+
+export function buildGoldenDatasetV1LockReport({
+  goldCount = 0,
+  testCount = 0,
+  trainCount = 0,
+  versions = [],
+}: {
+  goldCount?: number;
+  trainCount?: number;
+  testCount?: number;
+  versions?: DatasetVersion[];
+}): GoldenDatasetV1LockReport {
+  const locked = versions.some((version) => version.label.toLowerCase() === "golden dataset v1");
+  const checklist = [
+    { label: "Gold labels", ready: goldCount >= 5, detail: `${goldCount} gold-labeled prompt(s).` },
+    { label: "Train split", ready: trainCount >= 4, detail: `${trainCount} train row(s).` },
+    { label: "Test split", ready: testCount >= 1, detail: `${testCount} test row(s).` },
+    { label: "Frozen version", ready: locked, detail: locked ? "Golden Dataset v1 is locked." : "Lock Golden Dataset v1 before calibration." },
+  ];
+  return {
+    score: Math.round((checklist.filter((item) => item.ready).length / checklist.length) * 100),
+    locked,
+    counts: { gold: goldCount, train: trainCount, test: testCount, versions: versions.length },
+    checklist,
+    notes: [
+      locked ? "Golden Dataset v1 is stable for regression checks." : "Golden Dataset v1 is still mutable.",
+      "Keep contaminated or unrelated project-operation prompts out of this frozen set.",
+    ],
+  };
+}
+
+export function buildBeginnerPromptMakerReport({
+  input,
+  promptMemory,
+}: {
+  input: LearnedGeneratorInput;
+  promptMemory: PromptMemoryExport;
+}): BeginnerPromptMakerReport {
+  const brandName = String(input.brandName || "");
+  const audience = String(input.audience || "");
+  const goal = String(input.goal || "");
+  const visualStyle = String(input.visualStyle || input.vibe || "");
+  const assets = String(input.assets || "");
+  const constraints = String(input.constraints || "");
+  const brief = [
+    { label: "Brand", value: brandName, ready: Boolean(brandName.trim()) },
+    { label: "Audience", value: audience, ready: Boolean(audience.trim()) },
+    { label: "Goal", value: goal, ready: Boolean(goal.trim()) },
+    { label: "Visual style", value: visualStyle, ready: Boolean(visualStyle.trim()) },
+    { label: "Assets", value: assets, ready: Boolean(assets.trim()) },
+    { label: "Constraints", value: constraints, ready: Boolean(constraints.trim()) },
+  ];
+  const ready = brief.filter((item) => item.ready).length;
+  const suggestedPrompt = [
+    `Build a ${input.siteType || "single-page website"} for ${brandName || "the brand"} using ${input.stack || "React + TypeScript + Tailwind CSS"}.`,
+    `Audience: ${audience || "target users"}.`,
+    `Goal: ${goal || "make the first viewport clear, useful, and memorable"}.`,
+    `Visual direction: ${visualStyle || "polished, product-specific, and responsive"}.`,
+    `Assets: ${assets || "use exact assets when provided and avoid placeholders"}.`,
+    `Constraints: ${constraints || "no unrelated sections, no browser secrets, no text overlap"}.`,
+    "Include fonts, colors, layout, interactions, responsive states, accessibility, and desktop/mobile verification gates.",
+    promptMemory.sections[0]?.items[0] ? `Learned memory: ${promptMemory.sections[0].items[0]}.` : "",
+  ].filter(Boolean).join("\n");
+  return {
+    score: Math.round((ready / brief.length) * 100),
+    readiness: ready >= brief.length - 1 ? "ready" : "needs-input",
+    brief,
+    suggestedPrompt,
+    notes: [
+      ready >= brief.length - 1 ? "Beginner prompt maker has enough detail to generate." : "Fill the missing brief fields before one-click generation.",
+      "This mode hides expert panels and turns learned memory into one build-ready prompt.",
+    ],
+  };
+}
+
+export function buildFailureMemoryAutopilotReport({
+  buildLearning,
+  failureMemory,
+  resultScore,
+}: {
+  buildLearning: BuildResultLearningReport;
+  failureMemory: FailureMemoryReport;
+  resultScore: ResultScore;
+}): FailureMemoryAutopilotReport {
+  const topFailures = failureMemory.categories.slice(0, 5).map((item) => ({ label: item.category, severity: item.severity, fix: item.fix }));
+  const readiness: FailureMemoryAutopilotReport["readiness"] = topFailures.length ? (resultScore.failureCategories.length || buildLearning.status !== "ready-to-learn" ? "ready" : "watch") : "empty";
+  return {
+    score: topFailures.length ? Math.max(0, Math.min(100, 100 - topFailures[0].severity / 2)) : 72,
+    readiness,
+    topFailures,
+    patch: failureMemory.promptPatch,
+    notes: [
+      readiness === "empty" ? "No recurring failures have been learned yet." : `${topFailures.length} recurring failure pattern(s) can be injected automatically.`,
+      buildLearning.notes[0],
+    ],
+  };
+}
+
+export function buildVisualProofComparisonReport({
+  buildRuns = [],
+  screenshots = [],
+}: {
+  buildRuns?: BuildRunRecord[];
+  screenshots?: ScreenshotRecord[];
+}): VisualProofComparisonReport {
+  const beforeShot = screenshots[screenshots.length - 1];
+  const afterShot = screenshots[0];
+  const beforeBuild = buildRuns[buildRuns.length - 1];
+  const afterBuild = buildRuns[0];
+  const status: VisualProofComparisonReport["status"] = beforeShot && afterShot && beforeShot.id !== afterShot.id ? "ready" : beforeShot ? "needs-after" : "needs-before";
+  const afterScore = afterBuild?.score ?? (afterShot?.rating === "great" ? 85 : afterShot ? 60 : 0);
+  const beforeScore = beforeBuild?.score ?? (beforeShot?.rating === "bad" ? 25 : beforeShot ? 55 : 0);
+  return {
+    score: status === "ready" ? Math.max(0, Math.min(100, 70 + afterScore - beforeScore)) : Math.max(beforeScore, afterScore),
+    status,
+    before: beforeShot ? { title: beforeShot.title, url: beforeShot.url, score: beforeScore } : undefined,
+    after: afterShot ? { title: afterShot.title, url: afterShot.url, score: afterScore } : undefined,
+    notes: [
+      status === "ready" ? `Visual proof delta is ${afterScore - beforeScore}.` : "Capture before and after screenshots to compare rewritten prompts.",
+      "Use this before promoting a closed-loop winner to gold.",
+    ],
+  };
+}
+
+export function buildModelProviderRouterReport({
+  cache,
+  settings,
+}: {
+  cache: ModelEvaluationCacheReport;
+  settings: { provider?: string; endpoint?: string; apiKey?: string; model?: string };
+}): ModelProviderRouterReport {
+  const provider = settings.provider || "local";
+  const endpoint = settings.endpoint || "";
+  const route: ModelProviderRouterReport["route"] =
+    provider === "anthropic" ? "server-claude" : endpoint ? "external-endpoint" : settings.apiKey ? "browser-legacy" : "local-fallback";
+  const checks = [
+    { label: "Provider selected", ready: Boolean(provider), detail: provider },
+    { label: "Server route preferred", ready: route !== "browser-legacy", detail: route === "browser-legacy" ? "Move model keys to the API host." : `Using ${route}.` },
+    { label: "Cached schema rows", ready: cache.items.length > 0, detail: `${cache.items.length} cached evaluation row(s).` },
+    { label: "Model name", ready: Boolean(settings.model), detail: settings.model || "Using API default model." },
+  ];
+  return {
+    score: Math.round((checks.filter((check) => check.ready).length / checks.length) * 100),
+    provider,
+    route,
+    checks,
+    notes: [
+      route === "server-claude" ? "Claude should be configured only on the API host." : "Local fallback stays deterministic when no hosted model is available.",
+      cache.notes[0] || "Run cached evaluation to verify model/local agreement.",
+    ],
+  };
+}
+
+export function buildApiAdminHardeningReport({
+  backupCount = 0,
+  eventCount = 0,
+  health,
+  hostedHardening,
+}: {
+  backupCount?: number;
+  eventCount?: number;
+  health?: { ok?: boolean; authRequired?: boolean; sqlitePath?: string; rateLimitPerMinute?: number };
+  hostedHardening: HostedHardeningReport;
+}): ApiAdminHardeningReport {
+  const checks = [
+    { label: "API health", ready: Boolean(health?.ok), detail: health?.ok ? "API is online." : "API has not been checked." },
+    { label: "Auth enabled", ready: Boolean(health?.authRequired), detail: health?.authRequired ? "Bearer auth required." : "Set PROMPT_LAB_API_TOKEN." },
+    { label: "SQLite persistence", ready: Boolean(health?.sqlitePath), detail: health?.sqlitePath || "No SQLite path reported." },
+    { label: "Rate limit visible", ready: Boolean(health?.rateLimitPerMinute), detail: health?.rateLimitPerMinute ? `${health.rateLimitPerMinute}/minute.` : "No rate-limit metadata." },
+    { label: "Backups", ready: backupCount > 0, detail: `${backupCount} restore point(s).` },
+    { label: "Events", ready: eventCount > 0, detail: `${eventCount} API event(s) visible.` },
+    { label: "Hosted hardening", ready: hostedHardening.score >= 75, detail: `${hostedHardening.score}/100 hardening score.` },
+  ];
+  const score = Math.round((checks.filter((check) => check.ready).length / checks.length) * 100);
+  return {
+    score,
+    readiness: score >= 85 ? "ready" : health?.ok ? "needs-work" : "local-only",
+    checks,
+    actions: [
+      "Run Check API after every deploy.",
+      "Create a restore point before imports or calibration changes.",
+      "Push collections after labels, screenshots, closed-loop runs, or dataset locks change.",
+      "Keep Claude/OpenAI keys on the API host, never in browser storage.",
+    ],
+    notes: [
+      score >= 85 ? "Admin posture is ready for hosted learning." : "Admin hardening still has gaps.",
+      hostedHardening.notes[0],
     ],
   };
 }
