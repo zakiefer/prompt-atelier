@@ -17,7 +17,9 @@ import {
   buildLeakageGuardReport,
   buildPatternDashboard,
   buildProjectExportPack,
+  buildPromptMemoryDiffReport,
   buildPromptCoachReport,
+  buildQueueProgressReport,
   buildQualityGateReport,
   buildReusableMemoryPack,
   buildSourceSafetyReport,
@@ -27,8 +29,11 @@ import {
   createDatasetVersionSnapshot,
   curatePromptCorpus,
   evaluatePrompt,
+  normalizeModelEvaluationResult,
+  redactSensitiveText,
   extractReusablePatterns,
   explainDnaScore,
+  BENCHMARK_FIXTURES,
   auditPromptImportBatch,
   parsePromptBatch,
   scoreResultArtifact,
@@ -78,6 +83,20 @@ const examples = curatedSeedPrompts
 const score = evaluatePrompt(exactPrompt);
 assert.ok(score.score >= 20, `Expected scoring smoke test >= 20, received ${score.score}`);
 assert.ok(score.upgrades.some((item) => /asset|responsive|visual/i.test(item)), "Expected upgrades to include design/build signals.");
+
+const redacted = redactSensitiveText("Use secret=aaaaaaaaaaaaaaaaaaaa and sk-ant-api03-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa in a prompt.");
+assert.equal(redacted.redacted, true, "Secret redaction should report redacted text.");
+assert.ok(!redacted.text.includes("sk-ant-api03-"), "Anthropic keys should be redacted.");
+assert.ok(redacted.findings.some((finding) => finding.kind === "anthropic-key"), "Redaction should classify Anthropic keys.");
+
+const normalizedEvaluation = normalizeModelEvaluationResult({
+  mode: "anthropic",
+  rawText: '{"score": 88, "readiness": "excellent", "findings": ["specific"], "recommendations": ["ship"]}',
+});
+assert.equal(normalizedEvaluation.schemaVersion, "prompt-atelier.model-evaluation.v1", "Model evaluations should expose a stable schema version.");
+assert.equal(normalizedEvaluation.score, 88, "Model evaluation schema normalization should parse JSON scores.");
+assert.equal(normalizedEvaluation.readiness, "excellent", "Model evaluation readiness should normalize.");
+assert.ok(BENCHMARK_FIXTURES.length >= 8, "Benchmark fixtures should cover canonical website prompt archetypes.");
 
 const promptScore = evaluatePrompt(examples[0].text);
 assert.ok(promptScore.score >= 70, `Expected a gold corpus prompt score >= 70, received ${promptScore.score}`);
@@ -337,8 +356,9 @@ const exportPresets = buildExportPresets({
   qualityGate,
   visualRegression,
 });
-assert.equal(exportPresets.length, 5, "Export presets should cover five target formats.");
+assert.ok(exportPresets.length >= 9, "Export presets should cover implementation and model-training formats.");
 assert.ok(exportPresets.some((preset) => preset.id === "v0"), "Export presets should include v0.");
+assert.ok(exportPresets.some((preset) => preset.id === "openai-finetune-jsonl"), "Export presets should include model-training JSONL.");
 
 const evaluationHistory = buildEvaluationHistoryReport({
   buildRuns,
@@ -350,4 +370,43 @@ const evaluationHistory = buildEvaluationHistoryReport({
 assert.ok(evaluationHistory.items.length >= 4, "Evaluation history should combine labels, builds, screenshots, pairwise reviews, and model rows.");
 assert.ok(evaluationHistory.summary.length >= 2, "Evaluation history should summarize trends.");
 
-console.log(JSON.stringify({ ok: true, assertions: 60, score: score.score, snapshot: snapshot.label }, null, 2));
+const queueProgress = buildQueueProgressReport({
+  apiEvents: [{ kind: "queue-progress", detail: { stage: "complete", jobId: "run-1" }, createdAt: new Date().toISOString() }],
+  buildRuns,
+  proofLearningRuns: [{ promptId: examples[0].id, learnedStatus: "gold", screenshotCount: 1 }],
+  queueJobs: [{
+    id: "queue-1",
+    promptId: examples[0].id,
+    promptTitle: examples[0].title,
+    promptText: examples[0].text,
+    variantTitle: "Variant",
+    status: "completed",
+    runFolder: "prompt-runs/queue-1",
+    resultUrl: "http://127.0.0.1:5173",
+    score: 88,
+    commands: [],
+    notes: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }],
+  screenshots,
+  selectedPrompt: examples[0],
+});
+assert.equal(queueProgress.status, "complete", "Queue progress should mark learned proof complete.");
+assert.ok(queueProgress.events.length >= 1, "Queue progress should include API event history.");
+
+const memoryDiff = buildPromptMemoryDiffReport({
+  current: {
+    markdown: "# Memory",
+    json: "{}",
+    sections: [
+      { title: "Assets", items: ["Use exact URLs", "Verify media"] },
+      { title: "Mobile", items: ["Check 375px viewport"] },
+    ],
+  },
+  datasetVersions: [snapshot],
+});
+assert.ok(memoryDiff.score > 0, "Memory diff should score current memory.");
+assert.ok(memoryDiff.summary.length >= 3, "Memory diff should summarize changes.");
+
+console.log(JSON.stringify({ ok: true, assertions: 72, score: score.score, snapshot: snapshot.label }, null, 2));

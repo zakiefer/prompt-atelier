@@ -32,6 +32,8 @@ Claude evaluation runs through `/api/model/evaluate` on the Node API. Keep `ANTH
 
 If the key is absent, the API falls back to the local evaluator so the app remains usable, but Claude batch calibration, closed-loop training, prompt coach, benchmark scoring, A/B prompt comparison, and screenshot-to-prompt generation are strongest when `ANTHROPIC_API_KEY` is configured on the API host.
 
+Every model response is normalized to `schemaVersion: prompt-atelier.model-evaluation.v1` with `score`, `readiness`, `findings`, `recommendations`, optional prompt outputs, and a `redactions` array. Prompt text, memory, context, collection syncs, and API event details are redacted server-side before they are stored or logged.
+
 ## Training Artifacts
 
 The hosted API advertises all durable collection keys from `/api/health` and stores each collection through `/api/collections`. The Train view now persists these higher-order artifacts in addition to the raw corpus:
@@ -53,6 +55,17 @@ The Train tab's Run proof now action uses `/api/queue/run` with scaffold, instal
 
 Run this only against a trusted API worker. The hosted static frontend never receives shell access or model secrets; it sends the selected prompt and queue options to the API, and the API decides whether queue execution is allowed in that environment.
 
+The queue runner now returns a `progress` array, and the API writes durable `queue-progress` events for queued, requested scaffold/install/build/capture stages, and final complete/failed state. The Train tab's queue ledger reads those events through `/api/events`.
+
 ## Training Export Pack
 
 The Train tab can export a full training pack containing Golden Dataset v1 rows, JSONL data, learned prompt memory, the prompt quality grader report, benchmark trend, project boundary state, reusable memory, and the Codex build pack. This is intended for handoff to another agent or model without giving that agent browser-local secrets.
+
+The export studio also includes model-specific presets:
+
+- OpenAI fine-tune JSONL
+- Claude project memory
+- Codex skill bundle
+- model evaluation schema JSON
+
+Use Train from this corpus after curation is clean. It locks Golden Dataset v1, runs the canonical benchmark suite, calibrates DNA, and exports the training pack from the current corpus.

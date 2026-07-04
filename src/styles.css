@@ -1756,6 +1756,69 @@ button:disabled {
   color: var(--teal);
 }
 
+.train-accordion-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 12px;
+}
+
+.train-accordion {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.train-accordion summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.train-accordion summary strong,
+.event-list strong {
+  font-size: 0.86rem;
+}
+
+.train-accordion summary span,
+.event-list span,
+.event-list small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.train-accordion ul {
+  color: #2e3a35;
+  display: grid;
+  font-size: 0.78rem;
+  gap: 6px;
+  line-height: 1.4;
+  margin: 12px 0;
+  padding-left: 18px;
+}
+
+.compact-track {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.event-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.event-list article {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
 .trend-chart {
   align-items: end;
   display: grid;
@@ -3194,6 +3257,7 @@ button.preset-card {
   .evolution-track,
   .compact-scoreboard,
   .mode-flow-grid,
+  .train-accordion-grid,
   .proof-progress-track,
   .trend-chart {
     grid-template-columns: 1fr;

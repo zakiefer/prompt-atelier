@@ -28,8 +28,11 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Start-here proof loop that queues a build, blends prompt/result/screenshot/DNA scores, and records whether the prompt learned from real evidence
 - One-click proof runner that can scaffold, build, capture desktop/mobile screenshots, import the result, and update the proof-learning ledger
 - Proof runner progress tracking for queue, build, capture, and learning states
+- Durable queue progress events in the hosted API plus a Train-tab queue ledger
+- Train from this corpus action that locks Golden Dataset v1, benchmarks, calibrates, and exports the full training pack
 - Before/after prompt evolution timeline that shows the selected prompt moving through mutation, screenshot judging, closed-loop training, proof, and benchmark scoring
 - Prompt diff and evolution view that highlights added and removed signals between the source prompt and latest improved winner
+- Prompt memory diff panel for spotting new, expanded, and thin memory sections
 - Golden benchmark board for canonical website prompt challenges
 - Regression benchmark suite that compares the latest benchmark average against the previous run and flags improved or regressed briefs
 - Benchmark trend chart for seeing whether the learner is improving over time
@@ -40,8 +43,9 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Locked Golden Dataset v1 workflow with deterministic train/test JSONL export
 - Prompt quality grader v2 covering exactness, visual specificity, implementation readiness, assets, responsiveness, and proof instructions
 - Claude readiness panel that verifies hosted API, auth, SQLite, model route, and server-side key posture without exposing secrets in the browser
+- Stable model-evaluation schema for Claude/local scoring plus server-side redaction before prompt data is stored
 - Structured prompt generator front door for brand, industry, audience, stack, assets, constraints, motion, and proof requirements
-- Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, JSONL training data, and Markdown packs
+- Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, OpenAI fine-tune JSONL, Claude project memory, Codex skill bundles, evaluator schema JSON, and Markdown packs
 - One-click full training export pack with golden dataset, JSONL, prompt memory, quality grader, benchmark trend, project boundary report, reusable memory pack, and Codex build pack
 
 ## Development
@@ -128,6 +132,7 @@ The Train tab now starts with:
 10. A before/after evolution timeline, prompt diff view, quality grader v2, regression benchmark deltas, benchmark trend chart, and project isolation guard so each prompt can be improved without contaminating the corpus.
 11. A structured generator front door and locked Golden Dataset v1 path for turning good examples into train/test JSONL.
 12. A production-hardening checklist, hosted brain connector, and Claude readiness panel covering API health, token posture, server-side model key visibility, restore points, dataset versions, and proof history.
+13. A collapsible training map, Train from this corpus button, queue progress ledger, memory diff, and visual proof gallery for operating the whole learner from one screen.
 
 The tightest improvement cycle is:
 
@@ -142,6 +147,8 @@ The corpus should only contain prompts intentionally imported for this project. 
 Use the project isolation guard before running calibration or exporting training data. In an isolated workspace it reports out-of-scope prompts and can quarantine them so unrelated Codex project tasks do not affect website prompt recipes.
 
 Use the one-click export pack when handing the learner to another agent or model. It bundles the locked dataset, JSONL rows, learned memory, benchmark trend, project boundary state, quality grader, reusable memory pack, and Codex build pack in one JSON artifact.
+
+Use the Train from this corpus button after curation looks clean. It locks the current golden dataset, runs the benchmark suite, calibrates DNA against outcomes, and exports the model-training pack. The API and export paths redact recognized API keys, bearer tokens, and generic secrets before they are persisted or logged.
 
 ## Prompt Corpus
 

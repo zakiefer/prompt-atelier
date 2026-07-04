@@ -66,13 +66,18 @@ const getAllCollections = db.prepare("SELECT key, value, updated_at FROM collect
 const insertEvent = db.prepare("INSERT INTO api_events (kind, detail, created_at) VALUES (?, ?, ?)");
 const getRecentEvents = db.prepare("SELECT id, kind, detail, created_at FROM api_events ORDER BY id DESC LIMIT ?");
 const rateLimitBuckets = new Map();
+const MODEL_EVALUATION_SCHEMA_VERSION = "prompt-atelier.model-evaluation.v1";
+const MODEL_EVALUATION_SCHEMA = {
+  schemaVersion: MODEL_EVALUATION_SCHEMA_VERSION,
+  required: ["score", "readiness", "findings", "recommendations"],
+};
 
 function now() {
   return new Date().toISOString();
 }
 
 function logEvent(kind, detail) {
-  insertEvent.run(kind, JSON.stringify(detail), now());
+  insertEvent.run(kind, JSON.stringify(redactSensitiveValue(detail).value), now());
 }
 
 function jsonResponse(response, status, payload) {
@@ -145,7 +150,92 @@ function readCollections() {
 }
 
 function writeCollection(key, value) {
-  upsertCollection.run(key, JSON.stringify(value), now());
+  upsertCollection.run(key, JSON.stringify(redactSensitiveValue(value).value), now());
+}
+
+function mergeRedactionFindings(left = [], right = []) {
+  const counts = new Map();
+  for (const finding of [...left, ...right]) {
+    counts.set(finding.kind, (counts.get(finding.kind) || 0) + finding.count);
+  }
+  return Array.from(counts.entries()).map(([kind, count]) => ({ kind, count }));
+}
+
+function redactSensitiveText(value) {
+  let text = String(value || "");
+  const findings = new Map();
+  const redact = (kind, pattern, replacement) => {
+    let count = 0;
+    text = text.replace(pattern, () => {
+      count += 1;
+      return replacement;
+    });
+    if (count) findings.set(kind, (findings.get(kind) || 0) + count);
+  };
+  redact("anthropic-key", /sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}/g, "[REDACTED_ANTHROPIC_KEY]");
+  redact("openai-key", /sk-(?:proj-)?[A-Za-z0-9_-]{24,}/g, "[REDACTED_OPENAI_KEY]");
+  redact("github-token", /gh[pousr]_[A-Za-z0-9_]{30,}/g, "[REDACTED_GITHUB_TOKEN]");
+  redact("bearer-token", /Bearer\s+[A-Za-z0-9._-]{24,}/gi, "Bearer [REDACTED_BEARER_TOKEN]");
+  redact("generic-secret", /\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*["']?[A-Za-z0-9._-]{16,}["']?/gi, "secret=[REDACTED_SECRET]");
+  return { text, findings: Array.from(findings.entries()).map(([kind, count]) => ({ kind, count })) };
+}
+
+function redactSensitiveValue(value) {
+  if (typeof value === "string") {
+    const redacted = redactSensitiveText(value);
+    return { value: redacted.text, findings: redacted.findings };
+  }
+  if (Array.isArray(value)) {
+    let findings = [];
+    const next = value.map((item) => {
+      const redacted = redactSensitiveValue(item);
+      findings = mergeRedactionFindings(findings, redacted.findings);
+      return redacted.value;
+    });
+    return { value: next, findings };
+  }
+  if (value && typeof value === "object") {
+    let findings = [];
+    const next = {};
+    for (const [key, item] of Object.entries(value)) {
+      if (/api[_-]?key|secret|token|password/i.test(key) && typeof item === "string" && item) {
+        next[key] = "[REDACTED_SECRET]";
+        findings = mergeRedactionFindings(findings, [{ kind: "generic-secret", count: 1 }]);
+        continue;
+      }
+      const redacted = redactSensitiveValue(item);
+      next[key] = redacted.value;
+      findings = mergeRedactionFindings(findings, redacted.findings);
+    }
+    return { value: next, findings };
+  }
+  return { value, findings: [] };
+}
+
+function redactModelBody(body) {
+  const prompt = redactSensitiveText(body.prompt || "");
+  const memory = redactSensitiveText(body.memory || "");
+  const context = redactSensitiveValue(body.context || {});
+  const full = redactSensitiveValue(body || {});
+  return {
+    body: {
+      ...body,
+      prompt: prompt.text,
+      memory: memory.text,
+      context: context.value,
+    },
+    findings: full.findings,
+  };
+}
+
+function withModelSchema(result, redactions = []) {
+  return {
+    schemaVersion: MODEL_EVALUATION_SCHEMA_VERSION,
+    schema: MODEL_EVALUATION_SCHEMA,
+    redactions,
+    ...result,
+    readiness: normalizeReadiness(result.readiness),
+  };
 }
 
 function skillStatus() {
@@ -235,8 +325,11 @@ function localModelEvaluation(body) {
   const score = Math.max(18, Math.min(96, Math.round(words / 18 + exactSignals.length * 7 + Math.min(20, memory.length / 1000))));
   return {
     ok: true,
+    schemaVersion: MODEL_EVALUATION_SCHEMA_VERSION,
+    schema: MODEL_EVALUATION_SCHEMA,
     mode: "local-fallback",
     score,
+    readiness: score >= 88 ? "excellent" : score >= 72 ? "ready" : score >= 45 ? "needs-review" : "blocked",
     findings: [
       `${words} prompt words`,
       `${exactSignals.length} implementation signals: ${exactSignals.join(", ") || "none"}`,
@@ -268,6 +361,14 @@ function parsePossiblyJsonText(text) {
       return null;
     }
   }
+}
+
+function normalizeReadiness(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("excellent")) return "excellent";
+  if (text.includes("ready")) return "ready";
+  if (text.includes("block")) return "blocked";
+  return "needs-review";
 }
 
 function buildEvaluatorPrompt(body) {
@@ -303,9 +404,11 @@ function normalizeModelEvaluation({ mode, payload, rawText }) {
   const questions = Array.isArray(parsed.questions) ? parsed.questions.map(String) : [];
   return {
     ok: true,
+    schemaVersion: MODEL_EVALUATION_SCHEMA_VERSION,
+    schema: MODEL_EVALUATION_SCHEMA,
     mode,
     score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0,
-    readiness: parsed.readiness || payload?.readiness || "needs-review",
+    readiness: normalizeReadiness(parsed.readiness || payload?.readiness),
     findings,
     recommendations,
     diagnosis,
@@ -377,16 +480,33 @@ async function anthropicModelEvaluation(body) {
 
 async function externalModelEvaluation(body, endpoint) {
   const settings = body.settings || {};
+  const outboundBody = {
+    ...body,
+    settings: {
+      ...settings,
+      apiKey: undefined,
+    },
+  };
   const modelResponse = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(settings.apiKey || process.env.PROMPT_LAB_MODEL_API_KEY ? { Authorization: `Bearer ${settings.apiKey || process.env.PROMPT_LAB_MODEL_API_KEY}` } : {}),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(outboundBody),
   });
   const payload = await modelResponse.json();
-  return { ok: modelResponse.ok, mode: "external", payload };
+  return {
+    ok: modelResponse.ok,
+    schemaVersion: MODEL_EVALUATION_SCHEMA_VERSION,
+    schema: MODEL_EVALUATION_SCHEMA,
+    mode: "external",
+    score: Number(payload.score || 0),
+    readiness: normalizeReadiness(payload.readiness),
+    findings: Array.isArray(payload.findings) ? payload.findings.map(String) : [],
+    recommendations: Array.isArray(payload.recommendations) ? payload.recommendations.map(String) : [],
+    payload: redactSensitiveValue(payload).value,
+  };
 }
 
 async function handle(request, response) {
@@ -452,12 +572,13 @@ async function handle(request, response) {
 
     if (request.method === "POST" && url.pathname === "/api/collections") {
       const body = await readBody(request);
+      const redaction = redactSensitiveValue(body);
       if (body.key) writeCollection(body.key, body.value ?? []);
       if (body.collections) {
         for (const [key, value] of Object.entries(body.collections)) writeCollection(key, value);
       }
-      logEvent("collections-sync", { keys: body.key ? [body.key] : Object.keys(body.collections || {}) });
-      jsonResponse(response, 200, { ok: true, collections: readCollections() });
+      logEvent("collections-sync", { keys: body.key ? [body.key] : Object.keys(body.collections || {}), redactions: redaction.findings });
+      jsonResponse(response, 200, { ok: true, redactions: redaction.findings, collections: readCollections() });
       return;
     }
 
@@ -504,9 +625,30 @@ async function handle(request, response) {
       if (body.install) args.push("--install");
       if (body.buildCommand) args.push("--build", body.buildCommand);
       if (body.agentCommand) args.push("--agent", body.agentCommand);
+      logEvent("queue-progress", {
+        stage: "queued",
+        jobId: body.jobId || "all",
+        queuePath,
+        scaffold: Boolean(body.scaffold),
+        install: Boolean(body.install),
+        build: Boolean(body.buildCommand),
+        capture: Boolean(body.capture),
+      });
+      if (body.scaffold) logEvent("queue-progress", { stage: "scaffold-requested", jobId: body.jobId || "all", queuePath });
+      if (body.install) logEvent("queue-progress", { stage: "install-requested", jobId: body.jobId || "all", queuePath });
+      if (body.buildCommand) logEvent("queue-progress", { stage: "build-requested", jobId: body.jobId || "all", queuePath });
+      if (body.capture) logEvent("queue-progress", { stage: "capture-requested", jobId: body.jobId || "all", queuePath });
       const result = runNodeScript("runQueue.mjs", args, 180000);
-      logEvent("queue-run", { queuePath, ok: result.ok });
-      jsonResponse(response, result.ok ? 200 : 500, result);
+      const stage = result.ok ? "complete" : "failed";
+      logEvent("queue-progress", {
+        stage,
+        jobId: body.jobId || "all",
+        queuePath,
+        processed: result.parsed?.processed ?? 0,
+        results: Array.isArray(result.parsed?.results) ? result.parsed.results.map((item) => ({ id: item.id, status: item.status, runFolder: item.runFolder })) : [],
+      });
+      logEvent("queue-run", { queuePath, ok: result.ok, stage });
+      jsonResponse(response, result.ok ? 200 : 500, { ...result, progressStage: stage });
       return;
     }
 
@@ -571,33 +713,35 @@ async function handle(request, response) {
 
     if (request.method === "POST" && url.pathname === "/api/model/evaluate") {
       const body = await readBody(request);
-      const provider = body.settings?.provider || process.env.PROMPT_LAB_MODEL_PROVIDER || "";
-      const endpoint = body.settings?.endpoint || process.env.PROMPT_LAB_MODEL_ENDPOINT;
+      const redacted = redactModelBody(body);
+      const safeBody = redacted.body;
+      const provider = safeBody.settings?.provider || process.env.PROMPT_LAB_MODEL_PROVIDER || "";
+      const endpoint = safeBody.settings?.endpoint || process.env.PROMPT_LAB_MODEL_ENDPOINT;
       if (provider === "anthropic" || endpoint?.includes("api.anthropic.com")) {
         const hasAnthropicKey = Boolean(body.settings?.apiKey || process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || process.env.PROMPT_LAB_MODEL_API_KEY);
         if (!hasAnthropicKey) {
-          const local = localModelEvaluation(body);
-          const result = {
+          const local = localModelEvaluation(safeBody);
+          const result = withModelSchema({
             ...local,
             mode: "local-fallback",
             fallbackReason: "Missing Anthropic API key; used local evaluator.",
-          };
+          }, redacted.findings);
           logEvent("model-evaluate", { mode: result.mode, fallback: "anthropic-missing-key", score: result.score });
           jsonResponse(response, 200, result);
           return;
         }
-        const result = await anthropicModelEvaluation(body);
+        const result = withModelSchema(await anthropicModelEvaluation(safeBody), redacted.findings);
         logEvent("model-evaluate", { mode: "anthropic", ok: result.ok, score: result.score ?? 0 });
         jsonResponse(response, result.ok ? 200 : 502, result);
         return;
       }
       if (endpoint) {
-        const result = await externalModelEvaluation(body, endpoint);
+        const result = withModelSchema(await externalModelEvaluation(safeBody, endpoint), redacted.findings);
         logEvent("model-evaluate", { endpoint, ok: result.ok });
         jsonResponse(response, result.ok ? 200 : 502, result);
         return;
       }
-      const local = localModelEvaluation(body);
+      const local = withModelSchema(localModelEvaluation(safeBody), redacted.findings);
       logEvent("model-evaluate", { mode: local.mode, score: local.score });
       jsonResponse(response, 200, local);
       return;

@@ -802,7 +802,16 @@ export type CodexBuildPack = {
 };
 
 export type ExportPreset = {
-  id: "codex" | "v0" | "claude-artifact" | "lovable" | "implementation-spec";
+  id:
+    | "codex"
+    | "v0"
+    | "claude-artifact"
+    | "lovable"
+    | "implementation-spec"
+    | "openai-finetune-jsonl"
+    | "claude-project-memory"
+    | "codex-skill-bundle"
+    | "model-evaluation-schema";
   title: string;
   target: string;
   filename: string;
@@ -817,6 +826,68 @@ export type ModelEvaluationRecord = {
   readiness: string;
   mode: string;
   createdAt: string;
+};
+
+export const MODEL_EVALUATION_SCHEMA = {
+  schemaVersion: "prompt-atelier.model-evaluation.v1",
+  required: ["score", "readiness", "findings", "recommendations"],
+  fields: {
+    score: "number from 0 to 100",
+    readiness: "blocked | needs-review | ready | excellent",
+    findings: "string[] grounded in the prompt or screenshot",
+    recommendations: "string[] of next changes",
+    diagnosis: "string[] optional root-cause notes",
+    questions: "string[] optional blocking questions",
+    rewrittenPrompt: "string optional improved prompt",
+    winner: "string optional comparison winner",
+    hybridPrompt: "string optional merged comparison prompt",
+    recipe: "string optional reusable recipe",
+  },
+} as const;
+
+export type NormalizedModelEvaluation = {
+  ok: boolean;
+  schemaVersion: typeof MODEL_EVALUATION_SCHEMA.schemaVersion;
+  mode: string;
+  score: number;
+  readiness: "blocked" | "needs-review" | "ready" | "excellent";
+  findings: string[];
+  recommendations: string[];
+  diagnosis: string[];
+  questions: string[];
+  rewrittenPrompt: string;
+  winner: string;
+  hybridPrompt: string;
+  recipe: string;
+  rawText?: string;
+  payload?: unknown;
+};
+
+export type SensitiveRedactionFinding = {
+  kind: "anthropic-key" | "openai-key" | "github-token" | "bearer-token" | "generic-secret";
+  count: number;
+};
+
+export type SensitiveRedactionReport = {
+  text: string;
+  findings: SensitiveRedactionFinding[];
+  redacted: boolean;
+};
+
+export type QueueProgressReport = {
+  status: "idle" | "queued" | "running" | "capturing" | "complete" | "failed";
+  score: number;
+  steps: { label: string; state: "todo" | "active" | "done" | "failed"; detail: string }[];
+  events: { label: string; detail: string; createdAt: string }[];
+  notes: string[];
+};
+
+export type PromptMemoryDiffReport = {
+  score: number;
+  addedSections: string[];
+  expandedSections: string[];
+  staleSections: string[];
+  summary: string[];
 };
 
 export type EvaluationHistoryItem = {
@@ -4223,6 +4294,234 @@ ${promptMemory.markdown}
   };
 }
 
+function parseMaybeJson(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  const text = String(value).trim();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return {};
+    try {
+      return JSON.parse(match[0]) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+}
+
+function coerceStringList(value: unknown, fallback: string[] = []) {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean).slice(0, 12);
+  if (typeof value === "string" && value.trim()) return value.split(/\n+|;\s*/).map((item) => item.trim()).filter(Boolean).slice(0, 12);
+  return fallback;
+}
+
+function normalizeReadiness(value: unknown): NormalizedModelEvaluation["readiness"] {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("excellent")) return "excellent";
+  if (text.includes("ready")) return "ready";
+  if (text.includes("block")) return "blocked";
+  return "needs-review";
+}
+
+export function normalizeModelEvaluationResult(input: {
+  mode?: string;
+  payload?: unknown;
+  rawText?: string;
+  fallback?: Partial<NormalizedModelEvaluation>;
+}): NormalizedModelEvaluation {
+  const parsed = parseMaybeJson(input.rawText || input.payload);
+  const payload = parseMaybeJson(input.payload);
+  const scoreValue = parsed.score ?? payload.score ?? input.fallback?.score ?? String(input.rawText || "").match(/score[^0-9]*(\d{1,3})/i)?.[1] ?? 0;
+  const score = Number(scoreValue);
+  return {
+    ok: true,
+    schemaVersion: MODEL_EVALUATION_SCHEMA.schemaVersion,
+    mode: input.mode || input.fallback?.mode || "local-fallback",
+    score: Number.isFinite(score) ? Math.max(0, Math.min(100, Math.round(score))) : 0,
+    readiness: normalizeReadiness(parsed.readiness ?? payload.readiness ?? input.fallback?.readiness),
+    findings: coerceStringList(parsed.findings, input.fallback?.findings),
+    recommendations: coerceStringList(parsed.recommendations, input.fallback?.recommendations),
+    diagnosis: coerceStringList(parsed.diagnosis, input.fallback?.diagnosis),
+    questions: coerceStringList(parsed.questions, input.fallback?.questions),
+    rewrittenPrompt: typeof parsed.rewrittenPrompt === "string" ? parsed.rewrittenPrompt : input.fallback?.rewrittenPrompt || "",
+    winner: typeof parsed.winner === "string" ? parsed.winner : input.fallback?.winner || "",
+    hybridPrompt: typeof parsed.hybridPrompt === "string" ? parsed.hybridPrompt : input.fallback?.hybridPrompt || "",
+    recipe: typeof parsed.recipe === "string" ? parsed.recipe : input.fallback?.recipe || "",
+    rawText: input.rawText,
+    payload: input.payload,
+  };
+}
+
+export function redactSensitiveText(value: string): SensitiveRedactionReport {
+  let text = String(value || "");
+  const findings = new Map<SensitiveRedactionFinding["kind"], number>();
+  const redact = (kind: SensitiveRedactionFinding["kind"], pattern: RegExp, replacement: string) => {
+    let count = 0;
+    text = text.replace(pattern, () => {
+      count += 1;
+      return replacement;
+    });
+    if (count) findings.set(kind, (findings.get(kind) || 0) + count);
+  };
+
+  redact("anthropic-key", /sk-ant-api\d{2}-[A-Za-z0-9_-]{20,}/g, "[REDACTED_ANTHROPIC_KEY]");
+  redact("openai-key", /sk-(?:proj-)?[A-Za-z0-9_-]{24,}/g, "[REDACTED_OPENAI_KEY]");
+  redact("github-token", /gh[pousr]_[A-Za-z0-9_]{30,}/g, "[REDACTED_GITHUB_TOKEN]");
+  redact("bearer-token", /Bearer\s+[A-Za-z0-9._-]{24,}/gi, "Bearer [REDACTED_BEARER_TOKEN]");
+  redact("generic-secret", /\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*["']?[A-Za-z0-9._-]{16,}["']?/gi, "secret=[REDACTED_SECRET]");
+
+  const list = Array.from(findings.entries()).map(([kind, count]) => ({ kind, count }));
+  return { text, findings: list, redacted: list.length > 0 };
+}
+
+export const BENCHMARK_FIXTURES = [
+  {
+    id: "cinematic-video-hero",
+    title: "Cinematic video hero",
+    siteType: "single-page hero",
+    goal: "Use exact video, typography, responsive behavior, and screenshot QA.",
+    requiredSignals: ["video URL", "font imports", "mobile layout", "verification"],
+  },
+  {
+    id: "liquid-glass-saas",
+    title: "Liquid glass SaaS",
+    siteType: "SaaS landing page",
+    goal: "Specify glass CSS, product promise, feature controls, and no decorative filler.",
+    requiredSignals: ["backdrop-filter", "gradient border", "CTA states", "accessibility"],
+  },
+  {
+    id: "dashboard-surface",
+    title: "Dashboard surface",
+    siteType: "analytics dashboard",
+    goal: "Favor dense, scannable product UI over a generic marketing hero.",
+    requiredSignals: ["tables", "empty states", "charts", "responsive density"],
+  },
+  {
+    id: "signup-flow",
+    title: "Signup flow",
+    siteType: "registration interface",
+    goal: "Capture form states, validation, password affordances, and mobile stacking.",
+    requiredSignals: ["inputs", "validation", "submit", "mobile"],
+  },
+  {
+    id: "portfolio-agency",
+    title: "Portfolio agency",
+    siteType: "creative studio hero",
+    goal: "Make brand, motion, reel/works CTA, and nav treatment concrete.",
+    requiredSignals: ["brand", "motion", "CTA", "mobile menu"],
+  },
+  {
+    id: "feature-cards",
+    title: "Feature cards",
+    siteType: "marketing section",
+    goal: "Define static card geometry, gradients, artwork, and responsive grid behavior.",
+    requiredSignals: ["cards", "gradients", "assets", "breakpoints"],
+  },
+  {
+    id: "hls-video-product",
+    title: "HLS video product",
+    siteType: "immersive product hero",
+    goal: "Require hls.js setup, fallback behavior, opacity, overlays, and cleanup.",
+    requiredSignals: ["hls.js", "cleanup", "fallback", "contrast"],
+  },
+  {
+    id: "prompt-tooling-workbench",
+    title: "Prompt tooling workbench",
+    siteType: "AI tool interface",
+    goal: "Describe the actual tool surface, corpus ingestion, exports, safety, and proof.",
+    requiredSignals: ["corpus", "export", "redaction", "benchmarks"],
+  },
+] as const;
+
+export function buildQueueProgressReport({
+  apiEvents = [],
+  buildRuns = [],
+  proofLearningRuns = [],
+  queueJobs = [],
+  screenshots = [],
+  selectedPrompt,
+}: {
+  apiEvents?: { kind: string; detail: unknown; createdAt: string }[];
+  buildRuns?: BuildRunRecord[];
+  proofLearningRuns?: { promptId?: string; learnedStatus?: string; screenshotCount?: number }[];
+  queueJobs?: BuildQueueJob[];
+  screenshots?: ScreenshotRecord[];
+  selectedPrompt?: PromptExample;
+}): QueueProgressReport {
+  const matchesPrompt = (promptId?: string) => !selectedPrompt || !promptId || promptId === selectedPrompt.id;
+  const queueEventRows = apiEvents
+    .filter((event) => event.kind === "queue-progress" || event.kind === "queue-run")
+    .slice(0, 10)
+    .map((event) => {
+      const detail = typeof event.detail === "object" && event.detail ? event.detail as Record<string, unknown> : {};
+      return {
+        label: String(detail.stage || event.kind),
+        detail: String(detail.jobId || detail.queuePath || detail.ok || "queue event"),
+        createdAt: event.createdAt,
+      };
+    });
+  const latestJob = queueJobs.find((job) => matchesPrompt(job.promptId)) ?? queueJobs[0];
+  const latestRun = buildRuns.find((run) => matchesPrompt(run.promptId));
+  const shotCount = screenshots.filter((shot) => matchesPrompt(shot.promptId)).length;
+  const proof = proofLearningRuns.find((run) => matchesPrompt(run.promptId));
+  const failed = latestJob?.status === "failed" || latestRun?.status === "failed" || queueEventRows.some((event) => /fail/i.test(event.label));
+  const queued = Boolean(latestJob || queueEventRows.length);
+  const built = Boolean(latestRun);
+  const captured = shotCount > 0 || Boolean(proof?.screenshotCount);
+  const learned = Boolean(proof);
+  const status: QueueProgressReport["status"] = failed ? "failed" : learned ? "complete" : captured ? "capturing" : built ? "running" : queued ? "queued" : "idle";
+  const steps = [
+    { label: "Queued", state: queued ? "done" as const : "todo" as const, detail: latestJob?.runFolder || queueEventRows[0]?.detail || "No queue activity yet." },
+    { label: "Scaffolded", state: built ? "done" as const : queued ? "active" as const : "todo" as const, detail: latestRun?.folderPath || latestJob?.status || "Waiting for a build folder." },
+    { label: "Captured", state: captured ? "done" as const : built ? "active" as const : "todo" as const, detail: captured ? `${Math.max(shotCount, proof?.screenshotCount || 0)} screenshot(s)` : "No screenshot proof yet." },
+    { label: "Learned", state: failed ? "failed" as const : learned ? "done" as const : captured ? "active" as const : "todo" as const, detail: proof?.learnedStatus || "Outcome not written into memory yet." },
+  ];
+  return {
+    status,
+    score: Math.round((steps.filter((step) => step.state === "done").length / steps.length) * 100),
+    steps,
+    events: queueEventRows,
+    notes: [
+      queueEventRows.length ? `${queueEventRows.length} durable queue event(s) found in the API ledger.` : "Run the API queue to create progress events.",
+      selectedPrompt ? `Filtered to ${selectedPrompt.title}.` : "Showing global queue progress.",
+    ],
+  };
+}
+
+export function buildPromptMemoryDiffReport({
+  current,
+  datasetVersions = [],
+  previous,
+}: {
+  current: PromptMemoryExport;
+  datasetVersions?: DatasetVersion[];
+  previous?: PromptMemoryExport;
+}): PromptMemoryDiffReport {
+  const previousByTitle = new Map((previous?.sections || []).map((section) => [section.title, section.items.length]));
+  const addedSections = current.sections.filter((section) => !previousByTitle.has(section.title)).map((section) => section.title);
+  const expandedSections = current.sections
+    .filter((section) => previousByTitle.has(section.title) && section.items.length > (previousByTitle.get(section.title) || 0))
+    .map((section) => `${section.title} +${section.items.length - (previousByTitle.get(section.title) || 0)}`);
+  const staleSections = current.sections.filter((section) => section.items.length < 2).map((section) => section.title);
+  const locked = datasetVersions.some((version) => /golden dataset v1/i.test(version.label));
+  const score = Math.min(100, current.sections.length * 12 + current.sections.reduce((sum, section) => sum + Math.min(8, section.items.length), 0) + (locked ? 15 : 0));
+  return {
+    score,
+    addedSections,
+    expandedSections,
+    staleSections,
+    summary: [
+      `${current.sections.length} memory section(s), ${current.sections.reduce((sum, section) => sum + section.items.length, 0)} rule(s).`,
+      locked ? "Golden Dataset v1 is locked, so memory changes can be benchmarked against a stable baseline." : "Lock Golden Dataset v1 before treating memory changes as stable.",
+      addedSections.length ? `${addedSections.length} section(s) are new since the previous memory snapshot.` : "No newly added memory sections detected.",
+      staleSections.length ? `${staleSections.length} thin section(s) need more proof-backed rules.` : "All sections have enough rules to be useful.",
+    ],
+  };
+}
+
 export function buildExportPresets({
   codexBuildPack,
   prompt,
@@ -4244,6 +4543,28 @@ export function buildExportPresets({
     "Verify desktop and mobile screenshots, console health, nonblank render, media integrity, text fit, and mobile fit.",
   ];
   const memory = promptMemory.sections.map((section) => `## ${section.title}\n${section.items.map((item) => `- ${item}`).join("\n")}`).join("\n\n");
+  const trainingRow = {
+    messages: [
+      {
+        role: "system",
+        content: "Write high-fidelity, build-ready website prompts with exact stack, assets, layout, motion, responsive rules, constraints, safety, and verification.",
+      },
+      {
+        role: "user",
+        content: `Create a production-ready website prompt in the style of ${title}.`,
+      },
+      {
+        role: "assistant",
+        content: text,
+      },
+    ],
+    metadata: {
+      title,
+      qualityGate: qualityGate.score,
+      visualGate: visualRegression.score,
+      exportedAt: new Date().toISOString(),
+    },
+  };
   return [
     {
       id: "codex",
@@ -4284,6 +4605,69 @@ export function buildExportPresets({
       filename: "implementation-spec.md",
       summary: "Neutral spec plus learned rules for agents that dislike tool-specific phrasing.",
       content: [`# Implementation Spec`, "", `## Source`, title, "", `## Prompt`, text, "", `## Learned Memory`, memory, "", `## Acceptance Gates`, ...gates.map((gate) => `- ${gate}`)].join("\n"),
+    },
+    {
+      id: "openai-finetune-jsonl",
+      title: "OpenAI fine-tune JSONL",
+      target: "Model training",
+      filename: "website-prompt-finetune.jsonl",
+      summary: "One supervised chat row with quality metadata and proof gates.",
+      content: JSON.stringify(trainingRow),
+    },
+    {
+      id: "claude-project-memory",
+      title: "Claude project memory",
+      target: "Claude Projects",
+      filename: "claude-project-memory.md",
+      summary: "Pasteable project instructions with safety, quality, and proof rules.",
+      content: [
+        "# Website Prompt Atelier Memory",
+        "",
+        "Use this memory when improving, grading, or generating website prompts.",
+        "",
+        "## Current Gold Prompt",
+        text,
+        "",
+        "## Learned Rules",
+        memory || "No memory sections yet.",
+        "",
+        "## Output Contract",
+        "- Preserve exact assets, stack, typography, layout, states, constraints, and verification gates.",
+        "- Redact secrets before storing, quoting, or exporting prompts.",
+        "- When uncertain, return missing-proof questions instead of inventing facts.",
+      ].join("\n"),
+    },
+    {
+      id: "codex-skill-bundle",
+      title: "Codex skill bundle",
+      target: "Codex skill",
+      filename: "website-prompt-atelier-skill.md",
+      summary: "Skill-style instructions for repeatable prompt generation and review.",
+      content: [
+        "# Website Prompt Atelier",
+        "",
+        "Use this skill when writing high-fidelity website prompts.",
+        "",
+        "## Workflow",
+        "1. Identify the site type, audience, stack, assets, layout, typography, colors, states, and responsive rules.",
+        "2. Include explicit no-go constraints and verification steps.",
+        "3. Use the learned memory below to avoid vague, generic, or unbuildable prompts.",
+        "4. Before final output, check for leaked tokens and unrelated project text.",
+        "",
+        "## Learned Memory",
+        memory || "No memory sections yet.",
+        "",
+        "## Reference Prompt",
+        text,
+      ].join("\n"),
+    },
+    {
+      id: "model-evaluation-schema",
+      title: "Model evaluation schema",
+      target: "Evaluator",
+      filename: "model-evaluation-schema.json",
+      summary: "Strict response contract for Claude or compatible evaluators.",
+      content: JSON.stringify({ ...MODEL_EVALUATION_SCHEMA, gates }, null, 2),
     },
   ];
 }

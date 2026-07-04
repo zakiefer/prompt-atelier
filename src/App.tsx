@@ -56,7 +56,9 @@ import {
   buildLeakageGuardReport,
   buildPatternDashboard,
   buildProjectExportPack,
+  buildPromptMemoryDiffReport,
   buildPromptCoachReport,
+  buildQueueProgressReport,
   buildQualityGateReport,
   buildResultGallery,
   buildReusableMemoryPack,
@@ -185,8 +187,10 @@ import {
   type VisualQaReport,
   type PromptCoachReport,
   type PromptImprovementComparison,
+  type PromptMemoryDiffReport,
   type ProjectExportPack,
   type CodexBuildPack,
+  type QueueProgressReport,
   type ScreenshotScoringReport,
 } from "./promptEngine";
 import {
@@ -1127,6 +1131,61 @@ function formatPromptForTarget(prompt: PromptExample | undefined, target: string
       },
     ];
     return rows.map((row) => JSON.stringify(row)).join("\n");
+  }
+  if (target === "OpenAI fine-tune JSONL") {
+    return JSON.stringify({
+      messages: [
+        { role: "system", content: "Write high-fidelity, build-ready website prompts with exact implementation details and proof gates." },
+        { role: "user", content: `Create a website prompt like ${prompt?.title ?? "the learned corpus"}.` },
+        { role: "assistant", content: source },
+      ],
+      metadata: { target: "openai-finetune", title: prompt?.title ?? "memory", exportedAt: new Date().toISOString() },
+    });
+  }
+  if (target === "Claude project memory") {
+    return [
+      "# Claude Project Memory",
+      "",
+      "Use this when generating or grading website prompts.",
+      "",
+      "## Prompt DNA",
+      memory.markdown,
+      "",
+      "## Current Reference Prompt",
+      source,
+      "",
+      "## Safety",
+      "- Do not store or repeat API keys, bearer tokens, passwords, or unrelated project names.",
+      "- Preserve exact asset URLs, stack, layout, motion, responsive behavior, and verification gates.",
+    ].join("\n");
+  }
+  if (target === "Codex skill bundle") {
+    return [
+      "# Website Prompt Atelier",
+      "",
+      "Use this skill to write high-fidelity website prompts from rough ideas or curated corpus examples.",
+      "",
+      "## Steps",
+      "1. Identify site type, audience, stack, assets, typography, colors, layout, interactions, responsive rules, and no-go constraints.",
+      "2. Include desktop and mobile verification gates.",
+      "3. Redact secrets and unrelated repo-operation text before training.",
+      "",
+      "## Memory",
+      memory.markdown,
+    ].join("\n");
+  }
+  if (target === "Model evaluation schema") {
+    return JSON.stringify({
+      schemaVersion: "prompt-atelier.model-evaluation.v1",
+      required: ["score", "readiness", "findings", "recommendations"],
+      fields: {
+        score: "0-100 number",
+        readiness: "blocked | needs-review | ready | excellent",
+        findings: "string[]",
+        recommendations: "string[]",
+        rewrittenPrompt: "string",
+      },
+    }, null, 2);
   }
   const headers: Record<string, string> = {
     "Codex prompt": "Use this as a Codex implementation task. Build the app, verify locally, attach desktop/mobile screenshots, and report exact files changed.",
@@ -2264,6 +2323,14 @@ export default function App() {
   const proofProgress = useMemo(
     () => buildProofProgressReport(queueJobs, buildRuns, screenshots, proofLearningRuns, selectedPrompt),
     [buildRuns, proofLearningRuns, queueJobs, screenshots, selectedPrompt],
+  );
+  const queueProgress = useMemo(
+    () => buildQueueProgressReport({ apiEvents, buildRuns, proofLearningRuns, queueJobs, screenshots, selectedPrompt }),
+    [apiEvents, buildRuns, proofLearningRuns, queueJobs, screenshots, selectedPrompt],
+  );
+  const promptMemoryDiff = useMemo(
+    () => buildPromptMemoryDiffReport({ current: promptMemory, datasetVersions }),
+    [datasetVersions, promptMemory],
   );
   const evolutionDiff = useMemo(
     () => buildEvolutionDiffReport(selectedPrompt, history, closedLoopRuns),
@@ -3854,6 +3921,16 @@ export default function App() {
     setApiNotice("Exported full training pack with golden dataset, JSONL, memory, grader, benchmark trend, and build pack.");
   }
 
+  async function trainFromCurrentCorpus() {
+    setApiNotice("Training from this corpus: locking dataset, benchmarking, calibrating, and exporting the pack...");
+    lockGoldenDatasetV1();
+    await runBenchmarkSuite();
+    await runModelBatchCalibration();
+    exportOneClickTrainingPack();
+    setActiveTrainStage("Analyze");
+    setApiNotice("Corpus training ladder complete: Golden Dataset v1, benchmark suite, calibration, and export pack are ready.");
+  }
+
   function exportPreset(preset: ExportPreset) {
     downloadText(preset.filename, preset.content, "text/markdown");
     setApiNotice(`Exported ${preset.title} for ${preset.target}.`);
@@ -5237,6 +5314,7 @@ export default function App() {
               onRunPromptComparison={runPromptComparison}
               onRunScreenshotJudge={runScreenshotJudge}
               onRunMutationTournament={runMutationTournament}
+              onTrainFromCorpus={trainFromCurrentCorpus}
               onGeneratePromptFromScreenshot={generatePromptFromScreenshot}
               onSaveWorkspacePackRun={saveWorkspacePackRun}
               onRunPromptCoach={runPromptCoach}
@@ -5268,6 +5346,7 @@ export default function App() {
               proofLearningRuns={proofLearningRuns}
               promptBattle={promptBattle}
               promptCoach={promptCoach}
+              promptMemoryDiff={promptMemoryDiff}
               promptMemory={promptMemory}
               promptQualityRecipe={promptQualityRecipe}
               promptDiff={promptDiff}
@@ -5276,6 +5355,7 @@ export default function App() {
               qaText={qaText}
               queueExport={queueExport}
               queueJobs={queueJobs}
+              queueProgress={queueProgress}
               resultImportText={resultImportText}
               rewriteComparison={rewriteComparison}
               benchmarkRegression={benchmarkRegression}
@@ -6337,6 +6417,7 @@ function TrainView({
   onRunPromptComparison,
   onRunScreenshotJudge,
   onRunMutationTournament,
+  onTrainFromCorpus,
   onGeneratePromptFromScreenshot,
   onSaveWorkspacePackRun,
   onRunPromptCoach,
@@ -6366,6 +6447,7 @@ function TrainView({
   proofLearningRuns,
   promptBattle,
   promptCoach,
+  promptMemoryDiff,
   promptMemory,
   promptQualityRecipe,
   promptDiff,
@@ -6374,6 +6456,7 @@ function TrainView({
   qaText,
   queueExport,
   queueJobs,
+  queueProgress,
   resultImportText,
   rewriteComparison,
   benchmarkRegression,
@@ -6563,6 +6646,7 @@ function TrainView({
   onRunPromptComparison: (left: PromptExample | undefined, right: PromptExample | undefined) => void;
   onRunScreenshotJudge: () => void;
   onRunMutationTournament: () => void;
+  onTrainFromCorpus: () => void;
   onGeneratePromptFromScreenshot: (input: { title: string; url: string; notes: string; siteType: string }) => Promise<ScreenshotPromptRun>;
   onSaveWorkspacePackRun: () => void;
   onRunPromptCoach: () => void;
@@ -6592,6 +6676,7 @@ function TrainView({
   proofLearningRuns: ProofLearningRun[];
   promptBattle: PromptBattle;
   promptCoach: PromptCoachReport;
+  promptMemoryDiff: PromptMemoryDiffReport;
   promptMemory: PromptMemoryExport;
   promptQualityRecipe: string;
   promptDiff?: PromptDiff;
@@ -6600,6 +6685,7 @@ function TrainView({
   qaText: string;
   queueExport: string;
   queueJobs: BuildQueueJob[];
+  queueProgress: QueueProgressReport;
   resultImportText: string;
   rewriteComparison: PromptImprovementComparison;
   benchmarkRegression: BenchmarkRegressionReport;
@@ -6721,6 +6807,8 @@ function TrainView({
 
       <TrainFlowModesPanel modes={trainModeReport} onSelect={scrollToTrainSection} />
 
+      <TrainWorkflowAccordionPanel onSelect={scrollToTrainSection} />
+
       <TrainCommandCenter
         corpusCleaning={corpusCleaning}
         curationReport={curationReport}
@@ -6744,6 +6832,13 @@ function TrainView({
         queueJobs={queueJobs}
       />
 
+      <TrainFromCorpusPanel
+        dataset={goldenDataset}
+        memoryDiff={promptMemoryDiff}
+        onTrainFromCorpus={onTrainFromCorpus}
+        queueProgress={queueProgress}
+      />
+
       <StartHereProofLoopPanel
         buildFeedback={buildFeedback}
         onRunBenchmarkSuite={onRunBenchmarkSuite}
@@ -6758,9 +6853,15 @@ function TrainView({
 
       <ProofRunnerProgressPanel progress={proofProgress} />
 
+      <QueueProgressLedgerPanel onRefresh={onRefreshApiEvents} report={queueProgress} />
+
+      <VisualProofGalleryPanel buildRuns={buildRuns} resultGallery={resultGallery} screenshots={screenshots} />
+
       <PromptEvolutionTimelinePanel steps={promptEvolutionSteps} />
 
       <PromptEvolutionDiffPanel report={evolutionDiff} />
+
+      <PromptMemoryDiffPanel report={promptMemoryDiff} />
 
       <section className="train-columns">
         <GoldenBenchmarkBoardPanel
@@ -7566,6 +7667,81 @@ function TrainFlowModesPanel({ modes, onSelect }: { modes: TrainModeReport; onSe
   );
 }
 
+function TrainWorkflowAccordionPanel({ onSelect }: { onSelect: (id: string) => void }) {
+  const groups = [
+    { title: "Ingest and curate", target: "workspace", items: ["Import prompts", "Quarantine off-project text", "Lock Golden Dataset v1"] },
+    { title: "Generate and compare", target: "generate", items: ["Guided wizard", "Claude comparison", "Mutation tournament"] },
+    { title: "Prove and learn", target: "queue", items: ["Queue build", "Capture screenshots", "Write result back to memory"] },
+    { title: "Export and sync", target: "packs", items: ["Model JSONL", "Claude project memory", "Codex skill bundle"] },
+  ];
+  return (
+    <section className="panel lab-panel train-accordion-panel" data-train-section="workflow">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Collapsible training map</h2>
+      </div>
+      <div className="train-accordion-grid">
+        {groups.map((group, index) => (
+          <details className="train-accordion" key={group.title} open={index < 2}>
+            <summary>
+              <strong>{group.title}</strong>
+              <span>{group.items.length} steps</span>
+            </summary>
+            <ul>
+              {group.items.map((item) => <li key={item}>{item}</li>)}
+            </ul>
+            <button className="ghost-button compact-button" type="button" onClick={() => onSelect(group.target)}>
+              Jump there
+            </button>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TrainFromCorpusPanel({
+  dataset,
+  memoryDiff,
+  onTrainFromCorpus,
+  queueProgress,
+}: {
+  dataset: GoldenDatasetReport;
+  memoryDiff: PromptMemoryDiffReport;
+  onTrainFromCorpus: () => void;
+  queueProgress: QueueProgressReport;
+}) {
+  return (
+    <section className="panel lab-panel train-from-corpus-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Train from this corpus</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onTrainFromCorpus} disabled={!dataset.rows.length}>
+          <Wand2 size={15} />
+          Train corpus
+        </button>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(dataset.rows.length)} label="Dataset rows" />
+        <Metric value={String(dataset.readyScore)} label="Dataset ready" />
+        <Metric value={String(memoryDiff.score)} label="Memory diff" />
+        <Metric value={String(queueProgress.score)} label="Queue proof" />
+      </div>
+      <FeedbackList
+        title="What this runs"
+        items={[
+          "Locks Golden Dataset v1 from the current curated corpus.",
+          "Runs the benchmark suite against canonical website prompt fixtures.",
+          "Calibrates predicted DNA against actual outcomes and exports JSON/JSONL training artifacts.",
+        ]}
+        empty="No corpus training steps."
+      />
+    </section>
+  );
+}
+
 function ProofRunnerProgressPanel({ progress }: { progress: ProofProgressReport }) {
   return (
     <section className="panel lab-panel proof-progress-panel" data-train-section="queue">
@@ -7592,6 +7768,90 @@ function ProofRunnerProgressPanel({ progress }: { progress: ProofProgressReport 
   );
 }
 
+function QueueProgressLedgerPanel({ onRefresh, report }: { onRefresh: () => void; report: QueueProgressReport }) {
+  return (
+    <section className="panel lab-panel queue-progress-ledger" data-train-section="queue">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Queue progress ledger</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={onRefresh}>
+          <RefreshIcon />
+          Refresh
+        </button>
+      </div>
+      <div className="proof-progress-track compact-track">
+        {report.steps.map((step) => (
+          <article className="proof-progress-step" data-state={step.state} key={step.label}>
+            <span>{step.state === "done" ? "ok" : step.state === "failed" ? "!" : "..."}</span>
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+          </article>
+        ))}
+      </div>
+      <div className="event-list">
+        {report.events.length ? report.events.map((event) => (
+          <article key={`${event.createdAt}-${event.label}-${event.detail}`}>
+            <strong>{event.label}</strong>
+            <span>{event.detail}</span>
+            <small>{new Date(event.createdAt).toLocaleString()}</small>
+          </article>
+        )) : <p className="selected-meta">No queue events yet. Run the API queue to create durable progress logs.</p>}
+      </div>
+      <FeedbackList title="Queue notes" items={report.notes} empty="No queue notes yet." />
+    </section>
+  );
+}
+
+function RefreshIcon() {
+  return <span aria-hidden="true">R</span>;
+}
+
+function VisualProofGalleryPanel({
+  buildRuns,
+  resultGallery,
+  screenshots,
+}: {
+  buildRuns: BuildRunRecord[];
+  resultGallery: ResultGalleryItem[];
+  screenshots: ScreenshotRecord[];
+}) {
+  const latestRuns = buildRuns.slice(0, 4);
+  return (
+    <section className="panel lab-panel visual-proof-gallery" data-train-section="screenshots">
+      <div className="output-header">
+        <div className="panel-header">
+          <FileText size={18} />
+          <h2>Visual proof gallery</h2>
+        </div>
+        <span className="workspace-pill">{screenshots.length} screenshot(s)</span>
+      </div>
+      <div className="result-gallery-grid">
+        {resultGallery.length ? resultGallery.slice(0, 8).map((item) => (
+          <article className="gallery-card" key={`proof-${item.id}`}>
+            {item.image && /^(https?:|data:|\/)/.test(item.image) ? <img src={item.image} alt={item.title} /> : <div className="empty-shot">No screenshot</div>}
+            <strong>{item.title}</strong>
+            <span>{item.status} / {item.score}</span>
+            <p>{item.notes || item.resultUrl || "Attach a result URL or screenshot note."}</p>
+          </article>
+        )) : <p className="selected-meta">Capture or import screenshots to build visual proof memory.</p>}
+      </div>
+      <div className="version-list compact-list">
+        {latestRuns.length ? latestRuns.map((run) => (
+          <article className="version-card" key={`proof-run-${run.id}`}>
+            <div className="dna-v2-topline">
+              <strong>{run.promptTitle}</strong>
+              <span data-tone={scoreTone(run.score)}>{run.score}</span>
+            </div>
+            <p>{run.status} · {run.resultUrl || run.folderPath || "No URL"}</p>
+          </article>
+        )) : <p className="selected-meta">No build runs recorded yet.</p>}
+      </div>
+    </section>
+  );
+}
+
 function PromptEvolutionDiffPanel({ report }: { report: EvolutionDiffReport }) {
   return (
     <section className="panel lab-panel evolution-diff-panel" data-train-section="improve">
@@ -7607,6 +7867,26 @@ function PromptEvolutionDiffPanel({ report }: { report: EvolutionDiffReport }) {
         <FeedbackList title={`Removed from ${report.fromTitle}`} items={report.removedSignals} empty="No removed signals yet." />
       </div>
       <FeedbackList title="Evolution summary" items={report.summary} empty="No evolution summary yet." />
+    </section>
+  );
+}
+
+function PromptMemoryDiffPanel({ report }: { report: PromptMemoryDiffReport }) {
+  return (
+    <section className="panel lab-panel memory-diff-panel" data-train-section="packs">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Prompt memory diff</h2>
+        </div>
+        <ScoreRing score={report.score} label="memory" />
+      </div>
+      <div className="train-columns nested-train-columns">
+        <FeedbackList title="Added sections" items={report.addedSections} empty="No new memory sections." />
+        <FeedbackList title="Expanded sections" items={report.expandedSections} empty="No expanded sections yet." />
+      </div>
+      <FeedbackList title="Memory summary" items={report.summary} empty="No memory summary yet." />
+      {report.staleSections.length ? <FeedbackList title="Needs proof" items={report.staleSections} empty="No stale sections." /> : null}
     </section>
   );
 }
@@ -9175,10 +9455,10 @@ function ExportFormatStudioPanel({
   promptMemory: PromptMemoryExport;
   selectedPrompt?: PromptExample;
 }) {
-  const targets = ["Codex prompt", "Claude prompt", "v0 prompt", "Cursor task", "JSON training dataset", "JSONL training data", "Markdown prompt pack"];
+  const targets = ["Codex prompt", "Claude prompt", "v0 prompt", "Cursor task", "JSON training dataset", "JSONL training data", "OpenAI fine-tune JSONL", "Claude project memory", "Codex skill bundle", "Model evaluation schema", "Markdown prompt pack"];
   const [target, setTarget] = useState(targets[0]);
   const formatted = formatPromptForTarget(selectedPrompt, target, promptMemory, packs);
-  const extension = target === "JSON training dataset" ? "json" : target === "JSONL training data" ? "jsonl" : "md";
+  const extension = target === "JSON training dataset" || target === "Model evaluation schema" ? "json" : target === "JSONL training data" || target === "OpenAI fine-tune JSONL" ? "jsonl" : "md";
   const mime = extension === "json" ? "application/json" : extension === "jsonl" ? "application/x-ndjson" : "text/markdown";
   return (
     <section className="panel lab-panel export-format-panel" data-train-section="packs">

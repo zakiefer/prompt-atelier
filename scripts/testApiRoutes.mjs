@@ -173,18 +173,35 @@ try {
           notes: ["fixture"],
         }],
         healthChecks: [{ id: "health-test", createdAt: new Date().toISOString(), kind: "fixture" }],
+        userPrompts: [{
+          id: "secret-prompt",
+          title: "Secret prompt",
+          text: "Build a hero but do not persist sk-ant-api03-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.",
+          source: "user",
+          createdAt: new Date().toISOString(),
+        }],
       },
     }),
   });
   if (!sync.ok) throw new Error(`Collection sync failed: ${sync.status}`);
+  const syncPayload = await sync.json();
+  if (!syncPayload.redactions?.some((finding) => finding.kind === "anthropic-key")) {
+    throw new Error("Collection sync should report server-side Anthropic key redaction.");
+  }
 
   const evaluate = await fetch(`${base}/api/model/evaluate`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
-    body: JSON.stringify({ prompt: "Build a React Tailwind hero with exact assets and responsive QA.", memory: "Great prompts are exact." }),
+    body: JSON.stringify({ prompt: "Build a React Tailwind hero with exact assets and responsive QA. Never store sk-ant-api03-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.", memory: "Great prompts are exact." }),
   });
   const evaluation = await evaluate.json();
   if (!evaluate.ok || evaluation.mode !== "local-fallback") throw new Error("Local model fallback route failed.");
+  if (evaluation.schemaVersion !== "prompt-atelier.model-evaluation.v1" || !evaluation.schema?.required?.includes("score")) {
+    throw new Error("Model evaluation route should expose the stable schema contract.");
+  }
+  if (!evaluation.redactions?.some((finding) => finding.kind === "anthropic-key")) {
+    throw new Error("Model evaluation route should report prompt redactions.");
+  }
 
   const anthropicFallback = await fetch(`${base}/api/model/evaluate`, {
     method: "POST",
@@ -217,12 +234,43 @@ try {
     !payload.collections?.screenshotJudgeRuns?.length ||
     !payload.collections?.mutationTournamentRuns?.length ||
     !payload.collections?.healthChecks?.length ||
-    payload.collections?.activeWorkspace !== "hero"
+    payload.collections?.activeWorkspace !== "hero" ||
+    JSON.stringify(payload.collections).includes("sk-ant-api03-")
   ) throw new Error("Snapshot route did not include synced collections.");
 
-  const events = await fetch(`${base}/api/events?limit=5`, { headers: { Authorization: "Bearer test-token" } });
+  const queueRun = await fetch(`${base}/api/queue/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      jobId: "api-test-job",
+      queue: {
+        jobs: [{
+          id: "api-test-job",
+          promptId: "prompt-test",
+          promptTitle: "API test prompt",
+          promptText: "Build a small hero.",
+          variantTitle: "API test variant",
+          status: "queued",
+          runFolder: join(dataDir, "queue-run"),
+          resultUrl: "",
+          score: 0,
+          commands: [],
+          notes: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }],
+      },
+    }),
+  });
+  const queuePayload = await queueRun.json();
+  if (!queueRun.ok || queuePayload.progressStage !== "complete") throw new Error("Queue run should complete and report progress stage.");
+
+  const events = await fetch(`${base}/api/events?limit=20`, { headers: { Authorization: "Bearer test-token" } });
   const eventPayload = await events.json();
   if (!events.ok || !Array.isArray(eventPayload.events)) throw new Error("Events route did not return API events.");
+  if (!eventPayload.events.some((event) => event.kind === "queue-progress" && event.detail?.stage === "complete")) {
+    throw new Error("Queue progress event should be durable in API events.");
+  }
 
   const missingVisualQaUrl = await fetch(`${base}/api/visual/qa`, {
     method: "POST",

@@ -214,9 +214,20 @@ if (!selectedJobs.length) {
 }
 
 const results = [];
+const progress = [];
+
+function recordProgress(job, stage, detail = {}) {
+  progress.push({
+    jobId: job?.id || "queue",
+    stage,
+    detail,
+    createdAt: new Date().toISOString(),
+  });
+}
 
 for (const [jobIndex, job] of selectedJobs.entries()) {
   const runDir = resolve(job.runFolder || join("prompt-runs", job.id));
+  recordProgress(job, "queued", { runDir });
   mkdirSync(runDir, { recursive: true });
   writeFileSync(join(runDir, "prompt.md"), `${job.promptText.trim()}\n`);
   writeFileSync(
@@ -257,6 +268,7 @@ Agent-ready prompt lab run folder.
   );
 
   const implementationDir = scaffold ? writeScaffold(job, runDir) : "";
+  if (implementationDir) recordProgress(job, "scaffolded", { implementationDir });
   if (implementationDir) {
     writeFileSync(
       join(implementationDir, "codex-task.md"),
@@ -266,9 +278,12 @@ Agent-ready prompt lab run folder.
   const buildCwd = implementationDir || runDir;
   const effectiveAgentCommand = agentCommand ? applyPlaceholders(agentCommand, { runDir, implementationDir }) : "";
   const agentResult = run(effectiveAgentCommand, buildCwd, 300000);
+  if (!agentResult.skipped) recordProgress(job, agentResult.status === 0 ? "agent-complete" : "agent-failed", { status: agentResult.status });
   const installResult = installDeps ? run("npm install", buildCwd, 180000) : { skipped: true, status: 0, stdout: "", stderr: "" };
+  if (!installResult.skipped) recordProgress(job, installResult.status === 0 ? "installed" : "install-failed", { status: installResult.status });
   const effectiveBuildCommand = buildCommand || (scaffold && installDeps ? "npm run build" : "");
   const buildResult = run(effectiveBuildCommand, buildCwd, 180000);
+  if (!buildResult.skipped) recordProgress(job, buildResult.status === 0 ? "built" : "build-failed", { status: buildResult.status });
   const screenshotDir = join(runDir, "screenshots");
   let captureResult = { skipped: true, status: 0, stdout: "", stderr: "" };
   let resultUrl = job.resultUrl || "";
@@ -278,6 +293,7 @@ Agent-ready prompt lab run folder.
     captureResult = await capturePreview({ buildCwd, port: previewBasePort + jobIndex, screenshotDir });
     resultUrl = captureResult.url || "";
   }
+  if (!captureResult.skipped) recordProgress(job, captureResult.status === 0 ? "captured" : "capture-failed", { status: captureResult.status, resultUrl });
 
   const status = agentResult.status === 0 && installResult.status === 0 && buildResult.status === 0 && captureResult.status === 0 ? "completed" : "failed";
   const result = {
@@ -298,7 +314,8 @@ Agent-ready prompt lab run folder.
     updatedAt: new Date().toISOString(),
   };
   writeFileSync(join(runDir, "queue-result.json"), `${JSON.stringify(result, null, 2)}\n`);
+  recordProgress(job, status === "completed" ? "complete" : "failed", { runDir, resultUrl });
   results.push(result);
 }
 
-console.log(JSON.stringify({ queue: queuePath, processed: results.length, results }, null, 2));
+console.log(JSON.stringify({ queue: queuePath, processed: results.length, progress, results }, null, 2));
