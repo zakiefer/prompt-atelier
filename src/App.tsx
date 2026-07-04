@@ -33,6 +33,7 @@ import {
   analyzePrompt,
   auditPromptImportBatch,
   auditVisualPrompt,
+  buildAllInRunwayReport,
   buildCodexSkill,
   buildBenchmarkV2Report,
   buildBenchmarkLibraryReport,
@@ -44,11 +45,14 @@ import {
   buildBulkImportPipelineReport,
   buildCalibrationDashboardReport,
   buildCalibrationProductReport,
+  buildBriefBuilderProductReport,
+  buildClaudeCalibrationProductReport,
   buildClaudeCalibrationSetReport,
   buildClosedLoopRunDetailReport,
   buildCorpusCleaningReport,
   buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
+  buildDatasetBulkToolsReport,
   buildDatasetGovernanceReport,
   buildDatasetInboxReport,
   buildEvaluationArtifact,
@@ -79,6 +83,7 @@ import {
   buildLearnedGeneratorVariants,
   buildGuidedPromptWizardReport,
   buildGoldenBenchmarkHarnessReport,
+  buildHostedBackendKitReport,
   buildHostedHardeningReport,
   buildHostedBuildWorkerReport,
   buildHostedReadinessProductReport,
@@ -88,8 +93,10 @@ import {
   buildLeakageGuardReport,
   buildPatternDashboard,
   buildProjectExportPack,
+  buildPreferenceTrainingReport,
   buildPromptMemoryDiffReport,
   buildPromptCoachReport,
+  buildPromptToProofWorkflowReport,
   buildQueueProgressReport,
   buildQualityGateReport,
   buildResultGallery,
@@ -110,12 +117,15 @@ import {
   buildQueueObservabilityReport,
   buildSimpleModeReport,
   buildResultQualityDashboardReport,
+  buildRegressionHistoryProductReport,
   buildHostedWorkerOpsReport,
+  buildSecurityCleanupProductReport,
   buildSourceSafetyReport,
   buildSpeedLabelingReport,
   buildTrainingRunSummary,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
+  buildNarrativePolishReport,
   buildWorkerSandboxReport,
   buildVisualRegressionReport,
   answerLearnerQuestion,
@@ -166,6 +176,7 @@ import {
   scoreScreenshotSet,
   slugify,
   titleFromPrompt,
+  type AllInRunwayReport,
   type ArchetypeMixOptions,
   type ArchetypeCluster,
   type BenchmarkLibraryReport,
@@ -189,8 +200,11 @@ import {
   type CorpusIntelligenceReport,
   type CorpusCurationReport,
   type BulkImportPipelineReport,
+  type BriefBuilderProductReport,
   type CalibrationProductReport,
+  type ClaudeCalibrationProductReport,
   type DatasetGovernanceReport,
+  type DatasetBulkToolsReport,
   type DatasetInboxReport,
   type DatasetReviewQueueReport,
   type DatasetVersion,
@@ -220,6 +234,7 @@ import {
   type LearnedGeneratorVariant,
   type LeakageGuardReport,
   type GuidedPromptWizardReport,
+  type HostedBackendKitReport,
   type HostedHardeningReport,
   type HostedBuildWorkerReport,
   type HostedReadinessProductReport,
@@ -236,6 +251,7 @@ import {
   type PairwiseReviewRecord,
   type PatternDashboardReport,
   type PatternExtractionReport,
+  type PreferenceTrainingReport,
   type PromptPack,
   type PromptAnalysis,
   type PromptBattle,
@@ -254,12 +270,14 @@ import {
   type PromptLineageNode,
   type ProofArtifactStorageReport,
   type ProductCommandCenterReport,
+  type PromptToProofWorkflowReport,
   type PromptCritiqueRepairReport,
   type PromptGeneratorV2Report,
   type PromptProfile,
   type PromptRank,
   type PromptTournament,
   type ProviderPluginLayerReport,
+  type SecurityCleanupProductReport,
   type SourceSafetyReport,
   type GoldenRecipe,
   type GeneratorPreset,
@@ -269,6 +287,7 @@ import {
   type PromptWinExplanationReport,
   type QualityGateReport,
   type QualityRegressionGateReport,
+  type RegressionHistoryProductReport,
   type QualityRubric,
   type RecipeOptions,
   type ResultScore,
@@ -283,6 +302,7 @@ import {
   type ScoreBreakdown,
   type SkillInstallPlan,
   type VectorSearchResult,
+  type NarrativePolishReport,
   type VisualRegressionReport,
   type VisualQaReport,
   type PromptCoachReport,
@@ -2963,6 +2983,107 @@ export default function App() {
       proofRunController,
     ],
   );
+  const hostedBackendKit = useMemo(
+    () =>
+      buildHostedBackendKitReport({
+        admin: apiAdminHardening,
+        backupCount: backupSnapshots.length,
+        hardening: hostedHardening,
+        hosted: hostedReadinessProduct,
+        router: modelProviderRouter,
+        setupCheckCount: hostedSetupChecks.length,
+      }),
+    [apiAdminHardening, backupSnapshots.length, hostedHardening, hostedReadinessProduct, hostedSetupChecks.length, modelProviderRouter],
+  );
+  const promptToProofWorkflow = useMemo(
+    () =>
+      buildPromptToProofWorkflowReport({
+        generator: promptGeneratorV2,
+        proof: proofRunController,
+        queueJobCount: queueJobs.length,
+        resultQuality: resultQualityDashboard,
+        selectedPromptTitle: selectedPrompt?.title,
+      }),
+    [promptGeneratorV2, proofRunController, queueJobs.length, resultQualityDashboard, selectedPrompt?.title],
+  );
+  const datasetBulkTools = useMemo(() => buildDatasetBulkToolsReport({ inbox: datasetInbox }), [datasetInbox]);
+  const preferenceTraining = useMemo(
+    () => buildPreferenceTrainingReport({ examples: learningExamples, outcomes, pairwiseReviews }),
+    [learningExamples, outcomes, pairwiseReviews],
+  );
+  const claudeCalibrationProduct = useMemo(
+    () =>
+      buildClaudeCalibrationProductReport({
+        calibration: calibrationProduct,
+        hosted: hostedReadinessProduct,
+        modelCache: modelEvaluationCacheReport,
+        router: modelProviderRouter,
+      }),
+    [calibrationProduct, hostedReadinessProduct, modelEvaluationCacheReport, modelProviderRouter],
+  );
+  const briefBuilderProduct = useMemo(
+    () => buildBriefBuilderProductReport({ generator: promptGeneratorV2, generatorInput }),
+    [generatorInput, promptGeneratorV2],
+  );
+  const regressionHistoryProduct = useMemo(
+    () =>
+      buildRegressionHistoryProductReport({
+        benchmarkRunCount: benchmarkRuns.length,
+        benchmarkV2RunCount: benchmarkV2Runs.length,
+        evaluationHistory,
+        qualityGate: qualityRegressionGate,
+      }),
+    [benchmarkRuns.length, benchmarkV2Runs.length, evaluationHistory, qualityRegressionGate],
+  );
+  const securityCleanupProduct = useMemo(
+    () =>
+      buildSecurityCleanupProductReport({
+        firewall: corpusProvenanceFirewall,
+        hosted: hostedReadinessProduct,
+        leakage: leakageGuard,
+        qualityGate: qualityRegressionGate,
+        sourceSafety,
+      }),
+    [corpusProvenanceFirewall, hostedReadinessProduct, leakageGuard, qualityRegressionGate, sourceSafety],
+  );
+  const narrativePolish = useMemo(
+    () =>
+      buildNarrativePolishReport({
+        commandCenter: productCommandCenter,
+        corpusCount: learningExamples.length,
+        generator: promptGeneratorV2,
+        proof: promptToProofWorkflow,
+      }),
+    [learningExamples.length, productCommandCenter, promptGeneratorV2, promptToProofWorkflow],
+  );
+  const allInRunway = useMemo(
+    () =>
+      buildAllInRunwayReport({
+        briefBuilder: briefBuilderProduct,
+        claudeCalibration: claudeCalibrationProduct,
+        datasetBulk: datasetBulkTools,
+        hostedBackend: hostedBackendKit,
+        narrative: narrativePolish,
+        preferenceTraining,
+        promptToProof: promptToProofWorkflow,
+        publicDemoReady: learningExamples.length >= 5 && Boolean(oneClickExportPack),
+        regressionHistory: regressionHistoryProduct,
+        securityCleanup: securityCleanupProduct,
+      }),
+    [
+      briefBuilderProduct,
+      claudeCalibrationProduct,
+      datasetBulkTools,
+      hostedBackendKit,
+      learningExamples.length,
+      narrativePolish,
+      oneClickExportPack,
+      preferenceTraining,
+      promptToProofWorkflow,
+      regressionHistoryProduct,
+      securityCleanupProduct,
+    ],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -3811,6 +3932,100 @@ export default function App() {
     }
     setCurationDecisions((current) => ({ ...current, [promptId]: action }));
     setApiNotice(`${prompt.title} marked ${action} from the Dataset Inbox.`);
+  }
+
+  function handleBulkDatasetInboxDecision(action: DatasetInboxReport["rows"][number]["recommendation"]) {
+    const rows = datasetInbox.rows.filter((row) => row.recommendation === action);
+    if (!rows.length) {
+      setApiNotice(`No Dataset Inbox row(s) currently recommend ${action}.`);
+      return;
+    }
+    const rowIds = new Set(rows.map((row) => row.promptId));
+    const rowPrompts = examples.filter((prompt) => rowIds.has(prompt.id));
+    if (action === "remove") {
+      const userIds = new Set(rowPrompts.filter((prompt) => prompt.source === "user").map((prompt) => prompt.id));
+      const quarantineIds = rowPrompts.filter((prompt) => prompt.source !== "user").map((prompt) => prompt.id);
+      if (userIds.size) {
+        setUserPrompts((current) => current.filter((prompt) => !userIds.has(prompt.id)));
+      }
+      if (quarantineIds.length) {
+        setCurationDecisions((current) => ({
+          ...current,
+          ...Object.fromEntries(quarantineIds.map((promptId) => [promptId, "quarantine" as const])),
+        }));
+      }
+      setApiNotice(`Bulk remove handled ${rows.length} row(s): ${userIds.size} deleted, ${quarantineIds.length} quarantined.`);
+      return;
+    }
+    if (action === "gold") {
+      setCurationDecisions((current) => ({
+        ...current,
+        ...Object.fromEntries(rows.map((row) => [row.promptId, "learn" as const])),
+      }));
+      const now = new Date().toISOString();
+      setOutcomes((current) => {
+        const byId = new Map(current.map((outcome) => [outcome.promptId, outcome]));
+        for (const prompt of rowPrompts) {
+          byId.set(prompt.id, {
+            promptId: prompt.id,
+            title: prompt.title,
+            rating: "great",
+            status: "gold",
+            notes: "Bulk promoted to gold from Dataset Inbox.",
+            createdAt: byId.get(prompt.id)?.createdAt || now,
+            updatedAt: now,
+          });
+        }
+        return Array.from(byId.values());
+      });
+      setApiNotice(`Bulk promoted ${rows.length} row(s) to gold training material.`);
+      return;
+    }
+    setCurationDecisions((current) => ({
+      ...current,
+      ...Object.fromEntries(rows.map((row) => [row.promptId, action])),
+    }));
+    setApiNotice(`Bulk marked ${rows.length} Dataset Inbox row(s) as ${action}.`);
+  }
+
+  function addRecommendedPreferenceLabel() {
+    const candidate = preferenceTraining.candidates[0];
+    if (!candidate) {
+      setApiNotice("No preference pair is ready yet. Add at least two prompts and labels first.");
+      return;
+    }
+    const left = examples.find((prompt) => prompt.id === candidate.leftId);
+    const right = examples.find((prompt) => prompt.id === candidate.rightId);
+    addPairwiseReview(left, right, candidate.recommendedWinnerId, candidate.reason);
+    setApiNotice("Added the recommended pairwise preference label.");
+  }
+
+  function applyBriefBuilderPatch() {
+    const patch = briefBuilderProduct.suggestedPatch;
+    if (!Object.keys(patch).length) {
+      setApiNotice("Brief builder is already complete.");
+      return;
+    }
+    setGeneratorInput((current) => ({ ...current, ...patch }));
+    setApiNotice(`Filled ${Object.keys(patch).length} missing brief field(s).`);
+  }
+
+  function runSecurityCleanup() {
+    const quarantineIds = new Set<string>();
+    for (const finding of leakageGuard.findings) quarantineIds.add(finding.promptId);
+    for (const item of sourceSafety.unsafeItems) quarantineIds.add(item.promptId);
+    for (const row of corpusProvenanceFirewall.rows) {
+      if (row.decision === "quarantine") quarantineIds.add(row.id);
+    }
+    if (!quarantineIds.size) {
+      setApiNotice("Security cleanup found no unsafe corpus rows to quarantine.");
+      return;
+    }
+    setCurationDecisions((current) => ({
+      ...current,
+      ...Object.fromEntries(Array.from(quarantineIds).map((promptId) => [promptId, "quarantine" as const])),
+    }));
+    setApiNotice(`Security cleanup quarantined ${quarantineIds.size} unsafe corpus row(s).`);
   }
 
   function handleProveGeneratedPrompt() {
@@ -6716,6 +6931,16 @@ export default function App() {
               hostedReadinessProduct={hostedReadinessProduct}
               qualityRegressionGate={qualityRegressionGate}
               productCommandCenter={productCommandCenter}
+              allInRunway={allInRunway}
+              hostedBackendKit={hostedBackendKit}
+              promptToProofWorkflow={promptToProofWorkflow}
+              datasetBulkTools={datasetBulkTools}
+              preferenceTraining={preferenceTraining}
+              claudeCalibrationProduct={claudeCalibrationProduct}
+              briefBuilderProduct={briefBuilderProduct}
+              regressionHistoryProduct={regressionHistoryProduct}
+              securityCleanupProduct={securityCleanupProduct}
+              narrativePolish={narrativePolish}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -6807,7 +7032,11 @@ export default function App() {
               onSaveApiBase={saveApiBase}
               onSelectPrompt={setSelectedId}
               onDatasetInboxDecision={handleDatasetInboxDecision}
+              onBulkDatasetInboxDecision={handleBulkDatasetInboxDecision}
               onProveGeneratedPrompt={handleProveGeneratedPrompt}
+              onAddRecommendedPreferenceLabel={addRecommendedPreferenceLabel}
+              onApplyBriefBuilderPatch={applyBriefBuilderPatch}
+              onRunSecurityCleanup={runSecurityCleanup}
               onSetPromptCurationDecision={setPromptCurationDecision}
               onRestoreBackupSnapshot={restoreBackupSnapshot}
               onSyncToApi={syncToApi}
@@ -7891,6 +8120,16 @@ function TrainView({
   hostedReadinessProduct,
   qualityRegressionGate,
   productCommandCenter,
+  allInRunway,
+  hostedBackendKit,
+  promptToProofWorkflow,
+  datasetBulkTools,
+  preferenceTraining,
+  claudeCalibrationProduct,
+  briefBuilderProduct,
+  regressionHistoryProduct,
+  securityCleanupProduct,
+  narrativePolish,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -7983,7 +8222,11 @@ function TrainView({
   onSaveApiBase,
   onSelectPrompt,
   onDatasetInboxDecision,
+  onBulkDatasetInboxDecision,
   onProveGeneratedPrompt,
+  onAddRecommendedPreferenceLabel,
+  onApplyBriefBuilderPatch,
+  onRunSecurityCleanup,
   onSetPromptCurationDecision,
   onRestoreBackupSnapshot,
   onSyncToApi,
@@ -8187,6 +8430,16 @@ function TrainView({
   hostedReadinessProduct: HostedReadinessProductReport;
   qualityRegressionGate: QualityRegressionGateReport;
   productCommandCenter: ProductCommandCenterReport;
+  allInRunway: AllInRunwayReport;
+  hostedBackendKit: HostedBackendKitReport;
+  promptToProofWorkflow: PromptToProofWorkflowReport;
+  datasetBulkTools: DatasetBulkToolsReport;
+  preferenceTraining: PreferenceTrainingReport;
+  claudeCalibrationProduct: ClaudeCalibrationProductReport;
+  briefBuilderProduct: BriefBuilderProductReport;
+  regressionHistoryProduct: RegressionHistoryProductReport;
+  securityCleanupProduct: SecurityCleanupProductReport;
+  narrativePolish: NarrativePolishReport;
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -8287,7 +8540,11 @@ function TrainView({
   onSaveApiBase: () => void;
   onSelectPrompt: (id: string) => void;
   onDatasetInboxDecision: (promptId: string, action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
+  onBulkDatasetInboxDecision: (action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
   onProveGeneratedPrompt: () => void;
+  onAddRecommendedPreferenceLabel: () => void;
+  onApplyBriefBuilderPatch: () => void;
+  onRunSecurityCleanup: () => void;
   onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
   onRestoreBackupSnapshot: (id: string) => void;
   onSyncToApi: () => void;
@@ -8387,6 +8644,13 @@ function TrainView({
   const [sectionQuery, setSectionQuery] = useState("");
   const trainSections = [
     { id: "workflow", label: "Workflow" },
+    { id: "proof", label: "Prompt-to-proof" },
+    { id: "brief", label: "Brief builder" },
+    { id: "preferences", label: "Preferences" },
+    { id: "regression", label: "Regression" },
+    { id: "security", label: "Security" },
+    { id: "story", label: "Story" },
+    { id: "demo", label: "Demo" },
     { id: "api", label: "API" },
     { id: "workspace", label: "Workspaces" },
     { id: "generate", label: "Generate" },
@@ -8439,6 +8703,30 @@ function TrainView({
       />
 
       <ProductCommandCenterPanel report={productCommandCenter} onSelect={scrollToTrainSection} />
+
+      <AllInRunwayPanel report={allInRunway} onSelect={scrollToTrainSection} />
+
+      <section className="train-columns">
+        <HostedBackendKitPanel report={hostedBackendKit} onCheckApi={onCheckApi} onRunHostedSetupWizard={onRunHostedSetupWizard} />
+        <PromptToProofWorkflowPanel report={promptToProofWorkflow} onProveGeneratedPrompt={onProveGeneratedPrompt} onRunOneClickBuildProof={onRunOneClickBuildProof} />
+      </section>
+
+      <section className="train-columns">
+        <DatasetBulkToolsPanel report={datasetBulkTools} onBulkDecision={onBulkDatasetInboxDecision} />
+        <PreferenceTrainingPanel report={preferenceTraining} onAddRecommendedPreferenceLabel={onAddRecommendedPreferenceLabel} />
+      </section>
+
+      <section className="train-columns">
+        <ClaudeCalibrationProductPanel report={claudeCalibrationProduct} onRunCachedModelEvaluation={onRunCachedModelEvaluation} onRunHostedClaudeHealthCheck={onRunHostedClaudeHealthCheck} />
+        <BriefBuilderProductPanel report={briefBuilderProduct} onApplyBriefBuilderPatch={onApplyBriefBuilderPatch} />
+      </section>
+
+      <section className="train-columns">
+        <RegressionHistoryProductPanel report={regressionHistoryProduct} onRunBenchmarkSuite={onRunBenchmarkSuite} onRunBenchmarkV2={onRunBenchmarkV2} />
+        <SecurityCleanupProductPanel report={securityCleanupProduct} onRunSecurityCleanup={onRunSecurityCleanup} />
+      </section>
+
+      <NarrativePolishPanel report={narrativePolish} onLoadDemoMode={onLoadDemoMode} onSelect={scrollToTrainSection} />
 
       <TrainFlowModesPanel modes={trainModeReport} onSelect={scrollToTrainSection} />
 
@@ -9619,6 +9907,366 @@ function ProductCommandCenterPanel({
       </div>
       <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
       <FeedbackList title="Command notes" items={report.notes} empty="No command notes." />
+    </section>
+  );
+}
+
+function AllInRunwayPanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: AllInRunwayReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>All-in product runway</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.items.filter((item) => item.status === "ready").length}/${report.items.length}`} label="Ready" />
+        <Metric value={formatNumber(report.blockers.length)} label="Blockers" />
+        <Metric value={formatNumber(report.score)} label="Runway score" />
+      </div>
+      <div className="safe-check-grid">
+        {report.items.map((item) => (
+          <button className="safe-check product-command-card" key={item.id} type="button" data-ready={item.status === "ready" ? "true" : "false"} onClick={() => onSelect(item.target)}>
+            <strong>{item.score}</strong>
+            <span>{item.label}</span>
+            <p>{item.evidence}</p>
+            <small>{item.nextAction}</small>
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
+      <FeedbackList title="All-in summary" items={report.summary} empty="No runway summary." />
+      {report.blockers.length ? <FeedbackList title="Runway blockers" items={report.blockers} empty="No blockers." /> : null}
+    </section>
+  );
+}
+
+function HostedBackendKitPanel({
+  onCheckApi,
+  onRunHostedSetupWizard,
+  report,
+}: {
+  onCheckApi: () => void;
+  onRunHostedSetupWizard: () => void;
+  report: HostedBackendKitReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="hosted">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Hosted backend kit</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : check.blocking ? "Blocker" : "Todo"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+            {!check.ready ? <small>{check.fix}</small> : null}
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onCheckApi}>Check API</button>
+        <button className="ghost-button compact-button" type="button" onClick={onRunHostedSetupWizard}>Run setup check</button>
+      </div>
+      <p className="selected-meta"><strong>CLI:</strong> {report.command}</p>
+      <FeedbackList title="Hosted backend notes" items={report.notes} empty="No hosted backend notes." />
+    </section>
+  );
+}
+
+function PromptToProofWorkflowPanel({
+  onProveGeneratedPrompt,
+  onRunOneClickBuildProof,
+  report,
+}: {
+  onProveGeneratedPrompt: () => void;
+  onRunOneClickBuildProof: () => void;
+  report: PromptToProofWorkflowReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="proof">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>One-click prompt-to-proof</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="guided-stepper-grid">
+        {report.steps.map((step) => (
+          <div className="guided-step" key={step.label} data-status={step.status === "done" ? "ready" : step.status === "active" ? "active" : "blocked"}>
+            <strong>{step.label}</strong>
+            <p>{step.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" disabled={!report.canRun} onClick={onProveGeneratedPrompt}>Start proof run</button>
+        <button className="ghost-button compact-button" type="button" onClick={onRunOneClickBuildProof}>Run local proof helper</button>
+      </div>
+      <p className="selected-meta"><strong>Primary action:</strong> {report.primaryAction}</p>
+      <FeedbackList title="Prompt-to-proof notes" items={report.notes} empty="No proof workflow notes." />
+    </section>
+  );
+}
+
+function DatasetBulkToolsPanel({
+  onBulkDecision,
+  report,
+}: {
+  onBulkDecision: (action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
+  report: DatasetBulkToolsReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="dataset">
+      <div className="output-header">
+        <div className="panel-header">
+          <Tags size={18} />
+          <h2>Dataset Inbox bulk tools</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.actions.map((action) => (
+          <button className="safe-check product-command-card" key={action.id} type="button" disabled={!action.enabled} data-ready={action.enabled ? "true" : "false"} onClick={() => onBulkDecision(action.id)}>
+            <strong>{action.count}</strong>
+            <span>{action.label}</span>
+            <p>{action.detail}</p>
+          </button>
+        ))}
+      </div>
+      <FeedbackList title="Bulk tool notes" items={report.notes} empty="No bulk tool notes." />
+    </section>
+  );
+}
+
+function PreferenceTrainingPanel({
+  onAddRecommendedPreferenceLabel,
+  report,
+}: {
+  onAddRecommendedPreferenceLabel: () => void;
+  report: PreferenceTrainingReport;
+}) {
+  const candidate = report.candidates[0];
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="preferences">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Human preference training</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={formatNumber(report.reviewCount)} label="Pairs" />
+        <Metric value={formatNumber(report.goldCount)} label="Gold" />
+        <Metric value={formatNumber(report.avoidCount)} label="Avoid" />
+      </div>
+      {candidate ? (
+        <article className="version-card">
+          <strong>Recommended pair</strong>
+          <span>{candidate.leftId} vs {candidate.rightId}</span>
+          <p>{candidate.reason}</p>
+          <button className="primary-button compact-button" type="button" onClick={onAddRecommendedPreferenceLabel}>Add pairwise label</button>
+        </article>
+      ) : (
+        <p className="selected-meta">Add at least two examples to create a recommended pair.</p>
+      )}
+      <FeedbackList title="Preference lessons" items={report.lessons} empty="No preference lessons." />
+      <FeedbackList title="Preference notes" items={report.notes} empty="No preference notes." />
+    </section>
+  );
+}
+
+function ClaudeCalibrationProductPanel({
+  onRunCachedModelEvaluation,
+  onRunHostedClaudeHealthCheck,
+  report,
+}: {
+  onRunCachedModelEvaluation: () => void;
+  onRunHostedClaudeHealthCheck: () => void;
+  report: ClaudeCalibrationProductReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="calibration">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Claude calibration dashboard</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta"><strong>Route:</strong> {report.route}</p>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <div className="safe-check" key={row.label} data-ready={row.ready ? "true" : "false"}>
+            <strong>{row.ready ? "Ready" : "Open"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>Run cached model eval</button>
+        <button className="ghost-button compact-button" type="button" onClick={onRunHostedClaudeHealthCheck}>Check Claude route</button>
+      </div>
+      <FeedbackList title="Claude calibration notes" items={report.notes} empty="No Claude calibration notes." />
+    </section>
+  );
+}
+
+function BriefBuilderProductPanel({
+  onApplyBriefBuilderPatch,
+  report,
+}: {
+  onApplyBriefBuilderPatch: () => void;
+  report: BriefBuilderProductReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="brief">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Prompt generator brief builder</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.fields.map((field) => (
+          <div className="safe-check" key={String(field.key)} data-ready={field.ready ? "true" : "false"}>
+            <strong>{field.ready ? "Set" : "Missing"}</strong>
+            <span>{field.label}</span>
+            <p>{field.ready ? field.value : field.hint}</p>
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" disabled={!Object.keys(report.suggestedPatch).length} onClick={onApplyBriefBuilderPatch}>Fill missing brief fields</button>
+      <FeedbackList title="Brief builder notes" items={report.notes} empty="No brief builder notes." />
+    </section>
+  );
+}
+
+function RegressionHistoryProductPanel({
+  onRunBenchmarkSuite,
+  onRunBenchmarkV2,
+  report,
+}: {
+  onRunBenchmarkSuite: () => void;
+  onRunBenchmarkV2: () => void;
+  report: RegressionHistoryProductReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="regression">
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Regression history</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        {report.metrics.map((metric) => <Metric key={metric.label} value={metric.value} label={metric.label} />)}
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.rows.map((row) => (
+          <div className="benchmark-row" key={row.label} data-status={row.status === "pass" ? "aligned" : row.status === "fail" ? "missing" : "watch"}>
+            <strong>{row.label}</strong>
+            <p>{row.detail}</p>
+            <span>{row.status}</span>
+          </div>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onRunBenchmarkSuite}>Run benchmark suite</button>
+        <button className="ghost-button compact-button" type="button" onClick={onRunBenchmarkV2}>Run benchmark v2</button>
+      </div>
+      <FeedbackList title="Regression notes" items={report.notes} empty="No regression notes." />
+    </section>
+  );
+}
+
+function SecurityCleanupProductPanel({
+  onRunSecurityCleanup,
+  report,
+}: {
+  onRunSecurityCleanup: () => void;
+  report: SecurityCleanupProductReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="security">
+      <div className="output-header">
+        <div className="panel-header">
+          <AlertTriangle size={18} />
+          <h2>Security cleanup</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <div className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Clean" : check.blocking ? "Blocker" : "Review"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+            {!check.ready ? <small>{check.fix}</small> : null}
+          </div>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" disabled={!report.cleanupActions.length} onClick={onRunSecurityCleanup}>Run cleanup</button>
+      <FeedbackList title="Cleanup actions" items={report.cleanupActions} empty="No cleanup actions." />
+      <FeedbackList title="Security notes" items={report.notes} empty="No security notes." />
+    </section>
+  );
+}
+
+function NarrativePolishPanel({
+  onLoadDemoMode,
+  onSelect,
+  report,
+}: {
+  onLoadDemoMode: () => void;
+  onSelect: (id: string) => void;
+  report: NarrativePolishReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="story">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Narrative polish</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <article className="version-card" data-train-section="demo">
+        <strong>{report.headline}</strong>
+        <p>{report.subhead}</p>
+      </article>
+      <div className="safe-check-grid">
+        {report.beats.map((beat) => (
+          <button className="safe-check product-command-card" key={beat.label} type="button" data-ready={beat.ready ? "true" : "false"} onClick={() => onSelect(beat.label === "Learn" ? "dataset" : beat.label === "Generate" ? "brief" : beat.label === "Prove" ? "proof" : beat.label === "Calibrate" ? "calibration" : beat.label === "Export" ? "packs" : "workflow")}>
+            <strong>{beat.ready ? "Ready" : "Open"}</strong>
+            <span>{beat.label}</span>
+            <p>{beat.detail}</p>
+          </button>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="primary-button compact-button" type="button" onClick={onLoadDemoMode}>Load public demo mode</button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onSelect("demo")}>Review demo lane</button>
+      </div>
+      <FeedbackList title="Narrative notes" items={report.notes} empty="No narrative notes." />
     </section>
   );
 }
