@@ -224,6 +224,24 @@ try {
     throw new Error("Anthropic missing-key fallback should return a clean local evaluator response.");
   }
 
+  const closedLoop = await fetch(`${base}/api/closed-loop/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      title: "Closed-loop fixture",
+      prompt: "Build a React Tailwind hero with exact assets, responsive QA, and no leaked token sk-ant-api03-dddddddddddddddddddddddddddddddddddddddd.",
+      memory: "Exact assets win.",
+      settings: { provider: "anthropic", endpoint: "https://api.anthropic.com/v1/messages", apiKey: "" },
+    }),
+  });
+  const closedLoopPayload = await closedLoop.json();
+  if (!closedLoop.ok || !closedLoopPayload.run?.winnerPrompt || !closedLoopPayload.collections?.closedLoopRuns?.length) {
+    throw new Error("Closed-loop route should persist a winner prompt run.");
+  }
+  if (!closedLoopPayload.redactions?.some((finding) => finding.kind === "anthropic-key") || JSON.stringify(closedLoopPayload).includes("sk-ant-api03-")) {
+    throw new Error("Closed-loop route should redact prompt secrets.");
+  }
+
   const trainingRun = await fetch(`${base}/api/training/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },

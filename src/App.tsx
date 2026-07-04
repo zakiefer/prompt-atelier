@@ -36,8 +36,10 @@ import {
   buildCodexSkill,
   buildBenchmarkV2Report,
   buildBenchmarkLibraryReport,
+  buildBenchmarkBattleReport,
   buildBestNextActionReport,
   buildBuildResultLearningReport,
+  buildCalibrationDashboardReport,
   buildCorpusCleaningReport,
   buildCorpusProvenanceFirewallReport,
   buildCorpusIntelligenceReport,
@@ -56,6 +58,7 @@ import {
   buildPromptEditorGuidance,
   buildPromptQualityDnaReport,
   buildPromptRecipeDistillerReport,
+  buildPromptSectionRegenerationReport,
   buildGoldReviewReport,
   buildGeneratorPresets,
   buildExperimentLeaderboard,
@@ -63,7 +66,9 @@ import {
   buildCodexBuildPack,
   buildLearnedGeneratorVariants,
   buildGuidedPromptWizardReport,
+  buildHostedHardeningReport,
   buildHostedSyncReport,
+  buildImportWizardReport,
   buildArchetypePromptPacks,
   buildLeakageGuardReport,
   buildPatternDashboard,
@@ -77,8 +82,11 @@ import {
   buildSafeToTrainReport,
   buildGuidedTrainingStepperReport,
   buildModelJudgeComparisonReport,
+  buildOperatorModeReport,
   buildSourceSafetyReport,
+  buildSpeedLabelingReport,
   buildTrainingRunSummary,
+  buildTrueClosedLoopReport,
   buildVisualRegressionReport,
   answerLearnerQuestion,
   buildRecipePrompt,
@@ -131,6 +139,7 @@ import {
   type ArchetypeMixOptions,
   type ArchetypeCluster,
   type BenchmarkLibraryReport,
+  type BenchmarkBattleReport,
   type BenchmarkV2Report,
   type BestNextActionReport,
   type BuildResultLearningReport,
@@ -156,17 +165,20 @@ import {
   type Evaluation,
   type EvaluationArtifact,
   type EvaluationHistoryReport,
+  type CalibrationDashboardReport,
   type ExportPreset,
   type ExperimentLeaderboardReport,
   type FailureMemoryReport,
   type Feature,
   type InterviewBrief,
+  type ImportWizardReport,
   type LocalEmbeddingIndex,
   type LearnerAnswerReport,
   type LearnedGeneratorInput,
   type LearnedGeneratorVariant,
   type LeakageGuardReport,
   type GuidedPromptWizardReport,
+  type HostedHardeningReport,
   type HostedSyncReport,
   type ModelEvaluationCacheRecord,
   type ModelEvaluationCacheReport,
@@ -184,6 +196,7 @@ import {
   type PromptEditorGuidanceReport,
   type PromptQualityDnaReport,
   type PromptRecipeDistillerReport,
+  type PromptSectionRegenerationReport,
   type PromptDiff,
   type PromptDnaV2,
   type PromptExample,
@@ -209,6 +222,7 @@ import {
   type ReusableMemoryPack,
   type SafeToTrainReport,
   type GuidedTrainingStepperReport,
+  type OperatorModeReport,
   type ScreenshotQaReport,
   type ScreenshotRecord,
   type SearchResult,
@@ -224,7 +238,9 @@ import {
   type CodexBuildPack,
   type QueueProgressReport,
   type ScreenshotScoringReport,
+  type SpeedLabelingReport,
   type TrainingRunRecord,
+  type TrueClosedLoopReport,
 } from "./promptEngine";
 import {
   analyzeScreenshots,
@@ -243,6 +259,7 @@ import {
   getTrainingSnapshot,
   importResult,
   installSkill,
+  runClosedLoopViaApi,
   runQueue,
   runBenchmarkV2ViaApi,
   runVisualQa,
@@ -2588,6 +2605,47 @@ export default function App() {
       screenshots.length,
     ],
   );
+  const importWizard = useMemo(
+    () => buildImportWizardReport({ audit: draftImportAudit, contamination: draftContaminationReport }),
+    [draftContaminationReport, draftImportAudit],
+  );
+  const speedLabeling = useMemo(
+    () => buildSpeedLabelingReport({ buildRuns, examples: learningExamples, outcomes, screenshots }),
+    [buildRuns, learningExamples, outcomes, screenshots],
+  );
+  const benchmarkBattle = useMemo(
+    () => buildBenchmarkBattleReport({ examples: learningExamples, promptMemory }),
+    [learningExamples, promptMemory],
+  );
+  const calibrationDashboard = useMemo(
+    () => buildCalibrationDashboardReport({ evaluationHistory, modelComparison: modelJudgeComparison, modelCache: modelEvaluationCacheReport, resultScore }),
+    [evaluationHistory, modelEvaluationCacheReport, modelJudgeComparison, resultScore],
+  );
+  const hostedHardening = useMemo(
+    () => buildHostedHardeningReport({ eventCount: apiEvents.length, hasBackups: Boolean(backupSnapshots.length), hostedSyncScore: hostedSyncReport.score, safeToTrain }),
+    [apiEvents.length, backupSnapshots.length, hostedSyncReport.score, safeToTrain],
+  );
+  const trueClosedLoop = useMemo(
+    () =>
+      buildTrueClosedLoopReport({
+        benchmarkLibrary,
+        buildLearning: buildResultLearning,
+        candidateTournament: promptCandidateTournament,
+        evaluationArtifacts,
+        modelComparison: modelJudgeComparison,
+        promptDna: promptQualityDna,
+        selectedPrompt,
+      }),
+    [benchmarkLibrary, buildResultLearning, evaluationArtifacts, modelJudgeComparison, promptCandidateTournament, promptQualityDna, selectedPrompt],
+  );
+  const promptSectionRegeneration = useMemo(
+    () => buildPromptSectionRegenerationReport({ editorGuidance: promptEditorGuidance, prompt: selectedPrompt, recipeDistiller }),
+    [promptEditorGuidance, recipeDistiller, selectedPrompt],
+  );
+  const operatorMode = useMemo(
+    () => buildOperatorModeReport({ bestNextAction, buildLearning: buildResultLearning, importWizard, mode: onboardingMode, stepper: guidedTrainingStepper }),
+    [bestNextAction, buildResultLearning, guidedTrainingStepper, importWizard, onboardingMode],
+  );
   const learnerAnswer = useMemo(
     () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
     [archetypePromptPacks, learnerQuestion, patternExtraction, profile],
@@ -3637,6 +3695,214 @@ export default function App() {
     setImproveText(winnerPrompt);
     setActiveTrainStage("Analyze");
     setModelNotice(`Closed-loop trainer saved ${prompt.title}: ${originalScore} -> ${improvedScore} (${run.modelMode}).`);
+  }
+
+  async function runServerClosedLoopJudge() {
+    const source = selectedPrompt ?? {
+      id: `generated-${Date.now()}`,
+      title: promptCandidateTournament.winner?.title || "Generated prompt",
+      text: promptCandidateTournament.finalPrompt || generatedPrompt,
+      source: "user" as const,
+      createdAt: new Date().toISOString(),
+    };
+    setModelNotice("Running server-side closed-loop judge...");
+    try {
+      const result = await runClosedLoopViaApi({
+        title: source.title,
+        prompt: source.text,
+        memory: promptMemory.markdown,
+        context: {
+          sourceTitle: source.title,
+          localQualityGate: qualityGate.score,
+          buildResultLearning,
+          promptQualityDna,
+        },
+        settings: modelSettingsPayload(),
+      });
+      const apiRun = result.run as ClosedLoopRun | undefined;
+      const winnerPrompt = modelString(result, "winnerPrompt", apiRun?.winnerPrompt || source.text);
+      const originalScore = Number(apiRun?.originalScore ?? evaluatePrompt(source.text).score);
+      const improvedScore = Number(apiRun?.improvedScore ?? evaluatePrompt(winnerPrompt).score);
+      const createdAt = new Date().toISOString();
+      const prompt: PromptExample = {
+        id: `closed-loop-api-${slugify(source.title) || "prompt"}-${Date.now()}`,
+        title: `${source.title} API refined`,
+        text: winnerPrompt,
+        source: "user",
+        createdAt,
+      };
+      const run: ClosedLoopRun = apiRun ?? {
+        id: `closed-loop-api-run-${Date.now()}`,
+        createdAt,
+        sourceTitle: source.title,
+        originalScore,
+        improvedScore,
+        winnerTitle: prompt.title,
+        winnerPrompt,
+        modelMode: "api",
+        findings: modelStringArray(result, "findings"),
+        recommendations: modelStringArray(result, "recommendations"),
+      };
+      setClosedLoopRuns((current) => [run, ...current].slice(0, 40));
+      setUserPrompts((current) => [prompt, ...current]);
+      setSelectedId(prompt.id);
+      const historyVersion: PromptVersion = {
+        id: `closed-loop-api-version-${Date.now()}`,
+        kind: "improved",
+        title: prompt.title,
+        text: prompt.text,
+        score: Math.max(originalScore, improvedScore),
+        createdAt,
+      };
+      setHistory((current) => [historyVersion, ...current].slice(0, 80));
+      setImproveText(winnerPrompt);
+      setModelNotice(`Server closed-loop judge saved ${prompt.title}: ${originalScore} -> ${improvedScore}.`);
+    } catch (error) {
+      setModelNotice(`Server closed-loop judge failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function runTrueClosedLoop() {
+    const source = selectedPrompt ?? {
+      id: `generated-${Date.now()}`,
+      title: promptCandidateTournament.winner?.title || "Generated prompt",
+      text: promptCandidateTournament.finalPrompt || generatedPrompt,
+      source: "user" as const,
+      createdAt: new Date().toISOString(),
+    };
+    const createdAt = new Date().toISOString();
+    const localRewrite = comparePromptImprovement(source.text, profile, outcomes, resultScore);
+    let winnerPrompt = localRewrite.improvedPrompt;
+    let originalScore = localRewrite.originalScore;
+    let improvedScore = localRewrite.improvedScore;
+    let modelMode = "local-full-loop";
+    let findings = [...localRewrite.missingBefore, ...localRewrite.changes].slice(0, 8);
+    let recommendations = ["Queued proof for the closed-loop winner.", "Run or import build evidence before promoting to gold."];
+    try {
+      const result = await runClosedLoopViaApi({
+        title: source.title,
+        prompt: source.text,
+        memory: promptMemory.markdown,
+        context: {
+          sourceTitle: source.title,
+          mode: "generate-build-screenshot-judge-rewrite",
+          trueClosedLoop,
+          buildResultLearning,
+          promptSectionRegeneration,
+        },
+        settings: modelSettingsPayload(),
+      });
+      const apiRun = result.run as Partial<ClosedLoopRun> | undefined;
+      winnerPrompt = modelString(result, "winnerPrompt", apiRun?.winnerPrompt || winnerPrompt);
+      originalScore = Number(apiRun?.originalScore ?? originalScore);
+      improvedScore = Number(apiRun?.improvedScore ?? improvedScore);
+      modelMode = String(apiRun?.modelMode || "api-closed-loop");
+      findings = Array.isArray(apiRun?.findings) ? apiRun.findings : findings;
+      recommendations = Array.isArray(apiRun?.recommendations) ? apiRun.recommendations : recommendations;
+    } catch {
+      // Local loop remains useful without the API route.
+    }
+    const prompt: PromptExample = {
+      id: `true-closed-loop-${slugify(source.title) || "prompt"}-${Date.now()}`,
+      title: `${source.title} full-loop winner`,
+      text: winnerPrompt,
+      source: "user",
+      createdAt,
+    };
+    const run: ClosedLoopRun = {
+      id: `true-closed-loop-run-${Date.now()}`,
+      createdAt,
+      sourceTitle: source.title,
+      originalScore,
+      improvedScore,
+      winnerTitle: prompt.title,
+      winnerPrompt,
+      modelMode,
+      findings,
+      recommendations,
+    };
+    const job = createBuildQueueJob(prompt, { title: prompt.title, prompt: prompt.text, score: improvedScore }, selectedBuildRun?.resultUrl || "http://127.0.0.1:5173");
+    const proofRun: ProofLearningRun = {
+      id: `true-loop-proof-${Date.now()}`,
+      createdAt,
+      promptId: prompt.id,
+      title: prompt.title,
+      queueJobId: job.id,
+      phase: "queued",
+      promptScore: evaluatePrompt(prompt.text).score,
+      resultScore: 0,
+      visualScore: 0,
+      dnaScore: scorePromptDnaV2(prompt, undefined, undefined).overall,
+      learnedStatus: "queued",
+      screenshotCount: 0,
+      notes: trueClosedLoop.runPlan,
+    };
+    setClosedLoopRuns((current) => [run, ...current].slice(0, 40));
+    setUserPrompts((current) => [prompt, ...current]);
+    setSelectedId(prompt.id);
+    const historyVersion: PromptVersion = { id: `true-loop-version-${Date.now()}`, kind: "improved", title: prompt.title, text: prompt.text, score: improvedScore, createdAt };
+    setHistory((current) => [historyVersion, ...current].slice(0, 80));
+    setQueueJobs((current) => [job, ...current.filter((item) => item.id !== job.id)].slice(0, 140));
+    setProofLearningRuns((current) => [proofRun, ...current].slice(0, 40));
+    setImproveText(winnerPrompt);
+    setActiveTrainStage("Run");
+    setApiNotice(`True closed loop saved ${prompt.title} and queued proof job ${job.id}.`);
+  }
+
+  function applySectionRegeneration(sectionId: string) {
+    const section = promptSectionRegeneration.sections.find((item) => item.id === sectionId) ?? promptSectionRegeneration.sections[0];
+    if (!section) return;
+    const sourceText = selectedPrompt?.text || generatedPrompt;
+    const patched = `${sourceText.trim()}\n\n${section.patch}`;
+    setImproveText(patched);
+    const historyVersion: PromptVersion = {
+      id: `section-regeneration-${section.id}-${Date.now()}`,
+      kind: "improved",
+      title: `${section.label} regeneration patch`,
+      text: patched,
+      score: evaluatePrompt(patched).score,
+      createdAt: new Date().toISOString(),
+    };
+    setHistory((current) => [historyVersion, ...current].slice(0, 80));
+    setApiNotice(`Loaded ${section.label} regeneration patch into the improvement editor.`);
+  }
+
+  function applySpeedLabel(candidateId: string) {
+    const candidate = speedLabeling.candidates.find((item) => item.id === candidateId);
+    const prompt = examples.find((example) => example.id === candidateId);
+    if (!candidate || !prompt) return;
+    if (candidate.suggestedStatus === "not-website") {
+      setCurationDecisions((current) => ({ ...current, [candidate.id]: "quarantine" }));
+      setApiNotice(`Quarantined ${candidate.title} as not website training data.`);
+      return;
+    }
+    updateOutcome(prompt, {
+      rating: candidate.suggestedRating,
+      status: candidate.suggestedStatus,
+      notes: `Speed label: ${candidate.reason}`,
+    });
+  }
+
+  function runBenchmarkBattles() {
+    const rows: BenchmarkRun["rows"] = benchmarkBattle.rows.map((row) => ({
+      briefId: row.fixtureId,
+      title: row.title,
+      promptTitle: row.winnerTitle,
+      score: row.winnerScore,
+      readiness: row.winnerScore >= 82 ? "ready" : row.winnerScore >= 62 ? "needs-review" : "blocked",
+      findings: [row.nextAction, ...row.variants.slice(0, 2).map((variant) => `${variant.title}: ${variant.score}`)],
+    }));
+    const run: BenchmarkRun = {
+      id: `benchmark-battle-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      suite: "benchmark-battle",
+      count: rows.length,
+      averageScore: benchmarkBattle.score,
+      modelMode: "local-battle",
+      rows,
+    };
+    setBenchmarkRuns((current) => [run, ...current].slice(0, 40));
+    setModelNotice(`Benchmark battles recorded ${rows.length} winners at ${benchmarkBattle.score} average.`);
   }
 
   async function runBenchmarkSuite() {
@@ -5891,6 +6157,14 @@ export default function App() {
               benchmarkLibrary={benchmarkLibrary}
               promptEditorGuidance={promptEditorGuidance}
               bestNextAction={bestNextAction}
+              trueClosedLoop={trueClosedLoop}
+              promptSectionRegeneration={promptSectionRegeneration}
+              importWizard={importWizard}
+              speedLabeling={speedLabeling}
+              benchmarkBattle={benchmarkBattle}
+              calibrationDashboard={calibrationDashboard}
+              hostedHardening={hostedHardening}
+              operatorMode={operatorMode}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -5956,6 +6230,11 @@ export default function App() {
               onRunScreenshotJudge={runScreenshotJudge}
               onRunMutationTournament={runMutationTournament}
               onRunCandidateQualityLoop={runCandidateQualityLoop}
+              onRunTrueClosedLoop={runTrueClosedLoop}
+              onRunServerClosedLoopJudge={runServerClosedLoopJudge}
+              onApplySectionRegeneration={applySectionRegeneration}
+              onApplySpeedLabel={applySpeedLabel}
+              onRunBenchmarkBattles={runBenchmarkBattles}
               onCreateSelectedEvaluationArtifact={createSelectedEvaluationArtifact}
               onRunHostedSetupWizard={runHostedSetupWizard}
               onTrainFromCorpus={trainFromCurrentCorpus}
@@ -7019,6 +7298,14 @@ function TrainView({
   benchmarkLibrary,
   promptEditorGuidance,
   bestNextAction,
+  trueClosedLoop,
+  promptSectionRegeneration,
+  importWizard,
+  speedLabeling,
+  benchmarkBattle,
+  calibrationDashboard,
+  hostedHardening,
+  operatorMode,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -7087,6 +7374,11 @@ function TrainView({
   onRunScreenshotJudge,
   onRunMutationTournament,
   onRunCandidateQualityLoop,
+  onRunTrueClosedLoop,
+  onRunServerClosedLoopJudge,
+  onApplySectionRegeneration,
+  onApplySpeedLabel,
+  onRunBenchmarkBattles,
   onCreateSelectedEvaluationArtifact,
   onRunHostedSetupWizard,
   onTrainFromCorpus,
@@ -7268,6 +7560,14 @@ function TrainView({
   benchmarkLibrary: BenchmarkLibraryReport;
   promptEditorGuidance: PromptEditorGuidanceReport;
   bestNextAction: BestNextActionReport;
+  trueClosedLoop: TrueClosedLoopReport;
+  promptSectionRegeneration: PromptSectionRegenerationReport;
+  importWizard: ImportWizardReport;
+  speedLabeling: SpeedLabelingReport;
+  benchmarkBattle: BenchmarkBattleReport;
+  calibrationDashboard: CalibrationDashboardReport;
+  hostedHardening: HostedHardeningReport;
+  operatorMode: OperatorModeReport;
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -7344,6 +7644,11 @@ function TrainView({
   onRunScreenshotJudge: () => void;
   onRunMutationTournament: () => void;
   onRunCandidateQualityLoop: () => void;
+  onRunTrueClosedLoop: () => void;
+  onRunServerClosedLoopJudge: () => void;
+  onApplySectionRegeneration: (sectionId: string) => void;
+  onApplySpeedLabel: (candidateId: string) => void;
+  onRunBenchmarkBattles: () => void;
   onCreateSelectedEvaluationArtifact: () => void;
   onRunHostedSetupWizard: () => void;
   onTrainFromCorpus: () => void;
@@ -7538,6 +7843,36 @@ function TrainView({
         onTrainFromCorpus={onTrainFromCorpus}
         queueProgress={queueProgress}
       />
+
+      <OperatorModePanel report={operatorMode} mode={onboardingMode} onChooseMode={onChooseOnboardingMode} onSelect={scrollToTrainSection} />
+
+      <TrueClosedLoopRunwayPanel
+        report={trueClosedLoop}
+        onRunTrueClosedLoop={onRunTrueClosedLoop}
+        onRunServerClosedLoopJudge={onRunServerClosedLoopJudge}
+      />
+
+      <section className="train-columns">
+        <ImportWizardPanel report={importWizard} onSelect={scrollToTrainSection} />
+        <PromptSectionRegenerationPanel report={promptSectionRegeneration} onApplySectionRegeneration={onApplySectionRegeneration} />
+      </section>
+
+      <section className="train-columns">
+        <SpeedLabelingPanel report={speedLabeling} onApplySpeedLabel={onApplySpeedLabel} />
+        <TrainingRunReplayPanel
+          closedLoopRuns={closedLoopRuns}
+          modelEvaluationCacheReport={modelEvaluationCacheReport}
+          proofLearningRuns={proofLearningRuns}
+          trainingRunSummary={trainingRunSummary}
+        />
+      </section>
+
+      <section className="train-columns">
+        <BenchmarkBattlePanel report={benchmarkBattle} onRunBenchmarkBattles={onRunBenchmarkBattles} />
+        <CalibrationDashboardPanel report={calibrationDashboard} />
+      </section>
+
+      <HostedHardeningPanel report={hostedHardening} onRunHostedSetupWizard={onRunHostedSetupWizard} onCreateBackupSnapshot={onCreateBackupSnapshot} onSyncToApi={onSyncToApi} />
 
       <BestNextActionPanel action={bestNextAction} onSelect={scrollToTrainSection} />
 
@@ -8465,6 +8800,312 @@ function TrainWorkflowAccordionPanel({ onSelect }: { onSelect: (id: string) => v
               Jump there
             </button>
           </details>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function OperatorModePanel({
+  mode,
+  onChooseMode,
+  onSelect,
+  report,
+}: {
+  mode: OnboardingMode;
+  onChooseMode: (mode: OnboardingMode) => void;
+  onSelect: (id: string) => void;
+  report: OperatorModeReport;
+}) {
+  return (
+    <section className="panel lab-panel operator-mode-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Beginner / expert operator mode</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" data-active={mode !== "trained"} type="button" onClick={() => onChooseMode("upload")}>Beginner</button>
+          <button className="ghost-button compact-button" data-active={mode === "trained"} type="button" onClick={() => onChooseMode("trained")}>Expert</button>
+        </div>
+      </div>
+      <div className="operator-mode-grid">
+        <article className="index-card">
+          <strong>{report.mode}</strong>
+          <span>{report.primaryCta}</span>
+          <p>{report.notes[0]}</p>
+        </article>
+        {report.cards.map((card) => (
+          <button className="version-card prompt-audit-card" key={card.title} type="button" onClick={() => onSelect(card.target)}>
+            <strong>{card.title}</strong>
+            <span>{card.target}</span>
+            <p>{card.detail}</p>
+          </button>
+        ))}
+      </div>
+      <div className="pill-row">
+        {report.visiblePanels.map((panel) => <span key={panel}>{panel}</span>)}
+      </div>
+    </section>
+  );
+}
+
+function TrueClosedLoopRunwayPanel({
+  onRunServerClosedLoopJudge,
+  onRunTrueClosedLoop,
+  report,
+}: {
+  onRunServerClosedLoopJudge: () => void;
+  onRunTrueClosedLoop: () => void;
+  report: TrueClosedLoopReport;
+}) {
+  return (
+    <section className="panel lab-panel true-closed-loop-panel" data-readiness={report.readiness} data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>True closed-loop runner</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onRunServerClosedLoopJudge}>Server judge</button>
+          <button className="primary-button compact-button" type="button" onClick={onRunTrueClosedLoop}>Run full loop</button>
+        </div>
+      </div>
+      <div className="closed-loop-stage-grid">
+        {report.stages.map((stage, index) => (
+          <article className="guided-stepper-card" data-state={stage.status} key={stage.id}>
+            <span>{index + 1}</span>
+            <strong>{stage.label}</strong>
+            <em>{stage.status}</em>
+            <p>{stage.detail}</p>
+            <small>{stage.action}</small>
+          </article>
+        ))}
+      </div>
+      <div className="two-field-grid">
+        <FeedbackList title="Run plan" items={report.runPlan} empty="No run plan." />
+        <FeedbackList title="Expected artifacts" items={report.expectedArtifacts} empty="No artifacts." />
+      </div>
+    </section>
+  );
+}
+
+function ImportWizardPanel({ onSelect, report }: { onSelect: (id: string) => void; report: ImportWizardReport }) {
+  return (
+    <section className="panel lab-panel import-wizard-panel" data-mode={report.mode} data-train-section="workspace">
+      <div className="output-header">
+        <div className="panel-header">
+          <Upload size={18} />
+          <h2>Large prompt import wizard</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => onSelect("workspace")}>Open corpus</button>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={report.score} label={report.mode} />
+        <div className="env-status-grid">
+          <span data-ready={report.counts.importable > 0}>{report.counts.importable} importable</span>
+          <span data-ready={report.counts.gold > 0}>{report.counts.gold} gold</span>
+          <span data-ready={report.counts.review === 0}>{report.counts.review} review</span>
+          <span data-ready={report.counts.quarantine === 0}>{report.counts.quarantine} quarantine</span>
+        </div>
+      </div>
+      <div className="guided-steps">
+        {report.steps.map((step, index) => (
+          <article className="guided-step" data-state={step.status} key={step.label}>
+            <span>{index + 1}</span>
+            <p>{step.label}</p>
+            <small>{step.detail}</small>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Import recommendations" items={report.recommendations} empty="Paste a batch to preview import guidance." />
+    </section>
+  );
+}
+
+function PromptSectionRegenerationPanel({
+  onApplySectionRegeneration,
+  report,
+}: {
+  onApplySectionRegeneration: (sectionId: string) => void;
+  report: PromptSectionRegenerationReport;
+}) {
+  return (
+    <section className="panel lab-panel section-regeneration-panel" data-train-section="improve">
+      <div className="panel-header">
+        <Wand2 size={18} />
+        <h2>Prompt section regeneration</h2>
+      </div>
+      <p className="selected-meta">{report.notes[1]}</p>
+      <div className="editor-guidance-grid">
+        {report.sections.map((section) => (
+          <article className="gate-check-card" data-pass={section.status === "ready"} key={section.id}>
+            <div className="dna-v2-topline">
+              <strong>{section.label}</strong>
+              <span data-tone={section.status === "ready" ? "strong" : "mixed"}>{section.status}</span>
+            </div>
+            <p>{section.recipeHint}</p>
+            <button className="ghost-button compact-button" type="button" onClick={() => onApplySectionRegeneration(section.id)}>
+              Regenerate
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SpeedLabelingPanel({ onApplySpeedLabel, report }: { onApplySpeedLabel: (candidateId: string) => void; report: SpeedLabelingReport }) {
+  return (
+    <section className="panel lab-panel speed-labeling-panel" data-train-section="patterns">
+      <div className="panel-header">
+        <Trophy size={18} />
+        <h2>Golden/bad speed labeling</h2>
+      </div>
+      <div className="version-list compact-list">
+        {report.candidates.slice(0, 8).map((candidate) => (
+          <article className="version-card" key={candidate.id}>
+            <div className="dna-v2-topline">
+              <strong>{candidate.title}</strong>
+              <span>{candidate.confidence}</span>
+            </div>
+            <p>{candidate.reason}</p>
+            <div className="button-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onApplySpeedLabel(candidate.id)}>
+                Apply {candidate.suggestedStatus}
+              </button>
+            </div>
+          </article>
+        ))}
+        {!report.candidates.length ? <p className="selected-meta">Everything visible has a label. Paste more prompts or clear old labels to continue.</p> : null}
+      </div>
+      <FeedbackList title="Labeling notes" items={report.notes} empty="No speed-label notes." />
+    </section>
+  );
+}
+
+function TrainingRunReplayPanel({
+  closedLoopRuns,
+  modelEvaluationCacheReport,
+  proofLearningRuns,
+  trainingRunSummary,
+}: {
+  closedLoopRuns: ClosedLoopRun[];
+  modelEvaluationCacheReport: ModelEvaluationCacheReport;
+  proofLearningRuns: ProofLearningRun[];
+  trainingRunSummary: ReturnType<typeof buildTrainingRunSummary>;
+}) {
+  const rows = [
+    trainingRunSummary.latest ? { title: trainingRunSummary.latest.id, detail: `${trainingRunSummary.latest.stage} / ${trainingRunSummary.latest.scores.final}`, kind: "training" } : undefined,
+    closedLoopRuns[0] ? { title: closedLoopRuns[0].winnerTitle, detail: `${closedLoopRuns[0].originalScore} -> ${closedLoopRuns[0].improvedScore}`, kind: "closed-loop" } : undefined,
+    proofLearningRuns[0] ? { title: proofLearningRuns[0].title, detail: `${proofLearningRuns[0].phase} / ${proofLearningRuns[0].learnedStatus}`, kind: "proof" } : undefined,
+    modelEvaluationCacheReport.items[0] ? { title: modelEvaluationCacheReport.items[0].provider, detail: `${modelEvaluationCacheReport.items[0].score} model / ${modelEvaluationCacheReport.items[0].localScore} local`, kind: "model" } : undefined,
+  ].filter(Boolean) as { title: string; detail: string; kind: string }[];
+  return (
+    <section className="panel lab-panel run-replay-panel" data-train-section="lineage">
+      <div className="panel-header">
+        <Clipboard size={18} />
+        <h2>Training run replay debugger</h2>
+      </div>
+      <div className="version-list compact-list">
+        {rows.map((row) => (
+          <article className="version-card" key={`${row.kind}-${row.title}`}>
+            <strong>{row.title}</strong>
+            <span>{row.kind}</span>
+            <p>{row.detail}</p>
+          </article>
+        ))}
+        {!rows.length ? <p className="selected-meta">No run evidence yet. Run the closed-loop runner or guided train to create replay rows.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function BenchmarkBattlePanel({ onRunBenchmarkBattles, report }: { onRunBenchmarkBattles: () => void; report: BenchmarkBattleReport }) {
+  return (
+    <section className="panel lab-panel benchmark-battle-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <Shuffle size={18} />
+          <h2>Prompt benchmark battles</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunBenchmarkBattles}>Record battles</button>
+      </div>
+      <div className="benchmark-library-grid">
+        {report.rows.slice(0, 6).map((row) => (
+          <article className="version-card" key={row.fixtureId}>
+            <div className="dna-v2-topline">
+              <strong>{row.title}</strong>
+              <span>{row.winnerScore}</span>
+            </div>
+            <p>{row.winnerTitle}: {row.nextAction}</p>
+            <small>{row.variants.map((variant) => `${variant.title} ${variant.score}`).join(" / ")}</small>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Battle notes" items={report.notes} empty="No benchmark battle notes." />
+    </section>
+  );
+}
+
+function CalibrationDashboardPanel({ report }: { report: CalibrationDashboardReport }) {
+  return (
+    <section className="panel lab-panel calibration-dashboard-panel" data-train-section="patterns">
+      <div className="panel-header">
+        <Gauge size={18} />
+        <h2>Quality score calibration dashboard</h2>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={report.score} label={report.alignment} />
+        <FeedbackList title="Calibration notes" items={report.notes} empty="No calibration notes." />
+      </div>
+      <div className="version-list compact-list">
+        {report.rows.map((row) => (
+          <article className="version-card" key={row.label}>
+            <strong>{row.label}</strong>
+            <span>score {row.score} / delta {row.delta}</span>
+            <p>{row.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function HostedHardeningPanel({
+  onCreateBackupSnapshot,
+  onRunHostedSetupWizard,
+  onSyncToApi,
+  report,
+}: {
+  onCreateBackupSnapshot: (label?: string) => void;
+  onRunHostedSetupWizard: () => void;
+  onSyncToApi: () => void;
+  report: HostedHardeningReport;
+}) {
+  return (
+    <section className="panel lab-panel hosted-hardening-panel" data-readiness={report.readiness} data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Hosted backend hardening</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCreateBackupSnapshot("pre-hosted-hardening")}>Backup</button>
+          <button className="ghost-button compact-button" type="button" onClick={onSyncToApi}>Sync</button>
+          <button className="primary-button compact-button" type="button" onClick={onRunHostedSetupWizard}>Check gate</button>
+        </div>
+      </div>
+      <div className="qa-score-row">
+        <ScoreRing score={report.score} label={report.readiness} />
+        <FeedbackList title="Backup plan" items={report.backupPlan} empty="No backup plan." />
+      </div>
+      <div className="safe-check-grid">
+        {report.checklist.map((item) => (
+          <article className="gate-check-card" data-pass={item.ready} key={item.label}>
+            <strong>{item.label}</strong>
+            <p>{item.ready ? "Ready" : item.fix}</p>
+          </article>
         ))}
       </div>
     </section>

@@ -439,6 +439,48 @@ function localModelEvaluation(body) {
   };
 }
 
+function localClosedLoopRewrite(prompt, memory = "", context = {}) {
+  const title = String(context.sourceTitle || context.title || "Prompt").trim();
+  const memoryHint = String(memory || "").split("\n").find((line) => /exact|asset|mobile|verify|screenshot|responsive/i.test(line)) || "Exact assets, responsive rules, and verification gates win.";
+  return [
+    String(prompt || "").trim(),
+    "",
+    "CLOSED-LOOP REWRITE PATCH",
+    `Source: ${title}`,
+    `Learned memory: ${memoryHint.replace(/^[-#*\s]+/, "")}`,
+    "",
+    "Add or tighten these sections without removing existing specifics:",
+    "- Exact visual system: fonts, colors, spacing, layer order, and first-viewport composition.",
+    "- Asset contract: exact URLs, object-position/focal rules, fallbacks, and media readiness.",
+    "- Interaction states: desktop/mobile navigation, hover/focus/active states, loading/empty states, and reduced-motion behavior.",
+    "- Proof gates: lint/build, desktop and mobile screenshots, console errors, media nonblank checks, text fit, and horizontal overflow.",
+    "- Safety constraints: no browser secrets, no unrelated project data, no placeholder imagery unless explicitly requested.",
+  ].filter(Boolean).join("\n");
+}
+
+async function evaluatePromptForClosedLoop(body) {
+  const provider = body.settings?.provider || process.env.PROMPT_LAB_MODEL_PROVIDER || "";
+  const endpoint = body.settings?.endpoint || process.env.PROMPT_LAB_MODEL_ENDPOINT;
+  const serverScopedBody = {
+    ...body,
+    settings: {
+      ...(body.settings || {}),
+      apiKey: undefined,
+    },
+  };
+  const hasServerAnthropicKey = Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || process.env.PROMPT_LAB_MODEL_API_KEY);
+  if ((provider === "anthropic" || endpoint?.includes("api.anthropic.com")) && hasServerAnthropicKey) {
+    return withModelSchema(await anthropicModelEvaluation(serverScopedBody), []);
+  }
+  if (endpoint && !endpoint.includes("api.anthropic.com")) {
+    return withModelSchema(await externalModelEvaluation(serverScopedBody, endpoint), []);
+  }
+  return withModelSchema({
+    ...localModelEvaluation(serverScopedBody),
+    rewrittenPrompt: localClosedLoopRewrite(serverScopedBody.prompt, serverScopedBody.memory, serverScopedBody.context),
+  }, []);
+}
+
 function clampText(value, limit) {
   const text = String(value || "");
   return text.length > limit ? `${text.slice(0, limit)}\n\n[truncated ${text.length - limit} characters]` : text;
@@ -805,6 +847,53 @@ async function handle(request, response) {
       writeCollection("lineage", lineage);
       logEvent("result-import", { id: normalized.buildRun.id });
       jsonResponse(response, 200, { ok: true, ...normalized, collections: { buildRuns, screenshots, lineage } });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/closed-loop/run") {
+      const body = await readBody(request);
+      const redacted = redactModelBody(body);
+      const safeBody = redacted.body;
+      const sourceTitle = String(safeBody.title || safeBody.context?.sourceTitle || "Closed-loop prompt");
+      const original = await evaluatePromptForClosedLoop({
+        ...safeBody,
+        context: {
+          ...(safeBody.context || {}),
+          task: "Closed-loop pass 1. Score the original website prompt and return rewrittenPrompt with precise repair sections.",
+          sourceTitle,
+        },
+      });
+      const rewrittenPrompt = String(original.rewrittenPrompt || localClosedLoopRewrite(safeBody.prompt, safeBody.memory, { sourceTitle }));
+      const improved = await evaluatePromptForClosedLoop({
+        ...safeBody,
+        prompt: rewrittenPrompt,
+        context: {
+          ...(safeBody.context || {}),
+          task: "Closed-loop pass 2. Score the rewritten website prompt and explain whether it is stronger.",
+          sourceTitle,
+          originalScore: original.score,
+        },
+      });
+      const originalScore = Number(original.score || localPromptScore(safeBody.prompt));
+      const improvedScore = Number(improved.score || localPromptScore(rewrittenPrompt));
+      const winnerPrompt = improvedScore >= originalScore ? rewrittenPrompt : String(safeBody.prompt || "");
+      const createdAt = now();
+      const run = {
+        id: `closed-loop-api-${Date.now()}`,
+        createdAt,
+        sourceTitle,
+        originalScore,
+        improvedScore,
+        winnerTitle: `${sourceTitle} API refined`,
+        winnerPrompt,
+        modelMode: improved.mode || original.mode || "local-fallback",
+        findings: [...(original.findings || []), ...(improved.findings || [])].slice(0, 8),
+        recommendations: [...(original.recommendations || []), ...(improved.recommendations || [])].slice(0, 8),
+        redactions: redacted.findings,
+      };
+      const closedLoopRuns = appendCollectionRecord("closedLoopRuns", run, 40);
+      logEvent("closed-loop-run", { id: run.id, mode: run.modelMode, originalScore, improvedScore });
+      jsonResponse(response, 200, { ok: true, run, original, improved, winnerPrompt, redactions: redacted.findings, collections: { closedLoopRuns } });
       return;
     }
 
