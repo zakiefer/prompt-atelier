@@ -636,10 +636,10 @@ export default function App() {
   const [modelEvaluation, setModelEvaluation] = useState<Record<string, unknown> | undefined>();
   const [modelNotice, setModelNotice] = useState("Model endpoint not checked");
   const [modelSettings, setModelSettings] = useState({
-    provider: "local",
-    endpoint: "",
+    provider: "anthropic",
+    endpoint: "https://api.anthropic.com/v1/messages",
     apiKey: "",
-    model: "local-fallback",
+    model: "claude-sonnet-5",
     temperature: 0.2,
     agentCommand: "",
     buildCommand: "",
