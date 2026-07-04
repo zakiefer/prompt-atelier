@@ -77,17 +77,66 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Trigger Render deploy hook when configured
+      - name: Trigger Render deploy
         run: |
           set -euo pipefail
-          if [ -z "${RENDER_DEPLOY_HOOK_URL:-}" ]; then
-            mkdir -p output/hosted-api-deploy
-            printf '%s\n' '{"ok":true,"skipped":true,"reason":"RENDER_DEPLOY_HOOK_URL is not configured."}' > output/hosted-api-deploy/hosted-api-deploy-report.json
-            exit 0
+          mkdir -p output/hosted-api-deploy
+
+          if [ -z "${RENDER_API_KEY:-}" ] || [ -z "${RENDER_SERVICE_ID:-}" ]; then
+            if [ -n "${RENDER_DEPLOY_HOOK_URL:-}" ]; then
+              npm run deploy:hosted-api -- --out output/hosted-api-deploy --require-deploy
+              exit 0
+            fi
+            printf '%s\n' '{"ok":false,"skipped":true,"reason":"RENDER_API_KEY plus RENDER_SERVICE_ID, or RENDER_DEPLOY_HOOK_URL, must be configured."}' > output/hosted-api-deploy/hosted-api-deploy-report.json
+            exit 1
           fi
-          npm run deploy:hosted-api -- --out output/hosted-api-deploy --require-deploy
+
+          deploy_json="$(curl -fsS -X POST "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            --data "{\"clearCache\":\"do_not_clear\",\"commitId\":\"${GITHUB_SHA}\"}")"
+
+          deploy_id="$(DEPLOY_JSON="$deploy_json" node -e 'const body = JSON.parse(process.env.DEPLOY_JSON); process.stdout.write(body.id || "");')"
+          if [ -z "$deploy_id" ]; then
+            printf '%s\n' '{"ok":false,"reason":"Render deploy response did not include an id."}' > output/hosted-api-deploy/hosted-api-deploy-report.json
+            exit 1
+          fi
+
+          status=""
+          for attempt in $(seq 1 90); do
+            deploys_json="$(curl -fsS "https://api.render.com/v1/services/${RENDER_SERVICE_ID}/deploys?limit=20" \
+              -H "Authorization: Bearer ${RENDER_API_KEY}" \
+              -H "Accept: application/json")"
+            status="$(DEPLOY_ID="$deploy_id" DEPLOYS_JSON="$deploys_json" node -e 'const id = process.env.DEPLOY_ID; const rows = JSON.parse(process.env.DEPLOYS_JSON); const row = rows.find((item) => item.id === id); process.stdout.write(row?.status || "missing");')"
+            if [ "$status" = "live" ]; then
+              break
+            fi
+            if [ "$status" = "build_failed" ] || [ "$status" = "update_failed" ] || [ "$status" = "canceled" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          DEPLOY_ID="$deploy_id" STATUS="$status" node --input-type=module - <<'NODE'
+          import { writeFileSync } from "node:fs";
+          const ok = process.env.STATUS === "live";
+          writeFileSync("output/hosted-api-deploy/hosted-api-deploy-report.json", `${JSON.stringify({
+            ok,
+            deploy: {
+              attempted: true,
+              ok,
+              id: process.env.DEPLOY_ID,
+              status: process.env.STATUS,
+              detail: ok ? "Render deploy reached live status." : "Render deploy did not reach live status.",
+            },
+          }, null, 2)}\n`);
+          process.exit(ok ? 0 : 1);
+          NODE
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
 
       - name: Upload deploy report
         uses: actions/upload-artifact@v4
@@ -96,7 +145,7 @@ jobs:
           path: output/hosted-api-deploy
 
   verify-hosted:
-    needs: validate
+    needs: [validate, deploy]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

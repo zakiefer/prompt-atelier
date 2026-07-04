@@ -3,7 +3,7 @@
 Prompt Atelier is split into two deployment surfaces:
 
 1. Static frontend: deploys to GitHub Pages from `dist/`.
-2. API/worker: runs locally or as a hosted Docker service for SQLite persistence, snapshot sync, model evaluation, API event history, and visual QA. Heavy queue execution is still best run on a trusted local worker.
+2. API/worker: runs locally or as a hosted Node service for SQLite persistence, snapshot sync, model evaluation, API event history, and visual QA. Heavy queue execution is still best run on a trusted local worker.
 
 ## GitHub Pages
 
@@ -61,16 +61,18 @@ npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hos
 
 The verifier reports API health, token posture, SQLite persistence, worker allowlists, model-route status, and optional evaluator health while redacting token and model-key values.
 
-`deploy:hosted-api` validates the Blueprint/Dockerfile/API script contract, persistent disk posture, server-side model-key requirements, optional Render deploy hooks, and optional hosted API reachability. It does not print bearer tokens or model keys. In release automation, use `--require-deploy` to fail when neither `RENDER_DEPLOY_HOOK_URL` nor a reachable `--url` is present.
+`deploy:hosted-api` validates the Render/API script contract, storage posture, server-side model-key requirements, optional Render deploy hooks, and optional hosted API reachability. It does not print bearer tokens or model keys. In release automation, use `--require-deploy` to fail when neither `RENDER_DEPLOY_HOOK_URL` nor a reachable `--url` is present.
 
 Do not commit real API keys. `.env`, `.env.*`, and local data folders are ignored.
 
-## Render Docker API
+## Render API
 
-`render.yaml` provisions a Docker web service with a persistent `/data` disk. Set these secrets in Render:
+`render.yaml` provisions a free Node web service that builds from the public GitHub repository and starts the API with `npm run api`. Set these secrets in Render:
 
 - `PROMPT_LAB_API_TOKEN`: shared bearer token used by the Train tab API token field.
 - `ANTHROPIC_API_KEY`: optional Claude evaluator key.
+
+The free service stores SQLite data under `/tmp/prompt-atelier`, which is suitable for hosted smoke, training handoff, and public demo checks. For long-lived production persistence, add payment info in Render and attach a persistent disk, then move `PROMPT_LAB_DATA_DIR` back to a mounted path such as `/var/data/prompt-atelier`.
 
 The health route stays public so deployment monitors can reach `/api/health`. All other API routes require `Authorization: Bearer <token>` or `x-prompt-lab-token` when `PROMPT_LAB_API_TOKEN` is configured.
 
@@ -98,12 +100,13 @@ Current live Render service:
 - Service: `prompt-atelier-api`
 - Service ID: `srv-d94ossa8qa3s73d2vjd0`
 - URL: `https://prompt-atelier-api.onrender.com`
-- Plan/runtime: free image-backed web service
-- Current image: `ttl.sh/prompt-atelier-api-9c3dc5c-1783205423:24h`
+- Source: `https://github.com/zakiefer/prompt-atelier`, branch `main`
+- Plan/runtime: free Node web service
+- Build/start: `npm ci` / `npm run api`
 - Worker execution: disabled with `PROMPT_LAB_WORKER_ENABLED=false`
 - API auth: enabled with `PROMPT_LAB_API_TOKEN` stored in Render and mirrored to GitHub Actions secrets
 
-That image-backed service was created from a temporary public image to avoid exposing the private GitHub repo or requiring paid persistent disk setup. For durable production redeploys, replace the temporary image with a stable registry image or apply the Blueprint after the Render workspace has payment info for the persistent disk.
+The `Render API` GitHub Actions workflow has `RENDER_API_KEY`, `RENDER_SERVICE_ID`, `PROMPT_LAB_API_URL`, and `PROMPT_LAB_API_TOKEN` configured as repository secrets. On relevant pushes it validates the API package, triggers a real Render deploy for the current commit through the Render API, waits for `live`, then verifies the hosted API.
 
 ## Verification
 

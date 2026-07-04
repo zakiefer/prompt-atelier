@@ -6,10 +6,10 @@ The browser also computes deterministic training intelligence locally: corpus pr
 
 The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. The all-in runway layer adds hosted backend verification, one-click prompt-to-proof, Dataset Inbox bulk tools, preference training, Claude calibration, brief-builder completion, public demo mode, regression history, security cleanup, and narrative polish. The Learning Machine control plane adds the next operating layer: autonomous proof orchestration, Prompt Generator v3 modes, 60+ golden benchmark challenges, result gallery proof, plain-English learning explanations, public demo polish, hosted CI smoke, and real training export readiness. The latest operator layer adds proof seeding, a preference review deck, generator brief checklist, public proof checklist, regression timeline export, and credential-boundary audit. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
 
-## Render Blueprint
+## Render Source Service
 
-1. Create a new Render Blueprint from this repository.
-2. Render reads `render.yaml` and builds `Dockerfile.api`.
+1. Create a Render web service or Blueprint from the public repository.
+2. Render reads `render.yaml`, runs `npm ci`, and starts the API with `npm run api`.
 3. Copy the generated `PROMPT_LAB_API_TOKEN`.
 4. In Prompt Atelier, open Train -> Hosted API and persistence readiness.
 5. Set the API base to your Render URL and paste the token.
@@ -17,21 +17,22 @@ The Train tab now exposes the same intelligence as a product runway: Product Com
 7. Use Connect hosted brain in the Train tab to verify health, SQLite writes, auth posture, and configured model settings before running calibration or one-click proof work.
 8. Use Claude readiness without browser secrets to confirm API health, bearer auth, SQLite write visibility, model route behavior, and whether image judging can run through the server-side key.
 9. Run `npm run verify:hosted-api -- --url https://your-api.example.com --token <token>` from a terminal or CI smoke to prove the same hosted-readiness checks outside the browser.
-10. Run `npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hosted-api-deploy` after the Blueprint deploy to write a JSON deployment-readiness report.
-11. Use `.github/workflows/render-api.yml` for repeatable Blueprint validation, optional Render deploy-hook triggering, hosted API verification, proof seeding, regression timeline export, and credential-boundary audit.
+10. Run `npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hosted-api-deploy` after the source deploy to write a JSON deployment-readiness report.
+11. Use `.github/workflows/render-api.yml` for repeatable `render.yaml` validation, Render API deploy triggering, hosted API verification, proof seeding, regression timeline export, and credential-boundary audit.
 
 ## Required Environment
 
 - `PROMPT_LAB_API_HOST=0.0.0.0`
 - `PROMPT_LAB_API_TOKEN=<generated secret>`
-- `PROMPT_LAB_DATA_DIR=/var/data/prompt-atelier`
+- `PROMPT_LAB_DATA_DIR=/tmp/prompt-atelier`
 - `PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io`
 - `PROMPT_LAB_RATE_LIMIT=240`
+- `PROMPT_LAB_WORKER_ENABLED=false`
 - `PROMPT_LAB_MODEL_PROVIDER=anthropic`
 - `PROMPT_LAB_MODEL_NAME=claude-sonnet-5`
 - `ANTHROPIC_API_KEY=<optional model provider key on the API host only>`
 
-The SQLite file is stored on the mounted Render disk so the training state persists across deploys.
+The free Render service writes SQLite state under `/tmp/prompt-atelier`, which is enough for public hosted smoke, demo checks, and handoff verification. If this becomes the production training backend, add payment info in Render, attach a persistent disk, and move `PROMPT_LAB_DATA_DIR` to that mounted disk path.
 
 ## Hosted Verifier CLI
 
@@ -64,7 +65,7 @@ npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-galle
 npm run proof:batch -- --url http://127.0.0.1:8787 --limit 1 --allow-fail --out output/autonomous-proof-batch
 ```
 
-`deploy:hosted-api` is safe to run without a deploy hook or API URL; it still validates the Blueprint, Dockerfile, package scripts, persistent disk posture, and server-side model-provider placeholder. Add `--require-deploy` only in CI or release jobs where a Render deploy hook or reachable API URL is mandatory.
+`deploy:hosted-api` is safe to run without a deploy hook or API URL; it still validates the Render service contract, package scripts, storage posture, bearer-token env, and server-side model-provider placeholder. Add `--require-deploy` only in CI or release jobs where a Render deploy hook, Render API workflow secrets, or reachable API URL is mandatory.
 
 `proof:seed` creates a queue of proof jobs from hosted collections or the local curated corpus. It can run offline, sync queued jobs to `/api/collections`, or execute immediately against `/api/closed-loop/prove` with `--run` on a trusted worker host.
 

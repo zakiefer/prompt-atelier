@@ -8990,8 +8990,8 @@ export function buildHostedApiDeploymentProductReport({
   hostedCi: HostedCiSmokeReport;
 }): HostedApiDeploymentProductReport {
   const checks = [
-    { label: "Blueprint", ready: hostedBackend.checks.some((check) => /deployment|reachable/i.test(check.label)) || hostedBackend.score > 0, detail: "render.yaml and Dockerfile.api define the API service.", fix: "Keep render.yaml and Dockerfile.api aligned." },
-    { label: "Persistent SQLite", ready: hostedBackend.checks.some((check) => /storage/i.test(check.label) && check.ready), detail: hostedBackend.checks.find((check) => /storage/i.test(check.label))?.detail || "SQLite persistence must be visible on the API host.", fix: "Set PROMPT_LAB_DATA_DIR on a persistent disk." },
+    { label: "Render source", ready: hostedBackend.checks.some((check) => /deployment|reachable/i.test(check.label)) || hostedBackend.score > 0, detail: "render.yaml defines the source-backed Node API service.", fix: "Keep render.yaml aligned with the live Render service." },
+    { label: "SQLite storage", ready: hostedBackend.checks.some((check) => /storage/i.test(check.label) && check.ready), detail: hostedBackend.checks.find((check) => /storage/i.test(check.label))?.detail || "SQLite storage must be visible on the API host.", fix: "Set PROMPT_LAB_DATA_DIR; attach a persistent disk when production persistence is required." },
     { label: "Bearer auth", ready: hostedBackend.checks.some((check) => /auth/i.test(check.label) && check.ready), detail: hostedBackend.checks.find((check) => /auth/i.test(check.label))?.detail || "Hosted API should require bearer auth.", fix: "Set PROMPT_LAB_API_TOKEN." },
     { label: "Server-side Claude", ready: hostedBackend.checks.some((check) => /model|Claude/i.test(check.label) && check.ready), detail: "Claude/OpenAI-compatible keys must stay on the API host.", fix: "Use the server route for live model judging; local fallback remains available without provider credentials." },
     { label: "Hosted smoke", ready: hostedCi.status === "ready", detail: hostedCi.notes[0], fix: "Run npm run smoke:hosted after deploy." },
@@ -9003,8 +9003,8 @@ export function buildHostedApiDeploymentProductReport({
     checks,
     command: "npm run deploy:hosted-api -- --url https://your-api.example.com --out output/hosted-api-deploy",
     notes: [
-      "This lane turns the existing Render/Docker API kit into an auditable deploy step.",
-      "Actual cloud service creation requires a Render Blueprint apply or RENDER_DEPLOY_HOOK_URL plus provider credentials.",
+      "This lane turns the existing Render API kit into an auditable deploy step.",
+      "The GitHub workflow can trigger the live Render service through the Render API secrets.",
     ],
   };
 }

@@ -36,13 +36,18 @@ async function readJson(url, init = {}) {
 }
 
 const renderYaml = existsSync("render.yaml") ? readFileSync("render.yaml", "utf8") : "";
-const dockerfile = existsSync("Dockerfile.api") ? readFileSync("Dockerfile.api", "utf8") : "";
 const packageJson = existsSync("package.json") ? JSON.parse(readFileSync("package.json", "utf8")) : {};
+const sourceBackedRender = renderYaml.includes("prompt-atelier-api")
+  && /runtime:\s*node/.test(renderYaml)
+  && /buildCommand:\s*npm ci/.test(renderYaml)
+  && /startCommand:\s*npm run api/.test(renderYaml);
+const storageConfigured = renderYaml.includes("PROMPT_LAB_DATA_DIR")
+  && (/\/tmp\/prompt-atelier/.test(renderYaml) || /\/var\/data\/prompt-atelier/.test(renderYaml));
 
 const checks = [
-  check("render blueprint", renderYaml.includes("prompt-atelier-api") && renderYaml.includes("Dockerfile.api"), "render.yaml points at the API Dockerfile.", "Add a Render Blueprint service."),
-  check("persistent disk", /disk:\s*\n[\s\S]*mountPath:\s*\/var\/data/.test(renderYaml), "Blueprint has a persistent /var/data disk.", "Mount persistent storage for SQLite."),
-  check("api dockerfile", dockerfile.includes("CMD [\"npm\", \"run\", \"api\"]"), "Dockerfile.api starts the API server.", "Use npm run api as the Docker command."),
+  check("render service", sourceBackedRender, "render.yaml defines a source-backed Node API service.", "Keep render.yaml on runtime: node with npm ci / npm run api."),
+  check("sqlite storage path", storageConfigured, "Render config sets a SQLite data directory.", "Set PROMPT_LAB_DATA_DIR for the hosted API."),
+  check("bearer token env", renderYaml.includes("PROMPT_LAB_API_TOKEN"), "Render config includes the Prompt Atelier bearer token env var.", "Add PROMPT_LAB_API_TOKEN."),
   check("api script", Boolean(packageJson.scripts?.api), "package.json exposes npm run api.", "Add an api script."),
   check("secret placeholder", renderYaml.includes("ANTHROPIC_API_KEY") && renderYaml.includes("sync: false"), "Claude key placeholder is server-side only.", "Keep provider credentials out of browser builds."),
 ];
@@ -86,7 +91,7 @@ const report = {
   checks,
   nextActions: [
     ...checks.filter((item) => !item.ready).map((item) => item.fix),
-    !deployHook ? "Create a Render service from render.yaml or set RENDER_DEPLOY_HOOK_URL for scripted deploys." : "",
+    !deployHook && !apiUrl ? "Use the Render API workflow secrets or set RENDER_DEPLOY_HOOK_URL for scripted deploys." : "",
     !apiUrl ? "Set PROMPT_LAB_API_URL after the hosted API is created, then rerun this script." : "",
     apiUrl && !health.ok ? "Fix hosted API health before enabling proof worker traffic." : "",
   ].filter(Boolean),

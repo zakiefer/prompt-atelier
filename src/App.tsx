@@ -15932,13 +15932,14 @@ function HostedApiDeployPanel({
   const renderEnv = [
     "PROMPT_LAB_API_HOST=0.0.0.0",
     "PROMPT_LAB_API_TOKEN=<generated secret>",
-    "PROMPT_LAB_DATA_DIR=/var/data/prompt-atelier",
+    "PROMPT_LAB_DATA_DIR=/tmp/prompt-atelier",
     "PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io",
     "PROMPT_LAB_RATE_LIMIT=240",
+    "PROMPT_LAB_WORKER_ENABLED=false",
   ].join("\n");
   const setup = [
-    "1. Create a Render Blueprint from this repo.",
-    "2. Render uses render.yaml + Dockerfile.api.",
+    "1. Render builds the public main branch with render.yaml.",
+    "2. Render runs npm ci, then npm run api.",
     "3. Copy the generated PROMPT_LAB_API_TOKEN.",
     "4. Paste the Render service URL and token into API base/token.",
     "5. Check API, then Push API.",
@@ -15955,11 +15956,11 @@ function HostedApiDeployPanel({
           Copy env
         </button>
       </div>
-      <p className="selected-meta">Use the included Render blueprint for token-protected cross-browser sync with persistent SQLite storage.</p>
+      <p className="selected-meta">Use the included source-backed Render config for token-protected cross-browser sync and hosted smoke checks. Attach a disk when production persistence is required.</p>
       <div className="hosted-api-grid">
         <article className="index-card wide-index-card">
           <h3>Files added</h3>
-          <p>render.yaml, Dockerfile.api, docs/hosted-api.md</p>
+          <p>render.yaml, docs/hosted-api.md, Render API workflow</p>
         </article>
         <article className="index-card wide-index-card">
           <h3>Health route</h3>
