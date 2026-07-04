@@ -1622,6 +1622,13 @@ export type PublicDemoPolishReport = {
   notes: string[];
 };
 
+export type AccessibilityQaScoreReport = {
+  score: number;
+  status: "ready" | "watch" | "blocked";
+  checks: { label: string; ready: boolean; blocking: boolean; detail: string; fix: string }[];
+  notes: string[];
+};
+
 export type HostedCiSmokeReport = {
   score: number;
   status: "ready" | "needs-ci";
@@ -1701,6 +1708,35 @@ export type NextProductLayerReport = {
   summary: string[];
   nextAction: string;
   blockers: string[];
+};
+
+export type PromptProductOsItem = {
+  id:
+    | "command-center"
+    | "dataset-inbox"
+    | "generator"
+    | "proof-gallery"
+    | "accessibility-qa"
+    | "public-demo"
+    | "regression"
+    | "exports"
+    | "learning-explanation";
+  label: string;
+  score: number;
+  status: "ready" | "active" | "needs-work" | "blocked";
+  evidence: string;
+  nextAction: string;
+  target: string;
+};
+
+export type PromptProductOsReport = {
+  score: number;
+  status: "ready" | "in-progress" | "blocked";
+  headline: string;
+  items: PromptProductOsItem[];
+  nextAction: string;
+  blockers: string[];
+  summary: string[];
 };
 
 export type ProofSeedingRunwayReport = {
@@ -8870,6 +8906,208 @@ export function buildPublicDemoPolishReport({
     notes: [
       "Public demo polish checks whether a new visitor can understand the learning loop without private state.",
       checks.every((check) => check.ready) ? "Demo is self-explanatory enough for Pages." : "Load demo mode and add proof artifacts to strengthen the public view.",
+    ],
+  };
+}
+
+export function buildAccessibilityQaScoreReport({
+  generator,
+  qualityGate,
+  screenshotQa,
+  visualQa,
+}: {
+  generator: PromptGeneratorV2Report;
+  qualityGate: QualityRegressionGateReport;
+  screenshotQa?: ScreenshotQaReport;
+  visualQa?: VisualQaReport;
+}): AccessibilityQaScoreReport {
+  const promptText = generator.compiledPrompt;
+  const screenshotWarnings = [
+    ...(screenshotQa?.notes || []),
+    ...(screenshotQa?.items || []).flatMap((item) => item.notes),
+  ];
+  const visualWarnings = visualQa?.warnings || [];
+  const checks = [
+    {
+      label: "Keyboard and focus states",
+      ready: /\b(keyboard|focus|focus-visible|tab order|aria-label)\b/i.test(promptText),
+      blocking: true,
+      detail: "Prompts should require keyboard-visible focus and labeled controls.",
+      fix: "Add focus-visible states, tab-order expectations, and aria-label requirements for icon-only controls.",
+    },
+    {
+      label: "Reduced motion",
+      ready: /\b(reduced-motion|prefers-reduced-motion|motion-safe|disable animation)\b/i.test(promptText),
+      blocking: false,
+      detail: "Animation-heavy prompts should include reduced-motion behavior.",
+      fix: "Specify prefers-reduced-motion behavior and cleanup for listeners, timers, and animation frames.",
+    },
+    {
+      label: "Text fit and overlap",
+      ready: /\b(text[- ]?fit|wrapping|overlap|horizontal overflow|line clamp|fits?)\b/i.test(promptText) || !screenshotWarnings.some((warning) => /text|overlap|overflow/i.test(warning)),
+      blocking: true,
+      detail: screenshotWarnings.find((warning) => /text|overlap|overflow/i.test(warning)) || "Prompt or screenshots cover text-fit and overlap risk.",
+      fix: "Require desktop/mobile text-fit checks, no incoherent overlap, and no horizontal overflow.",
+    },
+    {
+      label: "Media readiness",
+      ready: /\b(video|image|asset|media).*\b(load|render|fallback|object-fit|poster|focal)\b/i.test(promptText) || qualityGate.rows.some((row) => row.label === "Exact assets contract" && row.ready),
+      blocking: false,
+      detail: "Exact media prompts should name load, crop, fallback, and focal rules.",
+      fix: "Add media loading, object-fit, focal-position, poster/fallback, and blank-media verification instructions.",
+    },
+    {
+      label: "Responsive proof",
+      ready: qualityGate.rows.some((row) => row.label === "Responsive contract" && row.ready),
+      blocking: true,
+      detail: qualityGate.rows.find((row) => row.label === "Responsive contract")?.detail || "Responsive contract not checked.",
+      fix: "Require mobile and desktop breakpoints, screenshots, and text wrapping verification.",
+    },
+    {
+      label: "Console and build proof",
+      ready: qualityGate.rows.some((row) => row.label === "Verification contract" && row.ready),
+      blocking: true,
+      detail: qualityGate.rows.find((row) => row.label === "Verification contract")?.detail || "Verification contract not checked.",
+      fix: "Require build/type checks, console inspection, screenshot proof, and media readiness checks.",
+    },
+    {
+      label: "Visual QA warnings",
+      ready: visualWarnings.length === 0,
+      blocking: false,
+      detail: visualWarnings.length ? visualWarnings.slice(0, 2).join(" ") : "No visual QA warnings are currently visible.",
+      fix: "Repair visual QA warnings before promoting the prompt as a gold example.",
+    },
+  ];
+  const blockingFailures = checks.filter((check) => check.blocking && !check.ready);
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: blockingFailures.length ? "blocked" : score >= 80 ? "ready" : "watch",
+    checks,
+    notes: [
+      "Accessibility and QA scoring turns the corpus taste gap into explicit acceptance checks.",
+      blockingFailures.length ? `${blockingFailures.length} blocking QA item(s) remain.` : "No blocking accessibility or QA item remains.",
+    ],
+  };
+}
+
+export function buildPromptProductOsReport({
+  accessibilityQa,
+  commandCenter,
+  datasetInbox,
+  generator,
+  learningExplanation,
+  publicDemo,
+  regressionDashboard,
+  resultGallery,
+  trainingExports,
+}: {
+  accessibilityQa: AccessibilityQaScoreReport;
+  commandCenter: ProductCommandCenterReport;
+  datasetInbox: DatasetInboxReport;
+  generator: GeneratorV3Report;
+  learningExplanation: LearningExplanationReport;
+  publicDemo: PublicDemoPolishReport;
+  regressionDashboard: RegressionDashboardV2ProductReport;
+  resultGallery: ResultGalleryHydrationProductReport;
+  trainingExports: TrainingExportReadinessReport;
+}): PromptProductOsReport {
+  const items: PromptProductOsItem[] = [
+    {
+      id: "command-center",
+      label: "Guided Command Center",
+      score: commandCenter.score,
+      status: commandCenter.status === "ready" ? "ready" : commandCenter.status === "blocked" ? "blocked" : "active",
+      evidence: `${commandCenter.cards.filter((card) => ["ready", "complete"].includes(card.status)).length}/${commandCenter.cards.length} command cards are ready.`,
+      nextAction: commandCenter.nextAction,
+      target: "workflow",
+    },
+    {
+      id: "dataset-inbox",
+      label: "Dataset Inbox",
+      score: datasetInbox.score,
+      status: datasetInbox.status === "ready" ? "ready" : datasetInbox.status === "blocked" ? "blocked" : datasetInbox.status === "empty" ? "needs-work" : "active",
+      evidence: `${datasetInbox.counts.learn} learn / ${datasetInbox.counts.gold} gold / ${datasetInbox.counts.review} review / ${datasetInbox.counts.quarantine} quarantine.`,
+      nextAction: datasetInbox.rows.find((row) => row.recommendation === "quarantine" || row.recommendation === "review")?.reason || datasetInbox.notes[1],
+      target: "dataset",
+    },
+    {
+      id: "generator",
+      label: "Prompt Generator Upgrade",
+      score: generator.score,
+      status: generator.status === "ready" ? "ready" : "needs-work",
+      evidence: `${generator.modes.filter((mode) => mode.ready).length}/${generator.modes.length} generator mode(s) are ready.`,
+      nextAction: generator.fields.find((field) => !field.ready)?.detail || generator.notes[0],
+      target: "generator-v3",
+    },
+    {
+      id: "proof-gallery",
+      label: "Proof Gallery",
+      score: resultGallery.score,
+      status: resultGallery.status === "ready" ? "ready" : resultGallery.status === "empty" ? "needs-work" : "active",
+      evidence: `${resultGallery.counts.gallery} gallery / ${resultGallery.counts.screenshots} screenshots / ${resultGallery.counts.proofArtifacts} artifacts.`,
+      nextAction: resultGallery.notes[1],
+      target: "demo",
+    },
+    {
+      id: "accessibility-qa",
+      label: "Accessibility and QA Scoring",
+      score: accessibilityQa.score,
+      status: accessibilityQa.status === "ready" ? "ready" : accessibilityQa.status === "blocked" ? "blocked" : "needs-work",
+      evidence: `${accessibilityQa.checks.filter((check) => check.ready).length}/${accessibilityQa.checks.length} accessibility and QA checks pass.`,
+      nextAction: accessibilityQa.checks.find((check) => !check.ready)?.fix || accessibilityQa.notes[1],
+      target: "quality",
+    },
+    {
+      id: "public-demo",
+      label: "Public Demo Polish",
+      score: publicDemo.score,
+      status: publicDemo.status === "ready" ? "ready" : "needs-work",
+      evidence: publicDemo.headline,
+      nextAction: publicDemo.checks.find((check) => !check.ready)?.detail || publicDemo.notes[1],
+      target: "public-demo",
+    },
+    {
+      id: "regression",
+      label: "Regression Dashboard",
+      score: regressionDashboard.score,
+      status: regressionDashboard.status === "ready" ? "ready" : regressionDashboard.status === "empty" ? "needs-work" : "active",
+      evidence: `${regressionDashboard.metrics.reduce((sum, metric) => sum + metric.value, 0)} tracked regression signal(s).`,
+      nextAction: regressionDashboard.notes[1],
+      target: "regression",
+    },
+    {
+      id: "exports",
+      label: "Useful Export Packs",
+      score: trainingExports.score,
+      status: trainingExports.status === "ready" ? "ready" : "needs-work",
+      evidence: `${trainingExports.targets.filter((target) => target.ready).length}/${trainingExports.targets.length} export target(s) are ready.`,
+      nextAction: trainingExports.targets.find((target) => !target.ready)?.detail || trainingExports.notes[1],
+      target: "training-exports",
+    },
+    {
+      id: "learning-explanation",
+      label: "Plain-English Learning",
+      score: learningExplanation.score,
+      status: learningExplanation.status === "clear" ? "ready" : learningExplanation.status === "empty" ? "needs-work" : "active",
+      evidence: learningExplanation.plainEnglish,
+      nextAction: learningExplanation.cards.find((card) => card.score < 70)?.nextAction || learningExplanation.notes[0],
+      target: "explain",
+    },
+  ];
+  const score = boundedProductScore(items.reduce((sum, item) => sum + item.score, 0) / Math.max(1, items.length));
+  const blockers = items.filter((item) => item.status === "blocked").map((item) => `${item.label}: ${item.nextAction}`);
+  const next = items.find((item) => item.status === "blocked") || items.find((item) => item.status === "needs-work") || items.find((item) => item.status === "active") || items[0];
+  return {
+    score,
+    status: blockers.length ? "blocked" : items.every((item) => item.status === "ready") ? "ready" : "in-progress",
+    headline: "Prompt Atelier Product OS",
+    items,
+    nextAction: `${next.label}: ${next.nextAction}`,
+    blockers,
+    summary: [
+      `${items.filter((item) => item.status === "ready").length}/${items.length} product upgrade(s) are ready.`,
+      "This operating layer unifies command center, dataset governance, generator quality, proof evidence, accessibility QA, public demo, regression history, exports, and learning explanations.",
     ],
   };
 }

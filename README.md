@@ -65,6 +65,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - CLI automation for hosted API deploy checks, proof batch runs, result-gallery hydration, and supervised/preference/repair/failure training dataset exports
 - Proof seeding runway, preference review deck, generator brief checklist, public proof checklist, regression timeline export, and credential-boundary audit panels
 - CLI automation for offline proof seeding, regression timeline artifacts, and credential-boundary reports that do not change provider keys or deploy secrets
+- Product OS layer that unifies command center, dataset inbox, generator modes, proof gallery, accessibility QA, demo polish, regression history, exports, and plain-English learning explanations
 
 ## Development
 
@@ -181,6 +182,7 @@ The Train tab now starts with:
 27. A Learning Machine control plane that ties the next product layer together: autonomous proof orchestration, Prompt Generator v3 mode patches, a scaled 60+ case benchmark harness, plain-English explanations, public demo polish, hosted Pages smoke, and real training-format exports.
 28. A Next Product Layer panel and CLI lane that makes deploy checks, autonomous proof batches, preference/repair exports, generator mode tests, gallery hydration, and regression dashboards repeatable from both the Train tab and terminal.
 29. A proof-seeding and operator-proof layer that creates offline or hosted proof queues, speeds pairwise preference review, checks generator brief completeness, exports regression timeline evidence, and audits credential boundaries without changing provider keys.
+30. A Product OS layer that turns the major product upgrades into one scored operating surface: command center, dataset inbox, generator, proof gallery, accessibility QA, public demo, regression dashboard, export packs, and learning explanations.
 
 The tightest improvement cycle is:
 

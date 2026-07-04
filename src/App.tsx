@@ -71,6 +71,7 @@ import {
   buildPromptLineage,
   buildPromptMemoryExport,
   buildPromptBattle,
+  buildPromptProductOsReport,
   buildPromptCandidateTournament,
   buildPromptEditorGuidance,
   buildPromptQualityDnaReport,
@@ -144,6 +145,7 @@ import {
   buildTrainingExportReadinessReport,
   buildResultGalleryHydrationProductReport,
   buildRegressionDashboardV2ProductReport,
+  buildAccessibilityQaScoreReport,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
   buildNarrativePolishReport,
@@ -198,6 +200,7 @@ import {
   slugify,
   titleFromPrompt,
   type AllInRunwayReport,
+  type AccessibilityQaScoreReport,
   type AutonomousProofLoopReport,
   type ArchetypeMixOptions,
   type ArchetypeCluster,
@@ -301,6 +304,7 @@ import {
   type PromptLineageNode,
   type ProofArtifactStorageReport,
   type ProductCommandCenterReport,
+  type PromptProductOsReport,
   type PromptToProofWorkflowReport,
   type PromptCritiqueRepairReport,
   type PromptGeneratorV2Report,
@@ -2985,6 +2989,16 @@ export default function App() {
       }),
     [goldenBenchmarkHarness, leakageGuard, promptGeneratorV2],
   );
+  const accessibilityQaScore = useMemo(
+    () =>
+      buildAccessibilityQaScoreReport({
+        generator: promptGeneratorV2,
+        qualityGate: qualityRegressionGate,
+        screenshotQa,
+        visualQa,
+      }),
+    [promptGeneratorV2, qualityRegressionGate, screenshotQa, visualQa],
+  );
   const learnerAnswer = useMemo(
     () => answerLearnerQuestion(learnerQuestion, profile, patternExtraction, archetypePromptPacks),
     [archetypePromptPacks, learnerQuestion, patternExtraction, profile],
@@ -3178,6 +3192,8 @@ export default function App() {
     () =>
       buildHostedCiSmokeReport({
         expectedHeadings: [
+          "Prompt Atelier Product OS",
+          "Accessibility and QA scoring",
           "All-in product runway",
           "Learning machine control plane",
           "Next product layer",
@@ -3301,6 +3317,31 @@ export default function App() {
       generatorModeTestProduct,
       hostedApiDeploymentProduct,
       preferenceDatasetV2Product,
+      regressionDashboardV2Product,
+      resultGalleryHydrationProduct,
+      trainingExportReadiness,
+    ],
+  );
+  const productOs = useMemo(
+    () =>
+      buildPromptProductOsReport({
+        accessibilityQa: accessibilityQaScore,
+        commandCenter: productCommandCenter,
+        datasetInbox,
+        generator: generatorV3,
+        learningExplanation,
+        publicDemo: publicDemoPolish,
+        regressionDashboard: regressionDashboardV2Product,
+        resultGallery: resultGalleryHydrationProduct,
+        trainingExports: trainingExportReadiness,
+      }),
+    [
+      accessibilityQaScore,
+      datasetInbox,
+      generatorV3,
+      learningExplanation,
+      productCommandCenter,
+      publicDemoPolish,
       regressionDashboardV2Product,
       resultGalleryHydrationProduct,
       trainingExportReadiness,
@@ -7237,6 +7278,8 @@ export default function App() {
               calibrationProduct={calibrationProduct}
               hostedReadinessProduct={hostedReadinessProduct}
               qualityRegressionGate={qualityRegressionGate}
+              accessibilityQaScore={accessibilityQaScore}
+              productOs={productOs}
               productCommandCenter={productCommandCenter}
               allInRunway={allInRunway}
               learningMachine={learningMachine}
@@ -8445,6 +8488,8 @@ function TrainView({
   calibrationProduct,
   hostedReadinessProduct,
   qualityRegressionGate,
+  accessibilityQaScore,
+  productOs,
   productCommandCenter,
   allInRunway,
   learningMachine,
@@ -8774,6 +8819,8 @@ function TrainView({
   calibrationProduct: CalibrationProductReport;
   hostedReadinessProduct: HostedReadinessProductReport;
   qualityRegressionGate: QualityRegressionGateReport;
+  accessibilityQaScore: AccessibilityQaScoreReport;
+  productOs: PromptProductOsReport;
   productCommandCenter: ProductCommandCenterReport;
   allInRunway: AllInRunwayReport;
   learningMachine: LearningMachineReport;
@@ -9007,6 +9054,7 @@ function TrainView({
 }) {
   const [sectionQuery, setSectionQuery] = useState("");
   const trainSections = [
+    { id: "product-os", label: "Product OS" },
     { id: "workflow", label: "Workflow" },
     { id: "machine", label: "Learning machine" },
     { id: "next-layer", label: "Next layer" },
@@ -9037,6 +9085,7 @@ function TrainView({
     { id: "prove", label: "Prove" },
     { id: "calibrate", label: "Calibrate" },
     { id: "hosted", label: "Hosted" },
+    { id: "qa-score", label: "QA score" },
     { id: "quality", label: "Quality" },
     { id: "patterns", label: "Patterns" },
     { id: "improve", label: "Improve" },
@@ -9080,6 +9129,10 @@ function TrainView({
         setQuery={setSectionQuery}
         onSelect={scrollToTrainSection}
       />
+
+      <PromptProductOsPanel report={productOs} onSelect={scrollToTrainSection} />
+
+      <AccessibilityQaScorePanel report={accessibilityQaScore} onSelect={scrollToTrainSection} />
 
       <ProductCommandCenterPanel report={productCommandCenter} onSelect={scrollToTrainSection} />
 
@@ -10288,6 +10341,89 @@ function MeasuredQualitySprintPanel({ report }: { report: MeasuredQualitySprintR
         ))}
       </div>
       <FeedbackList title="Sprint notes" items={report.notes} empty="No sprint notes." />
+    </section>
+  );
+}
+
+function PromptProductOsPanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: PromptProductOsReport;
+}) {
+  return (
+    <section className="panel lab-panel product-os-panel" data-readiness={report.status} data-train-section="product-os">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>{report.headline}</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta">
+        One operating layer for the full product path: command center, dataset inbox, generator, proof gallery, accessibility QA, demo polish, regression, exports, and explanations.
+      </p>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.items.filter((item) => item.status === "ready").length}/${report.items.length}`} label="Ready upgrades" />
+        <Metric value={formatNumber(report.blockers.length)} label="Blockers" />
+        <Metric value={formatNumber(report.score)} label="Product score" />
+      </div>
+      <div className="safe-check-grid product-os-grid">
+        {report.items.map((item) => (
+          <button
+            className="safe-check product-command-card"
+            key={item.id}
+            type="button"
+            data-ready={item.status === "ready" ? "true" : "false"}
+            onClick={() => onSelect(item.target)}
+          >
+            <strong>{item.score}</strong>
+            <span>{item.label}</span>
+            <p>{item.evidence}</p>
+            <small>{item.nextAction}</small>
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
+      <FeedbackList title="Product OS summary" items={report.summary} empty="No product OS summary." />
+      {report.blockers.length ? <FeedbackList title="Product OS blockers" items={report.blockers} empty="No blockers." /> : null}
+    </section>
+  );
+}
+
+function AccessibilityQaScorePanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: AccessibilityQaScoreReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="qa-score">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Accessibility and QA scoring</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onSelect("quality")}>
+            Open quality gate
+          </button>
+          <ScoreRing score={report.score} label={report.status} />
+        </div>
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <article className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : check.blocking ? "Blocker" : "Watch"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+            {!check.ready ? <small>{check.fix}</small> : null}
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Accessibility QA notes" items={report.notes} empty="No accessibility QA notes." />
     </section>
   );
 }

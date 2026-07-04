@@ -5,6 +5,7 @@ import {
   analyzeCorpus,
   analyzeArchetypeClusters,
   buildAllInRunwayReport,
+  buildAccessibilityQaScoreReport,
   buildAutonomousProofBatchProductReport,
   buildAutonomousProofLoopReport,
   buildGeneratorPresets,
@@ -67,6 +68,7 @@ import {
   buildPreferenceTrainingReport,
   buildPromptMemoryDiffReport,
   buildModelEvaluationCacheReport,
+  buildPromptProductOsReport,
   buildPromptCandidateTournament,
   buildPromptCritiqueRepairReport,
   buildPromptCoachReport,
@@ -988,6 +990,14 @@ const qualityRegressionGate = buildQualityRegressionGateReport({
 assert.ok(qualityRegressionGate.rows.some((row) => row.label === "Verification contract" && row.ready), "Quality gate should check generator verification contract.");
 assert.notEqual(qualityRegressionGate.status, "fail", "Quality gate should pass blocking checks for clean fixtures.");
 
+const accessibilityQaScore = buildAccessibilityQaScoreReport({
+  generator: promptGeneratorV2,
+  qualityGate: qualityRegressionGate,
+  screenshotQa: screenshotSet,
+});
+assert.equal(accessibilityQaScore.checks.length, 7, "Accessibility QA should expose keyboard, motion, text, media, responsive, proof, and visual checks.");
+assert.ok(["ready", "watch", "blocked"].includes(accessibilityQaScore.status), "Accessibility QA should classify readiness.");
+
 const productCommandCenter = buildProductCommandCenterReport({
   calibration: calibrationProduct,
   curation,
@@ -1153,7 +1163,16 @@ const publicDemoPolish = buildPublicDemoPolishReport({
 assert.ok(publicDemoPolish.checks.some((check) => check.label === "Result gallery" && check.ready), "Public demo polish should require gallery proof.");
 
 const hostedCiSmoke = buildHostedCiSmokeReport({
-  expectedHeadings: ["All-in product runway", "Learning machine control plane", "Next product layer", "Autonomous proof loop", "Prompt generator v3", "Training export readiness"],
+  expectedHeadings: [
+    "Prompt Atelier Product OS",
+    "Accessibility and QA scoring",
+    "All-in product runway",
+    "Learning machine control plane",
+    "Next product layer",
+    "Autonomous proof loop",
+    "Prompt generator v3",
+    "Training export readiness",
+  ],
   hasWorkflow: true,
   publicUrl: "https://zakiefer.github.io/prompt-atelier/",
 });
@@ -1249,6 +1268,21 @@ assert.equal(nextProductLayer.items.length, 7, "Next product layer should track 
 assert.ok(nextProductLayer.items.every((item) => item.command), "Every next product layer lane should include a runnable command.");
 assert.ok(nextProductLayer.summary.some((item) => /next-layer/i.test(item)), "Next product layer should summarize automation readiness.");
 
+const productOs = buildPromptProductOsReport({
+  accessibilityQa: accessibilityQaScore,
+  commandCenter: productCommandCenter,
+  datasetInbox,
+  generator: generatorV3,
+  learningExplanation,
+  publicDemo: publicDemoPolish,
+  regressionDashboard: regressionDashboardV2Product,
+  resultGallery: resultGalleryHydrationProduct,
+  trainingExports: trainingExportReadiness,
+});
+assert.equal(productOs.items.length, 9, "Product OS should track all nine requested upgrades.");
+assert.ok(productOs.summary.some((item) => /command center, dataset governance, generator quality/i.test(item)), "Product OS should summarize the complete product surface.");
+assert.ok(productOs.nextAction.length > 0, "Product OS should choose the next product action.");
+
 const proofSeedingRunway = buildProofSeedingRunwayReport({
   exampleCount: examples.length,
   hostedWorker: hostedWorkerOps,
@@ -1298,4 +1332,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 274, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 279, score: score.score, snapshot: snapshot.label }, null, 2));

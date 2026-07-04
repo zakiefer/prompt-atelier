@@ -25,6 +25,8 @@ if (shouldOpenTrain) {
   targetUrl.searchParams.set("tab", "train");
 }
 const expectedHeadings = [
+  "Prompt Atelier Product OS",
+  "Accessibility and QA scoring",
   "All-in product runway",
   "Learning machine control plane",
   "Next product layer",

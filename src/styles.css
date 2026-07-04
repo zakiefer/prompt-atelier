@@ -1544,6 +1544,14 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.product-os-panel {
+  border-color: rgba(31, 122, 104, 0.22);
+}
+
+.product-os-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .mode-launcher-grid,
 .simple-front-door-grid {
   display: grid;
@@ -3584,6 +3592,7 @@ button.preset-card {
   .compare-grid,
   .qa-grid,
   .command-center-grid,
+  .product-os-grid,
   .backend-grid,
   .compare-selectors,
   .memory-section-grid,
