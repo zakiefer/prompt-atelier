@@ -1,6 +1,6 @@
 # Hosted Prompt Atelier API
 
-Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, closed-loop trainer results, benchmark runs, Claude health checks, prompt comparisons, screenshot-generated prompts, workspace packs, proof-loop runs, screenshot judge results, mutation tournaments, and backups across browsers.
+Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, closed-loop trainer results, benchmark runs, Claude health checks, prompt comparisons, screenshot-generated prompts, workspace packs, proof-loop runs, screenshot judge results, mutation tournaments, guided training runs, cached model evaluations, corpus intelligence runs, benchmark v2 runs, evaluation artifacts, hosted setup checks, and backups across browsers.
 
 ## Render Blueprint
 
@@ -45,6 +45,13 @@ The hosted API advertises all durable collection keys from `/api/health` and sto
 - `proofLearningRuns`: prompt -> build queue -> screenshot/result score -> label learning records.
 - `screenshotJudgeRuns`: Claude/local visual judge results that turn screenshots into repair patches.
 - `mutationTournamentRuns`: variant tournament histories and winners before spending another build run.
+- `trainingRuns`: durable guided training records with inputs, scores, benchmark delta, memory diff, artifacts, errors, and notes.
+- `modelEvaluationCache`: redacted cached model/local agreement rows keyed by prompt, memory, provider, and schema version.
+- `promptCandidateRuns`: saved candidate tournaments from generated prompt variants and mutation winners.
+- `corpusClusterRuns`: corpus intelligence snapshots with clusters, gaps, weak examples, suggestions, and quarantine hints.
+- `benchmarkV2Runs`: deterministic benchmark v2 snapshots with fixture rows, missing traits, deltas, and suggested fixes.
+- `evaluationArtifacts`: markdown/JSON proof packages for selected prompts, memory influences, quality gates, and next mutations.
+- `hostedSetupChecks`: safe-to-train readiness runs covering API, auth, SQLite, model route, redaction, queue, and snapshot posture.
 - `healthChecks`: lightweight write probes used by the hosted readiness check.
 
 Screenshot uploads are sent to `/api/model/evaluate` as data URL image blocks only when the API route has access to the model key. Do not put image-generation or Claude keys in browser-visible environment variables.
@@ -69,3 +76,16 @@ The export studio also includes model-specific presets:
 - model evaluation schema JSON
 
 Use Train from this corpus after curation is clean. It locks Golden Dataset v1, runs the canonical benchmark suite, calibrates DNA, and exports the training pack from the current corpus.
+
+## Guided Training Product Routes
+
+The top of the Train tab can run without a model key, then enrich through API routes when the API is configured:
+
+- `POST /api/training/run`: appends a guided training run and returns `{ trainingRun, collections.trainingRuns }`.
+- `GET /api/training/runs`: returns stored guided training runs.
+- `POST /api/model/evaluate-cached`: redacts prompt/model payloads, checks the cache, and appends a schema-versioned cache row when needed.
+- `POST /api/corpus/analyze`: creates a deterministic corpus intelligence run from supplied examples.
+- `POST /api/benchmark/v2`: creates a deterministic benchmark v2 run from supplied examples.
+- `POST /api/artifact/create`: creates a markdown/JSON evaluation artifact for the selected prompt.
+
+The browser always writes a local deterministic fallback before trying these routes. Hosted deployments should still set `PROMPT_LAB_API_TOKEN`, `PROMPT_LAB_DATA_DIR`, and `PROMPT_LAB_ALLOWED_ORIGIN` before treating the setup as safe to train.

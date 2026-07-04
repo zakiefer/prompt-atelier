@@ -1659,6 +1659,107 @@ button:disabled {
   margin: 12px 0;
 }
 
+.guided-workflow-grid,
+.candidate-grid,
+.corpus-intelligence-grid,
+.benchmark-v2-grid,
+.artifact-preview-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.guided-workflow-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.candidate-grid,
+.corpus-intelligence-grid,
+.benchmark-v2-grid {
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+}
+
+.artifact-preview-grid {
+  grid-template-columns: minmax(0, 1.15fr) minmax(260px, 0.85fr);
+}
+
+.guided-stage-card,
+.candidate-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.guided-stage-card {
+  min-height: 148px;
+}
+
+.guided-stage-card span {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--teal);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+  justify-self: start;
+  min-width: 32px;
+}
+
+.guided-stage-card strong,
+.candidate-card strong {
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.guided-stage-card em,
+.candidate-card span {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-style: normal;
+  font-weight: 900;
+  height: 30px;
+  justify-content: center;
+  justify-self: start;
+  min-width: 42px;
+  padding: 0 10px;
+}
+
+.guided-stage-card p,
+.candidate-card p,
+.corpus-intelligence-grid p,
+.benchmark-v2-grid p {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.guided-stage-card[data-tone="strong"] {
+  border-color: rgba(31, 122, 104, 0.24);
+}
+
+.guided-stage-card[data-tone="mixed"] {
+  border-color: rgba(185, 130, 42, 0.24);
+}
+
+.guided-stage-card[data-tone="weak"] {
+  border-color: rgba(164, 72, 63, 0.22);
+}
+
+.evaluation-artifacts-panel .mini-output {
+  max-height: 360px;
+  min-height: 260px;
+}
+
 .nested-train-columns {
   margin-top: 12px;
 }
@@ -3256,6 +3357,11 @@ button.preset-card {
   .proof-loop-grid,
   .evolution-track,
   .compact-scoreboard,
+  .guided-workflow-grid,
+  .candidate-grid,
+  .corpus-intelligence-grid,
+  .benchmark-v2-grid,
+  .artifact-preview-grid,
   .mode-flow-grid,
   .train-accordion-grid,
   .proof-progress-track,

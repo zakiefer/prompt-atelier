@@ -5,7 +5,10 @@ import {
   analyzeCorpus,
   analyzeArchetypeClusters,
   buildGeneratorPresets,
+  buildBenchmarkV2Report,
   buildCodexBuildPack,
+  buildCorpusIntelligenceReport,
+  buildEvaluationArtifact,
   buildEvaluationHistoryReport,
   buildExperimentLeaderboard,
   buildExportPresets,
@@ -18,11 +21,15 @@ import {
   buildPatternDashboard,
   buildProjectExportPack,
   buildPromptMemoryDiffReport,
+  buildModelEvaluationCacheReport,
+  buildPromptCandidateTournament,
   buildPromptCoachReport,
   buildQueueProgressReport,
   buildQualityGateReport,
   buildReusableMemoryPack,
   buildSourceSafetyReport,
+  buildSafeToTrainReport,
+  buildTrainingRunSummary,
   buildVisualRegressionReport,
   answerLearnerQuestion,
   comparePromptImprovement,
@@ -46,6 +53,7 @@ import {
   type OutcomeRecord,
   type PromptExample,
   type ScreenshotRecord,
+  type TrainingRunRecord,
 } from "../src/promptEngine";
 
 function readCuratedSeedPrompts() {
@@ -409,4 +417,86 @@ const memoryDiff = buildPromptMemoryDiffReport({
 assert.ok(memoryDiff.score > 0, "Memory diff should score current memory.");
 assert.ok(memoryDiff.summary.length >= 3, "Memory diff should summarize changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 72, score: score.score, snapshot: snapshot.label }, null, 2));
+const trainingRun: TrainingRunRecord = {
+  id: "training-run-test",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  status: "complete",
+  stage: "complete",
+  source: "corpus",
+  inputCounts: { prompts: examples.length, outcomes: outcomes.length, screenshots: screenshots.length },
+  scores: { starting: 62, final: 84, benchmark: 78, memory: 82, proof: 75 },
+  benchmarkDelta: 9,
+  memoryDiff,
+  artifacts: [{ id: "artifact-test", title: "Artifact", kind: "json", detail: "Created" }],
+  errors: [],
+  notes: ["Training run completed."],
+};
+const trainingSummary = buildTrainingRunSummary([trainingRun]);
+assert.equal(trainingSummary.latest?.id, "training-run-test", "Training summary should expose the latest run.");
+assert.equal(trainingSummary.score, 84, "Training summary should use the latest final score.");
+
+const cacheReport = buildModelEvaluationCacheReport([
+  {
+    id: "cache-1",
+    promptHash: "p1",
+    memoryHash: "m1",
+    provider: "local",
+    schemaVersion: "prompt-atelier.model-evaluation.v1",
+    score: 82,
+    localScore: 78,
+    delta: 4,
+    readiness: "ready",
+    findings: ["specific"],
+    recommendations: ["ship"],
+    createdAt: new Date().toISOString(),
+  },
+]);
+assert.equal(cacheReport.items[0].agreement, "agrees", "Cache report should classify model/local agreement.");
+
+const candidateReport = buildPromptCandidateTournament({
+  candidates: learnedVariants.slice(0, 3),
+  examples,
+  promptMemory: {
+    markdown: "# Memory\n- exact assets win",
+    json: "{}",
+    sections: [{ title: "Rules", items: ["Exact assets win"] }],
+  },
+});
+assert.ok(candidateReport.winner.prompt.length > 100, "Candidate tournament should choose a substantial winning prompt.");
+assert.ok(candidateReport.finalPrompt.length > 100, "Candidate tournament should produce a final prompt.");
+
+const corpusIntelligence = buildCorpusIntelligenceReport(examples, outcomes);
+assert.ok(corpusIntelligence.clusters.length > 0, "Corpus intelligence should find clusters.");
+assert.ok(corpusIntelligence.suggestions.length > 0, "Corpus intelligence should suggest what to add next.");
+
+const benchmarkV2 = buildBenchmarkV2Report({ fixtures: BENCHMARK_FIXTURES, runs: [], examples });
+assert.ok(benchmarkV2.rows.length >= BENCHMARK_FIXTURES.length, "Benchmark v2 should cover canonical fixtures.");
+assert.ok(benchmarkV2.summary.length >= 3, "Benchmark v2 should summarize regressions and gaps.");
+
+const safeToTrain = buildSafeToTrainReport({
+  apiOnline: true,
+  authRequired: true,
+  sqliteWritable: true,
+  modelRouteWorking: true,
+  redactionActive: true,
+  queuePostureKnown: true,
+  snapshotWorks: true,
+});
+assert.equal(safeToTrain.safe, true, "Safe-to-train report should pass when all checks are ready.");
+
+const artifact = buildEvaluationArtifact({
+  prompt: examples[0],
+  promptMemory: {
+    markdown: "# Memory\n- exact assets win",
+    json: "{}",
+    sections: [{ title: "Rules", items: ["Exact assets win"] }],
+  },
+  qualityGate,
+  sourceExamples: examples.slice(0, 3),
+  visualRegression,
+});
+assert.ok(artifact.markdown.includes("Evaluation Artifact"), "Evaluation artifact should be markdown-exportable.");
+assert.ok(JSON.parse(artifact.json), "Evaluation artifact JSON should parse.");
+
+console.log(JSON.stringify({ ok: true, assertions: 86, score: score.score, snapshot: snapshot.label }, null, 2));

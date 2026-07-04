@@ -3,6 +3,7 @@ dist/
 output/
 data/
 .playwright-cli/
+.worktrees/
 qa-artifacts/
 *.tsbuildinfo
 vite.config.js

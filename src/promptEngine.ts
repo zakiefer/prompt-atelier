@@ -890,6 +890,100 @@ export type PromptMemoryDiffReport = {
   summary: string[];
 };
 
+export type TrainingRunStatus = "queued" | "running" | "complete" | "failed" | "needs-review";
+export type TrainingRunStage = "queued" | "curating" | "evaluating" | "benchmarking" | "generating" | "proving" | "exporting" | "complete" | "failed";
+
+export type TrainingRunRecord = {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  status: TrainingRunStatus;
+  stage: TrainingRunStage;
+  source: "corpus" | "selected-prompt" | "benchmark" | "generated-candidates";
+  inputCounts: { prompts: number; outcomes: number; screenshots: number };
+  scores: { starting: number; final: number; benchmark: number; memory: number; proof: number };
+  benchmarkDelta: number;
+  memoryDiff: PromptMemoryDiffReport;
+  artifacts: { id: string; title: string; kind: "markdown" | "json" | "jsonl"; detail: string }[];
+  errors: string[];
+  notes: string[];
+};
+
+export type ModelEvaluationCacheRecord = {
+  id: string;
+  promptHash: string;
+  memoryHash: string;
+  provider: string;
+  schemaVersion: string;
+  score: number;
+  localScore: number;
+  delta: number;
+  readiness: string;
+  findings: string[];
+  recommendations: string[];
+  createdAt: string;
+};
+
+export type ModelEvaluationCacheReport = {
+  items: (ModelEvaluationCacheRecord & { agreement: "agrees" | "model-stricter" | "local-stricter" | "divergent" })[];
+  cacheHitRate: number;
+  averageDelta: number;
+  notes: string[];
+};
+
+export type PromptCandidateTournamentReport = {
+  winner: PromptMutation;
+  variants: PromptMutation[];
+  mutations: PromptMutation[];
+  explanation: string[];
+  finalPrompt: string;
+};
+
+export type CorpusIntelligenceReport = {
+  score: number;
+  clusters: { label: string; count: number; examples: string[] }[];
+  gaps: { label: string; severity: number; detail: string }[];
+  strongFamilies: string[];
+  weakExamples: { id: string; title: string; score: number; reason: string }[];
+  suggestions: string[];
+  quarantineSuggestions: string[];
+};
+
+export type BenchmarkV2Report = {
+  score: number;
+  summary: string[];
+  rows: {
+    fixtureId: string;
+    title: string;
+    expectedTraits: string[];
+    missingTraits: string[];
+    localScore: number;
+    modelScore: number;
+    delta: number;
+    regressionExplanation: string;
+    suggestedFix: string;
+  }[];
+};
+
+export type SafeToTrainReport = {
+  score: number;
+  safe: boolean;
+  checks: { key: string; label: string; ready: boolean; fix: string }[];
+  blocking: string[];
+  environmentChecklist: string[];
+};
+
+export type EvaluationArtifact = {
+  id: string;
+  title: string;
+  markdown: string;
+  json: string;
+  influences: string[];
+  rulesUsed: string[];
+  proofStatus: string;
+  nextMutation: string;
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -4519,6 +4613,251 @@ export function buildPromptMemoryDiffReport({
       addedSections.length ? `${addedSections.length} section(s) are new since the previous memory snapshot.` : "No newly added memory sections detected.",
       staleSections.length ? `${staleSections.length} thin section(s) need more proof-backed rules.` : "All sections have enough rules to be useful.",
     ],
+  };
+}
+
+export function buildTrainingRunSummary(runs: TrainingRunRecord[]) {
+  const latest = runs[0];
+  const score = latest?.scores.final ?? 0;
+  return {
+    latest,
+    score,
+    status: latest?.status ?? "queued" as TrainingRunStatus,
+    runs: runs.slice(0, 8),
+    notes: latest ? latest.notes : ["No training run has been recorded yet."],
+  };
+}
+
+function modelAgreement(delta: number): ModelEvaluationCacheReport["items"][number]["agreement"] {
+  const absolute = Math.abs(delta);
+  if (absolute <= 7) return "agrees";
+  if (absolute >= 22) return "divergent";
+  return delta < 0 ? "model-stricter" : "local-stricter";
+}
+
+export function buildModelEvaluationCacheReport(records: ModelEvaluationCacheRecord[]): ModelEvaluationCacheReport {
+  const items = records
+    .slice(0, 40)
+    .map((record) => ({ ...record, agreement: modelAgreement(record.delta || record.score - record.localScore) }));
+  const averageDelta = Math.round(items.reduce((sum, item) => sum + Math.abs(item.delta || item.score - item.localScore), 0) / Math.max(1, items.length));
+  return {
+    items,
+    cacheHitRate: records.length ? 100 : 0,
+    averageDelta,
+    notes: [
+      records.length ? `${records.length} cached model evaluation(s) are available.` : "No cached model evaluations yet.",
+      averageDelta <= 7 ? "Model and local DNA scoring are mostly aligned." : "Review model/local disagreement before trusting automated promotion.",
+    ],
+  };
+}
+
+export function buildPromptCandidateTournament({
+  candidates,
+  examples,
+  promptMemory,
+}: {
+  candidates: { id: string; title: string; prompt: string; score?: number; bestFor?: string; intent?: string }[];
+  examples: PromptExample[];
+  promptMemory: PromptMemoryExport;
+}): PromptCandidateTournamentReport {
+  const fallbackPrompt = examples[0]?.text || promptMemory.markdown || "Build a high-fidelity website prompt with exact assets, responsive rules, and verification.";
+  const variants: PromptMutation[] = (candidates.length ? candidates : [
+    { id: "candidate-fallback", title: "Corpus-backed candidate", prompt: fallbackPrompt, score: evaluatePrompt(fallbackPrompt).score, intent: "fallback" },
+  ])
+    .map((candidate, index) => {
+      const prompt = candidate.prompt || fallbackPrompt;
+      const score = candidate.score ?? evaluatePrompt(prompt).score;
+      return {
+        id: candidate.id || `candidate-${index + 1}`,
+        title: candidate.title || `Candidate ${index + 1}`,
+        intent: candidate.intent || candidate.bestFor || "Generated from corpus memory",
+        prompt,
+        score,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+  const winner = variants[0];
+  const mutations = variants.slice(1, 4).map((variant, index) => ({
+    ...variant,
+    id: `${variant.id}-mutation`,
+    title: `${variant.title} mutation`,
+    intent: `Repair weak signals from ${variant.title}`,
+    prompt: improvePromptWithLearning(variant.prompt, analyzeCorpus(examples), [], undefined),
+    score: Math.min(100, variant.score + 6 + index),
+  }));
+  return {
+    winner,
+    variants,
+    mutations,
+    explanation: [
+      `${winner.title} wins with score ${winner.score}.`,
+      winner.prompt.includes("video") || winner.prompt.includes("asset") ? "It preserves concrete asset and implementation signals." : "It has the strongest local quality score in the candidate set.",
+      `${promptMemory.sections.length} memory section(s) were available for candidate guidance.`,
+    ],
+    finalPrompt: mutations[0]?.score > winner.score ? mutations[0].prompt : winner.prompt,
+  };
+}
+
+export function buildCorpusIntelligenceReport(examples: PromptExample[], outcomes: OutcomeRecord[]): CorpusIntelligenceReport {
+  const clusters = analyzeArchetypeClusters(examples).map((cluster) => ({
+    label: cluster.label,
+    count: cluster.count,
+    examples: cluster.examples,
+  }));
+  const text = examples.map((example) => `${example.title}\n${example.text}`).join("\n").toLowerCase();
+  const gaps = BENCHMARK_FIXTURES
+    .map((fixture) => {
+      const missingTraits = fixture.requiredSignals.filter((signal) => !text.includes(signal.toLowerCase().split(/\s+/)[0]));
+      return {
+        label: fixture.title,
+        severity: missingTraits.length,
+        detail: missingTraits.length ? `Needs more examples with ${missingTraits.join(", ")}.` : "Covered by current corpus.",
+      };
+    })
+    .filter((gap) => gap.severity > 0)
+    .sort((a, b) => b.severity - a.severity);
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const scored = examples
+    .map((example) => ({ example, score: evaluatePrompt(example.text).score, outcome: outcomeMap.get(example.id) }))
+    .sort((a, b) => b.score - a.score);
+  const weakExamples = scored
+    .filter((item) => item.score < 55 || item.outcome?.status === "avoid")
+    .slice(0, 8)
+    .map((item) => ({ id: item.example.id, title: item.example.title, score: item.score, reason: item.outcome?.notes || "Low local prompt DNA score." }));
+  return {
+    score: Math.max(0, Math.min(100, 100 - gaps.length * 5 - weakExamples.length * 3 + clusters.length * 2)),
+    clusters,
+    gaps,
+    strongFamilies: clusters.slice(0, 5).map((cluster) => `${cluster.label}: ${cluster.count}`),
+    weakExamples,
+    suggestions: gaps.slice(0, 5).map((gap) => `Add more ${gap.label.toLowerCase()} prompts. ${gap.detail}`),
+    quarantineSuggestions: weakExamples.map((item) => `${item.title}: ${item.reason}`),
+  };
+}
+
+export function buildBenchmarkV2Report({
+  examples,
+  fixtures = BENCHMARK_FIXTURES,
+  runs = [],
+}: {
+  examples: PromptExample[];
+  fixtures?: typeof BENCHMARK_FIXTURES;
+  runs?: { rows?: { briefId?: string; score?: number }[] }[];
+}): BenchmarkV2Report {
+  const corpus = examples.map((example) => example.text.toLowerCase()).join("\n");
+  const latestRows = runs[0]?.rows || [];
+  const previousRows = runs[1]?.rows || [];
+  const rows = fixtures.map((fixture) => {
+    const expectedTraits = [...fixture.requiredSignals];
+    const missingTraits = expectedTraits.filter((trait) => !corpus.includes(trait.toLowerCase().split(/\s+/)[0]));
+    const localScore = Math.max(30, Math.min(100, 100 - missingTraits.length * 12));
+    const modelScore = latestRows.find((row) => row.briefId === fixture.id)?.score ?? localScore;
+    const previousScore = previousRows.find((row) => row.briefId === fixture.id)?.score ?? modelScore;
+    const delta = modelScore - previousScore;
+    return {
+      fixtureId: fixture.id,
+      title: fixture.title,
+      expectedTraits,
+      missingTraits,
+      localScore,
+      modelScore,
+      delta,
+      regressionExplanation: delta < 0 ? `${fixture.title} regressed by ${Math.abs(delta)} point(s).` : delta > 0 ? `${fixture.title} improved by ${delta} point(s).` : `${fixture.title} is stable.`,
+      suggestedFix: missingTraits.length ? `Add benchmark examples with ${missingTraits.join(", ")}.` : "Keep this fixture in the golden benchmark set.",
+    };
+  });
+  const score = Math.round(rows.reduce((sum, row) => sum + row.modelScore, 0) / Math.max(1, rows.length));
+  return {
+    score,
+    rows,
+    summary: [
+      `Benchmark v2 average is ${score}.`,
+      `${rows.filter((row) => row.delta < 0).length} fixture(s) regressed.`,
+      `${rows.filter((row) => row.missingTraits.length).length} fixture(s) have missing expected traits.`,
+    ],
+  };
+}
+
+export function buildSafeToTrainReport(input: {
+  apiOnline?: boolean;
+  authRequired?: boolean;
+  sqliteWritable?: boolean;
+  modelRouteWorking?: boolean;
+  redactionActive?: boolean;
+  queuePostureKnown?: boolean;
+  snapshotWorks?: boolean;
+}): SafeToTrainReport {
+  const checks = [
+    { key: "api", label: "API reachable", ready: Boolean(input.apiOnline), fix: "Run npm run api or set the hosted API base." },
+    { key: "auth", label: "Hosted auth configured", ready: Boolean(input.authRequired), fix: "Set PROMPT_LAB_API_TOKEN before hosting." },
+    { key: "sqlite", label: "SQLite writable", ready: Boolean(input.sqliteWritable), fix: "Set PROMPT_LAB_DATA_DIR to a writable directory." },
+    { key: "model", label: "Model route schema v1", ready: Boolean(input.modelRouteWorking), fix: "Run Claude readiness or use local fallback mode." },
+    { key: "redaction", label: "Server redaction active", ready: Boolean(input.redactionActive), fix: "Use the Node API routes instead of storing raw secrets in browser state." },
+    { key: "queue", label: "Queue posture known", ready: Boolean(input.queuePostureKnown), fix: "Run or disable queue execution for this environment." },
+    { key: "snapshot", label: "Snapshot export works", ready: Boolean(input.snapshotWorks), fix: "Export a training snapshot before long training runs." },
+  ];
+  const score = Math.round((checks.filter((check) => check.ready).length / checks.length) * 100);
+  return {
+    score,
+    safe: score >= 80 && checks.filter((check) => !check.ready).length <= 1,
+    checks,
+    blocking: checks.filter((check) => !check.ready).map((check) => `${check.label}: ${check.fix}`),
+    environmentChecklist: [
+      "PROMPT_LAB_API_TOKEN is set for hosted mode.",
+      "PROMPT_LAB_DATA_DIR points to persistent storage.",
+      "ANTHROPIC_API_KEY stays server-side when Claude is enabled.",
+      "PROMPT_LAB_ALLOWED_ORIGIN matches the deployed frontend.",
+    ],
+  };
+}
+
+export function buildEvaluationArtifact({
+  prompt,
+  promptMemory,
+  qualityGate,
+  sourceExamples = [],
+  visualRegression,
+}: {
+  prompt: PromptExample;
+  promptMemory: PromptMemoryExport;
+  qualityGate: QualityGateReport;
+  sourceExamples?: PromptExample[];
+  visualRegression: VisualRegressionReport;
+}): EvaluationArtifact {
+  const influences = sourceExamples.slice(0, 5).map((example) => example.title);
+  const rulesUsed = promptMemory.sections.flatMap((section) => section.items.slice(0, 3).map((item) => `${section.title}: ${item}`)).slice(0, 12);
+  const proofStatus = visualRegression.score >= 80 ? "proof-ready" : visualRegression.score >= 55 ? "needs-more-proof" : "unproved";
+  const nextMutation = qualityGate.ready ? "Run proof and promote if screenshots stay clean." : qualityGate.blocking[0] || qualityGate.missing[0] || "Add exact assets, responsive states, and QA gates.";
+  const markdown = [
+    "# Evaluation Artifact",
+    "",
+    `## ${prompt.title}`,
+    "",
+    prompt.text,
+    "",
+    "## Scores",
+    `- Quality gate: ${qualityGate.score}`,
+    `- Visual proof: ${visualRegression.score}`,
+    `- Proof status: ${proofStatus}`,
+    "",
+    "## Influences",
+    ...influences.map((item) => `- ${item}`),
+    "",
+    "## Rules used",
+    ...rulesUsed.map((item) => `- ${item}`),
+    "",
+    "## Next mutation",
+    nextMutation,
+  ].join("\n");
+  return {
+    id: `artifact-${slugify(prompt.id || prompt.title)}-${Date.now()}`,
+    title: `${prompt.title} evaluation artifact`,
+    markdown,
+    json: JSON.stringify({ prompt, qualityGate, visualRegression, influences, rulesUsed, proofStatus, nextMutation }, null, 2),
+    influences,
+    rulesUsed,
+    proofStatus,
+    nextMutation,
   };
 }
 

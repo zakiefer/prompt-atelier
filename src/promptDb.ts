@@ -24,7 +24,14 @@ export type CollectionKey =
   | "workspacePackRuns"
   | "proofLearningRuns"
   | "screenshotJudgeRuns"
-  | "mutationTournamentRuns";
+  | "mutationTournamentRuns"
+  | "trainingRuns"
+  | "modelEvaluationCache"
+  | "promptCandidateRuns"
+  | "corpusClusterRuns"
+  | "benchmarkV2Runs"
+  | "evaluationArtifacts"
+  | "hostedSetupChecks";
 
 type StoredCollection<T> = {
   key: CollectionKey;

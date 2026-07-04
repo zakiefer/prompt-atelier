@@ -47,6 +47,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Structured prompt generator front door for brand, industry, audience, stack, assets, constraints, motion, and proof requirements
 - Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, OpenAI fine-tune JSONL, Claude project memory, Codex skill bundles, evaluator schema JSON, and Markdown packs
 - One-click full training export pack with golden dataset, JSONL, prompt memory, quality grader, benchmark trend, project boundary report, reusable memory pack, and Codex build pack
+- Guided AI training workflow with durable run history, cached model/local agreement, candidate prompt quality loops, corpus intelligence, benchmark v2, safe-to-train checks, and evaluation artifacts
 
 ## Development
 
@@ -115,6 +116,7 @@ The app runs at `http://127.0.0.1:5173` and the API runs at `http://127.0.0.1:87
 - Curation decisions and model batch evaluations are persisted as first-class collections.
 - Pairwise reviews are persisted as a first-class collection.
 - Proof-loop runs, screenshot judge runs, mutation tournaments, Claude health checks, prompt comparisons, screenshot prompts, and workspace packs are persisted as first-class collections.
+- Training runs, cached model evaluations, candidate loops, corpus intelligence runs, benchmark v2 runs, safe-to-train setup checks, and evaluation artifacts are persisted as first-class collections.
 
 ## Learning Loop
 
@@ -133,6 +135,7 @@ The Train tab now starts with:
 11. A structured generator front door and locked Golden Dataset v1 path for turning good examples into train/test JSONL.
 12. A production-hardening checklist, hosted brain connector, and Claude readiness panel covering API health, token posture, server-side model key visibility, restore points, dataset versions, and proof history.
 13. A collapsible training map, Train from this corpus button, queue progress ledger, memory diff, and visual proof gallery for operating the whole learner from one screen.
+14. A guided training product layer that records durable training runs, compares cached model judgment against local DNA, picks prompt candidates before spending build time, analyzes corpus gaps, runs benchmark v2, checks hosted safe-to-train posture, and packages evaluation artifacts.
 
 The tightest improvement cycle is:
 
@@ -149,6 +152,8 @@ Use the project isolation guard before running calibration or exporting training
 Use the one-click export pack when handing the learner to another agent or model. It bundles the locked dataset, JSONL rows, learned memory, benchmark trend, project boundary state, quality grader, reusable memory pack, and Codex build pack in one JSON artifact.
 
 Use the Train from this corpus button after curation looks clean. It locks the current golden dataset, runs the benchmark suite, calibrates DNA against outcomes, and exports the model-training pack. The API and export paths redact recognized API keys, bearer tokens, and generic secrets before they are persisted or logged.
+
+Use Run guided train when you want the product workflow rather than the expert ladder. It writes a training run immediately, then syncs to `/api/training/run` when the API is available. Cache eval uses `/api/model/evaluate-cached` without sending browser secrets. Analyze, Run v2, and Create artifact call `/api/corpus/analyze`, `/api/benchmark/v2`, and `/api/artifact/create` while keeping deterministic browser fallbacks.
 
 ## Prompt Corpus
 

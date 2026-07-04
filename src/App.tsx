@@ -34,16 +34,21 @@ import {
   auditPromptImportBatch,
   auditVisualPrompt,
   buildCodexSkill,
+  buildBenchmarkV2Report,
   buildCorpusCleaningReport,
+  buildCorpusIntelligenceReport,
+  buildEvaluationArtifact,
   buildEvaluationHistoryReport,
   buildExportPresets,
   buildFailureMemory,
+  buildModelEvaluationCacheReport,
   buildLocalEmbeddingIndex,
   buildOutcomeSummary,
   buildPromptPacks,
   buildPromptLineage,
   buildPromptMemoryExport,
   buildPromptBattle,
+  buildPromptCandidateTournament,
   buildGoldReviewReport,
   buildGeneratorPresets,
   buildExperimentLeaderboard,
@@ -62,7 +67,9 @@ import {
   buildQualityGateReport,
   buildResultGallery,
   buildReusableMemoryPack,
+  buildSafeToTrainReport,
   buildSourceSafetyReport,
+  buildTrainingRunSummary,
   buildVisualRegressionReport,
   answerLearnerQuestion,
   buildRecipePrompt,
@@ -114,6 +121,7 @@ import {
   titleFromPrompt,
   type ArchetypeMixOptions,
   type ArchetypeCluster,
+  type BenchmarkV2Report,
   type BuildRunRecord,
   type BuildFeedbackReport,
   type BuildRunnerPlan,
@@ -124,6 +132,7 @@ import {
   type ComposeOptions,
   type CorpusHealth,
   type CorpusCleaningReport,
+  type CorpusIntelligenceReport,
   type CorpusCurationReport,
   type DatasetVersion,
   type DatasetVersionComparison,
@@ -132,6 +141,7 @@ import {
   type DnaScoreExplanation,
   type DriftReport,
   type Evaluation,
+  type EvaluationArtifact,
   type EvaluationHistoryReport,
   type ExportPreset,
   type ExperimentLeaderboardReport,
@@ -145,6 +155,8 @@ import {
   type LeakageGuardReport,
   type GuidedPromptWizardReport,
   type HostedSyncReport,
+  type ModelEvaluationCacheRecord,
+  type ModelEvaluationCacheReport,
   type OutcomeRecord,
   type OutcomeRating,
   type OutcomeSummary,
@@ -154,6 +166,7 @@ import {
   type PromptPack,
   type PromptAnalysis,
   type PromptBattle,
+  type PromptCandidateTournamentReport,
   type PromptDiff,
   type PromptDnaV2,
   type PromptExample,
@@ -177,6 +190,7 @@ import {
   type ResultScore,
   type ResultGalleryItem,
   type ReusableMemoryPack,
+  type SafeToTrainReport,
   type ScreenshotQaReport,
   type ScreenshotRecord,
   type SearchResult,
@@ -192,11 +206,16 @@ import {
   type CodexBuildPack,
   type QueueProgressReport,
   type ScreenshotScoringReport,
+  type TrainingRunRecord,
 } from "./promptEngine";
 import {
   analyzeScreenshots,
+  analyzeCorpusViaApi,
   captureResult,
+  createEvaluationArtifact,
+  createTrainingRun,
   evaluateWithModel,
+  evaluateWithModelCache,
   getApiBase,
   getApiToken,
   getApiCollections,
@@ -207,6 +226,7 @@ import {
   importResult,
   installSkill,
   runQueue,
+  runBenchmarkV2ViaApi,
   runVisualQa,
   setApiBase,
   setApiToken,
@@ -240,6 +260,13 @@ const WORKSPACE_PACK_KEY = "prompt-atelier-workspace-pack-runs";
 const PROOF_LOOP_KEY = "prompt-atelier-proof-learning-runs";
 const SCREENSHOT_JUDGE_KEY = "prompt-atelier-screenshot-judge-runs";
 const MUTATION_TOURNAMENT_KEY = "prompt-atelier-mutation-tournament-runs";
+const TRAINING_RUN_KEY = "prompt-atelier-training-runs";
+const MODEL_EVALUATION_CACHE_KEY = "prompt-atelier-model-evaluation-cache";
+const PROMPT_CANDIDATE_RUN_KEY = "prompt-atelier-prompt-candidate-runs";
+const CORPUS_CLUSTER_RUN_KEY = "prompt-atelier-corpus-cluster-runs";
+const BENCHMARK_V2_RUN_KEY = "prompt-atelier-benchmark-v2-runs";
+const EVALUATION_ARTIFACT_KEY = "prompt-atelier-evaluation-artifacts";
+const HOSTED_SETUP_CHECK_KEY = "prompt-atelier-hosted-setup-checks";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -333,6 +360,18 @@ const defaultGeneratorInput: LearnedGeneratorInput = {
 const ratingOptions = ["unrated", "great", "okay", "bad"] as const;
 const statusOptions = ["unrated", "gold", "good", "experimental", "avoid"] as const;
 const buildStatusOptions = ["planned", "running", "passed", "failed", "needs-review"] as const;
+
+function readStoredArray<T>(key: string, validate: (item: T) => boolean, limit: number) {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as T[];
+    return Array.isArray(parsed) ? parsed.filter(validate).slice(0, limit) : [];
+  } catch {
+    return [];
+  }
+}
 
 function readStoredPrompts() {
   if (typeof window === "undefined") return [];
@@ -584,6 +623,34 @@ function readStoredMutationTournamentRuns() {
   } catch {
     return [];
   }
+}
+
+function readStoredTrainingRuns() {
+  return readStoredArray<TrainingRunRecord>(TRAINING_RUN_KEY, (item) => Boolean(item?.id && item?.createdAt), 100);
+}
+
+function readStoredModelEvaluationCache() {
+  return readStoredArray<ModelEvaluationCacheRecord>(MODEL_EVALUATION_CACHE_KEY, (item) => Boolean(item?.id && item?.promptHash), 250);
+}
+
+function readStoredPromptCandidateRuns() {
+  return readStoredArray<PromptCandidateRun>(PROMPT_CANDIDATE_RUN_KEY, (item) => Boolean(item?.id && item?.report?.winner), 80);
+}
+
+function readStoredCorpusClusterRuns() {
+  return readStoredArray<CorpusClusterRun>(CORPUS_CLUSTER_RUN_KEY, (item) => Boolean(item?.id && item?.report), 80);
+}
+
+function readStoredBenchmarkV2Runs() {
+  return readStoredArray<BenchmarkV2Run>(BENCHMARK_V2_RUN_KEY, (item) => Boolean(item?.id && item?.report), 80);
+}
+
+function readStoredEvaluationArtifacts() {
+  return readStoredArray<EvaluationArtifact>(EVALUATION_ARTIFACT_KEY, (item) => Boolean(item?.id && item?.markdown), 120);
+}
+
+function readStoredHostedSetupChecks() {
+  return readStoredArray<HostedSetupCheck>(HOSTED_SETUP_CHECK_KEY, (item) => Boolean(item?.id && item?.report), 80);
 }
 
 function readStoredOnboardingMode(): OnboardingMode {
@@ -1837,6 +1904,38 @@ type ModelBatchEvaluation = {
   createdAt: string;
 };
 
+type PromptCandidateRun = {
+  id: string;
+  createdAt: string;
+  source: "generator" | "mutation" | "api";
+  report: PromptCandidateTournamentReport;
+  notes: string[];
+};
+
+type CorpusClusterRun = {
+  id: string;
+  createdAt: string;
+  count: number;
+  report: CorpusIntelligenceReport;
+  notes: string[];
+};
+
+type BenchmarkV2Run = {
+  id: string;
+  createdAt: string;
+  count: number;
+  score: number;
+  report: BenchmarkV2Report;
+  notes: string[];
+};
+
+type HostedSetupCheck = {
+  id: string;
+  createdAt: string;
+  report: SafeToTrainReport;
+  notes: string[];
+};
+
 type TrainingBackupSnapshot = {
   id: string;
   label: string;
@@ -1868,6 +1967,13 @@ type StoredCollections = {
   proofLearningRuns: ProofLearningRun[];
   screenshotJudgeRuns: ScreenshotJudgeRun[];
   mutationTournamentRuns: MutationTournamentRun[];
+  trainingRuns: TrainingRunRecord[];
+  modelEvaluationCache: ModelEvaluationCacheRecord[];
+  promptCandidateRuns: PromptCandidateRun[];
+  corpusClusterRuns: CorpusClusterRun[];
+  benchmarkV2Runs: BenchmarkV2Run[];
+  evaluationArtifacts: EvaluationArtifact[];
+  hostedSetupChecks: HostedSetupCheck[];
 };
 
 export default function App() {
@@ -1906,6 +2012,13 @@ export default function App() {
   const [proofLearningRuns, setProofLearningRuns] = useState<ProofLearningRun[]>(() => readStoredProofLearningRuns());
   const [screenshotJudgeRuns, setScreenshotJudgeRuns] = useState<ScreenshotJudgeRun[]>(() => readStoredScreenshotJudgeRuns());
   const [mutationTournamentRuns, setMutationTournamentRuns] = useState<MutationTournamentRun[]>(() => readStoredMutationTournamentRuns());
+  const [trainingRuns, setTrainingRuns] = useState<TrainingRunRecord[]>(() => readStoredTrainingRuns());
+  const [modelEvaluationCache, setModelEvaluationCache] = useState<ModelEvaluationCacheRecord[]>(() => readStoredModelEvaluationCache());
+  const [promptCandidateRuns, setPromptCandidateRuns] = useState<PromptCandidateRun[]>(() => readStoredPromptCandidateRuns());
+  const [corpusClusterRuns, setCorpusClusterRuns] = useState<CorpusClusterRun[]>(() => readStoredCorpusClusterRuns());
+  const [benchmarkV2Runs, setBenchmarkV2Runs] = useState<BenchmarkV2Run[]>(() => readStoredBenchmarkV2Runs());
+  const [evaluationArtifacts, setEvaluationArtifacts] = useState<EvaluationArtifact[]>(() => readStoredEvaluationArtifacts());
+  const [hostedSetupChecks, setHostedSetupChecks] = useState<HostedSetupCheck[]>(() => readStoredHostedSetupChecks());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
@@ -2341,6 +2454,34 @@ export default function App() {
     () => buildHostedBrainReadinessReport(apiHealth, modelEnvStatus, claudeHealthChecks),
     [apiHealth, claudeHealthChecks, modelEnvStatus],
   );
+  const trainingRunSummary = useMemo(() => buildTrainingRunSummary(trainingRuns), [trainingRuns]);
+  const modelEvaluationCacheReport = useMemo(() => buildModelEvaluationCacheReport(modelEvaluationCache), [modelEvaluationCache]);
+  const promptCandidateTournament = useMemo(
+    () => buildPromptCandidateTournament({ candidates: learnedGeneratorVariants, examples: learningExamples, promptMemory }),
+    [learnedGeneratorVariants, learningExamples, promptMemory],
+  );
+  const corpusIntelligence = useMemo(
+    () => buildCorpusIntelligenceReport(learningExamples, outcomes),
+    [learningExamples, outcomes],
+  );
+  const benchmarkV2Report = useMemo(
+    () => buildBenchmarkV2Report({ examples: learningExamples, runs: benchmarkRuns }),
+    [benchmarkRuns, learningExamples],
+  );
+  const safeToTrain = useMemo(
+    () =>
+      buildSafeToTrainReport({
+        apiOnline: Boolean(apiHealth?.ok || claudeHealthChecks[0]?.apiOnline),
+        authRequired: Boolean(apiHealth?.authRequired || claudeHealthChecks[0]?.tokenValid),
+        sqliteWritable: Boolean(apiHealth?.sqlitePath || claudeHealthChecks[0]?.sqliteWritable),
+        modelRouteWorking: Boolean(claudeHealthChecks[0]?.modelRouteWorking || modelEvaluation?.schemaVersion),
+        redactionActive: true,
+        queuePostureKnown: Boolean(queueJobs.length || queueProgress.status !== "idle"),
+        snapshotWorks: Boolean(datasetVersions.length || backupSnapshots.length || trainingRuns.length),
+      }),
+    [apiHealth?.authRequired, apiHealth?.ok, apiHealth?.sqlitePath, backupSnapshots.length, claudeHealthChecks, datasetVersions.length, modelEvaluation, queueJobs.length, queueProgress.status, trainingRuns.length],
+  );
+  const latestEvaluationArtifact = evaluationArtifacts[0];
   const rewriteComparison = useMemo(
     () => comparePromptImprovement(coachInput.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
     [coachInput, generatedPrompt, outcomes, profile, resultScore, selectedPrompt],
@@ -2418,6 +2559,13 @@ export default function App() {
       proofLearningRuns,
       screenshotJudgeRuns,
       mutationTournamentRuns,
+      trainingRuns,
+      modelEvaluationCache,
+      promptCandidateRuns,
+      corpusClusterRuns,
+      benchmarkV2Runs,
+      evaluationArtifacts,
+      hostedSetupChecks,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -2446,6 +2594,13 @@ export default function App() {
       if (Array.isArray(stored.proofLearningRuns)) setProofLearningRuns((stored.proofLearningRuns as ProofLearningRun[]).slice(0, 40));
       if (Array.isArray(stored.screenshotJudgeRuns)) setScreenshotJudgeRuns((stored.screenshotJudgeRuns as ScreenshotJudgeRun[]).slice(0, 40));
       if (Array.isArray(stored.mutationTournamentRuns)) setMutationTournamentRuns((stored.mutationTournamentRuns as MutationTournamentRun[]).slice(0, 40));
+      if (Array.isArray(stored.trainingRuns)) setTrainingRuns((stored.trainingRuns as TrainingRunRecord[]).slice(0, 100));
+      if (Array.isArray(stored.modelEvaluationCache)) setModelEvaluationCache((stored.modelEvaluationCache as ModelEvaluationCacheRecord[]).slice(0, 250));
+      if (Array.isArray(stored.promptCandidateRuns)) setPromptCandidateRuns((stored.promptCandidateRuns as PromptCandidateRun[]).slice(0, 80));
+      if (Array.isArray(stored.corpusClusterRuns)) setCorpusClusterRuns((stored.corpusClusterRuns as CorpusClusterRun[]).slice(0, 80));
+      if (Array.isArray(stored.benchmarkV2Runs)) setBenchmarkV2Runs((stored.benchmarkV2Runs as BenchmarkV2Run[]).slice(0, 80));
+      if (Array.isArray(stored.evaluationArtifacts)) setEvaluationArtifacts((stored.evaluationArtifacts as EvaluationArtifact[]).slice(0, 120));
+      if (Array.isArray(stored.hostedSetupChecks)) setHostedSetupChecks((stored.hostedSetupChecks as HostedSetupCheck[]).slice(0, 80));
     };
 
     async function hydrate() {
@@ -2635,6 +2790,48 @@ export default function App() {
   }, [dbReady, mutationTournamentRuns]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(TRAINING_RUN_KEY, JSON.stringify(trainingRuns));
+    void writeCollection("trainingRuns", trainingRuns);
+  }, [dbReady, trainingRuns]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(MODEL_EVALUATION_CACHE_KEY, JSON.stringify(modelEvaluationCache));
+    void writeCollection("modelEvaluationCache", modelEvaluationCache);
+  }, [dbReady, modelEvaluationCache]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(PROMPT_CANDIDATE_RUN_KEY, JSON.stringify(promptCandidateRuns));
+    void writeCollection("promptCandidateRuns", promptCandidateRuns);
+  }, [dbReady, promptCandidateRuns]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(CORPUS_CLUSTER_RUN_KEY, JSON.stringify(corpusClusterRuns));
+    void writeCollection("corpusClusterRuns", corpusClusterRuns);
+  }, [corpusClusterRuns, dbReady]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(BENCHMARK_V2_RUN_KEY, JSON.stringify(benchmarkV2Runs));
+    void writeCollection("benchmarkV2Runs", benchmarkV2Runs);
+  }, [benchmarkV2Runs, dbReady]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(EVALUATION_ARTIFACT_KEY, JSON.stringify(evaluationArtifacts));
+    void writeCollection("evaluationArtifacts", evaluationArtifacts);
+  }, [dbReady, evaluationArtifacts]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(HOSTED_SETUP_CHECK_KEY, JSON.stringify(hostedSetupChecks));
+    void writeCollection("hostedSetupChecks", hostedSetupChecks);
+  }, [dbReady, hostedSetupChecks]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -2660,12 +2857,19 @@ export default function App() {
         proofLearningRuns,
         screenshotJudgeRuns,
         mutationTournamentRuns,
+        trainingRuns,
+        modelEvaluationCache,
+        promptCandidateRuns,
+        corpusClusterRuns,
+        benchmarkV2Runs,
+        evaluationArtifacts,
+        hostedSetupChecks,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, buildRuns, claudeHealthChecks, closedLoopRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, mutationTournamentRuns, outcomes, pairwiseReviews, promptComparisons, proofLearningRuns, queueJobs, screenshotJudgeRuns, screenshotPromptRuns, screenshots, userPrompts, workspacePackRuns]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, benchmarkV2Runs, buildRuns, claudeHealthChecks, closedLoopRuns, corpusClusterRuns, curationDecisions, datasetVersions, dbReady, evaluationArtifacts, history, hostedSetupChecks, lineageNodes, modelBatchEvaluations, modelEvaluationCache, mutationTournamentRuns, outcomes, pairwiseReviews, promptCandidateRuns, promptComparisons, proofLearningRuns, queueJobs, screenshotJudgeRuns, screenshotPromptRuns, screenshots, trainingRuns, userPrompts, workspacePackRuns]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -3931,6 +4135,228 @@ export default function App() {
     setApiNotice("Corpus training ladder complete: Golden Dataset v1, benchmark suite, calibration, and export pack are ready.");
   }
 
+  async function runGuidedTraining() {
+    const now = new Date().toISOString();
+    const localRun: TrainingRunRecord = {
+      id: `training-run-local-${Date.now()}`,
+      createdAt: now,
+      updatedAt: now,
+      status: "complete",
+      stage: "complete",
+      source: "corpus",
+      inputCounts: { prompts: learningExamples.length, outcomes: outcomes.length, screenshots: screenshots.length },
+      scores: {
+        starting: Math.max(0, Math.min(100, dnaCalibration.predictedAverage)),
+        final: Math.max(0, Math.min(100, Math.round((dnaCalibration.calibratedScore + benchmarkV2Report.score + promptMemoryDiff.score + visualRegression.score) / 4))),
+        benchmark: benchmarkV2Report.score,
+        memory: promptMemoryDiff.score,
+        proof: visualRegression.score,
+      },
+      benchmarkDelta: benchmarkRegression.delta,
+      memoryDiff: promptMemoryDiff,
+      artifacts: [
+        { id: `artifact-memory-${Date.now()}`, title: "Prompt memory diff", kind: "json", detail: `${promptMemoryDiff.score} memory score` },
+        { id: `artifact-benchmark-${Date.now()}`, title: "Benchmark v2", kind: "json", detail: `${benchmarkV2Report.score} benchmark score` },
+      ],
+      errors: [],
+      notes: [
+        "Guided workflow completed locally.",
+        `${learningExamples.length} prompt(s), ${outcomes.length} label(s), and ${screenshots.length} screenshot(s) were included.`,
+      ],
+    };
+    setTrainingRuns((current) => [localRun, ...current.filter((item) => item.id !== localRun.id)].slice(0, 100));
+    setActiveTrainStage("Export");
+    setApiNotice(`Recorded local guided training run at score ${localRun.scores.final}. Syncing API if available...`);
+    try {
+      const result = await createTrainingRun({
+        source: "corpus",
+        promptCount: learningExamples.length,
+        outcomeCount: outcomes.length,
+        screenshotCount: screenshots.length,
+        benchmarkScore: benchmarkV2Report.score,
+        memoryScore: promptMemoryDiff.score,
+        proofScore: visualRegression.score,
+        benchmarkDelta: benchmarkRegression.delta,
+        memoryDiff: promptMemoryDiff,
+        artifacts: localRun.artifacts,
+      });
+      const apiRun = result.trainingRun as TrainingRunRecord | undefined;
+      if (apiRun?.id) {
+        setTrainingRuns((current) => [apiRun, ...current.filter((item) => item.id !== apiRun.id && item.id !== localRun.id)].slice(0, 100));
+        setApiNotice(`API guided training run saved at score ${apiRun.scores.final}.`);
+      }
+    } catch (error) {
+      setApiNotice(`Local guided training run saved. API sync unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function runCachedModelEvaluation() {
+    const prompt = selectedPrompt ?? { id: "generated", title: "Generated prompt", text: generatedPrompt, source: "user" as const, createdAt: new Date().toISOString() };
+    const localScore = evaluatePrompt(prompt.text).score;
+    const localRecord: ModelEvaluationCacheRecord = {
+      id: `cache-local-${Date.now()}`,
+      promptHash: `${prompt.id}-${prompt.text.length}`,
+      memoryHash: `${promptMemory.markdown.length}-${promptMemory.sections.length}`,
+      provider: modelSettings.provider || "local",
+      schemaVersion: "prompt-atelier.model-evaluation.v1",
+      score: localScore,
+      localScore,
+      delta: 0,
+      readiness: localScore >= 80 ? "ready" : "needs-review",
+      findings: [`Local cached evaluation for ${prompt.title}.`],
+      recommendations: localScore >= 80 ? ["Promote after visual proof."] : ["Run a mutation loop before promotion."],
+      createdAt: new Date().toISOString(),
+    };
+    setModelEvaluationCache((current) => [localRecord, ...current.filter((item) => item.id !== localRecord.id)].slice(0, 250));
+    setApiNotice(`Cached local model agreement row for ${prompt.title}.`);
+    try {
+      const result = await evaluateWithModelCache({
+        prompt: prompt.text,
+        memory: promptMemory.markdown,
+        context: { title: prompt.title, selectedPromptId: prompt.id },
+        settings: {
+          provider: modelSettings.provider,
+          endpoint: modelSettings.endpoint,
+          model: modelSettings.model,
+          temperature: modelSettings.temperature,
+        },
+      });
+      const cacheRecord = result.cacheRecord as ModelEvaluationCacheRecord | undefined;
+      if (cacheRecord?.id) {
+        setModelEvaluationCache((current) => [cacheRecord, ...current.filter((item) => item.id !== cacheRecord.id && item.id !== localRecord.id)].slice(0, 250));
+        setApiNotice(`Cached API model evaluation for ${prompt.title}.`);
+      }
+    } catch (error) {
+      setApiNotice(`Local model cache row saved. API cache unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function runCandidateQualityLoop() {
+    const report = buildPromptCandidateTournament({ candidates: learnedGeneratorVariants, examples: learningExamples, promptMemory });
+    const run: PromptCandidateRun = {
+      id: `candidate-run-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      source: "generator",
+      report,
+      notes: report.explanation,
+    };
+    setPromptCandidateRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 80));
+    setImproveText(report.finalPrompt);
+    setMutationSource(report.winner.prompt);
+    setApiNotice(`Candidate quality loop picked ${report.winner.title} at score ${report.winner.score}.`);
+  }
+
+  async function runCorpusIntelligence() {
+    const report = buildCorpusIntelligenceReport(learningExamples, outcomes);
+    const run: CorpusClusterRun = {
+      id: `corpus-intelligence-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      count: learningExamples.length,
+      report,
+      notes: report.suggestions.slice(0, 4),
+    };
+    setCorpusClusterRuns((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 80));
+    setApiNotice(`Corpus intelligence scored ${report.score} across ${report.clusters.length} cluster(s).`);
+    try {
+      const result = await analyzeCorpusViaApi({ examples: learningExamples });
+      const apiRun = result.run as CorpusClusterRun | undefined;
+      if (apiRun?.id && apiRun.report) {
+        setCorpusClusterRuns((current) => [{ ...apiRun, notes: apiRun.notes ?? apiRun.report.suggestions ?? [] }, ...current.filter((item) => item.id !== apiRun.id && item.id !== run.id)].slice(0, 80));
+        setApiNotice(`API corpus intelligence scored ${apiRun.report.score}.`);
+      }
+    } catch (error) {
+      setApiNotice(`Local corpus intelligence saved. API analysis unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function runBenchmarkV2() {
+    const report = buildBenchmarkV2Report({ examples: learningExamples, runs: benchmarkRuns });
+    const run: BenchmarkV2Run = {
+      id: `benchmark-v2-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      count: report.rows.length,
+      score: report.score,
+      report,
+      notes: report.summary,
+    };
+    setBenchmarkV2Runs((current) => [run, ...current.filter((item) => item.id !== run.id)].slice(0, 80));
+    setApiNotice(`Benchmark v2 recorded locally at ${report.score}.`);
+    try {
+      const result = await runBenchmarkV2ViaApi({ examples: learningExamples });
+      const apiRun = result.run as BenchmarkV2Run | undefined;
+      if (apiRun?.id && apiRun.report) {
+        setBenchmarkV2Runs((current) => [{ ...apiRun, notes: apiRun.notes ?? apiRun.report.summary ?? [] }, ...current.filter((item) => item.id !== apiRun.id && item.id !== run.id)].slice(0, 80));
+        setApiNotice(`API benchmark v2 recorded at ${apiRun.report.score}.`);
+      }
+    } catch (error) {
+      setApiNotice(`Local benchmark v2 saved. API benchmark unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function createSelectedEvaluationArtifact() {
+    const prompt = selectedPrompt ?? { id: "generated", title: "Generated prompt", text: generatedPrompt, source: "user" as const, createdAt: new Date().toISOString() };
+    const artifact = buildEvaluationArtifact({
+      prompt,
+      promptMemory,
+      qualityGate,
+      sourceExamples: learningExamples.slice(0, 5),
+      visualRegression,
+    });
+    setEvaluationArtifacts((current) => [artifact, ...current.filter((item) => item.id !== artifact.id)].slice(0, 120));
+    setApiNotice(`Created local evaluation artifact for ${prompt.title}.`);
+    try {
+      const result = await createEvaluationArtifact({
+        prompt,
+        promptMemory,
+        qualityGate,
+        visualRegression,
+        score: qualityGate.score,
+      });
+      const apiArtifact = result.artifact as Partial<EvaluationArtifact> | undefined;
+      if (apiArtifact?.id && apiArtifact.markdown) {
+        const normalized: EvaluationArtifact = {
+          id: apiArtifact.id,
+          title: apiArtifact.title || artifact.title,
+          markdown: apiArtifact.markdown,
+          json: apiArtifact.json || artifact.json,
+          influences: Array.isArray(apiArtifact.influences) ? apiArtifact.influences : artifact.influences,
+          rulesUsed: Array.isArray(apiArtifact.rulesUsed) ? apiArtifact.rulesUsed : artifact.rulesUsed,
+          proofStatus: apiArtifact.proofStatus || artifact.proofStatus,
+          nextMutation: apiArtifact.nextMutation || artifact.nextMutation,
+        };
+        setEvaluationArtifacts((current) => [normalized, ...current.filter((item) => item.id !== normalized.id && item.id !== artifact.id)].slice(0, 120));
+        setApiNotice(`API evaluation artifact created for ${prompt.title}.`);
+      }
+    } catch (error) {
+      setApiNotice(`Local evaluation artifact saved. API artifact route unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async function runHostedSetupWizard() {
+    const report = buildSafeToTrainReport({
+      apiOnline: Boolean(apiHealth?.ok || claudeHealthChecks[0]?.apiOnline),
+      authRequired: Boolean(apiHealth?.authRequired || claudeHealthChecks[0]?.tokenValid),
+      sqliteWritable: Boolean(apiHealth?.sqlitePath || claudeHealthChecks[0]?.sqliteWritable),
+      modelRouteWorking: Boolean(claudeHealthChecks[0]?.modelRouteWorking || modelEvaluation?.schemaVersion),
+      redactionActive: true,
+      queuePostureKnown: Boolean(queueJobs.length || queueProgress.status !== "idle"),
+      snapshotWorks: Boolean(datasetVersions.length || backupSnapshots.length || trainingRuns.length),
+    });
+    const check: HostedSetupCheck = {
+      id: `hosted-setup-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      report,
+      notes: report.blocking.length ? report.blocking : ["Safe-to-train checks passed locally."],
+    };
+    setHostedSetupChecks((current) => [check, ...current.filter((item) => item.id !== check.id)].slice(0, 80));
+    setApiNotice(report.safe ? "Safe-to-train setup check passed." : `Safe-to-train needs attention: ${report.blocking[0] ?? "review checklist"}`);
+    try {
+      await checkApi();
+    } catch {
+      // checkApi already writes the user-facing notice.
+    }
+  }
+
   function exportPreset(preset: ExportPreset) {
     downloadText(preset.filename, preset.content, "text/markdown");
     setApiNotice(`Exported ${preset.title} for ${preset.target}.`);
@@ -3972,6 +4398,16 @@ export default function App() {
       promptComparisons,
       screenshotPromptRuns,
       workspacePackRuns,
+      proofLearningRuns,
+      screenshotJudgeRuns,
+      mutationTournamentRuns,
+      trainingRuns,
+      modelEvaluationCache,
+      promptCandidateRuns,
+      corpusClusterRuns,
+      benchmarkV2Runs,
+      evaluationArtifacts,
+      hostedSetupChecks,
     };
     const backup: TrainingBackupSnapshot = {
       id: `backup-${Date.now()}`,
@@ -4008,6 +4444,13 @@ export default function App() {
     if (Array.isArray(collections.proofLearningRuns)) setProofLearningRuns(collections.proofLearningRuns);
     if (Array.isArray(collections.screenshotJudgeRuns)) setScreenshotJudgeRuns(collections.screenshotJudgeRuns);
     if (Array.isArray(collections.mutationTournamentRuns)) setMutationTournamentRuns(collections.mutationTournamentRuns);
+    if (Array.isArray(collections.trainingRuns)) setTrainingRuns(collections.trainingRuns);
+    if (Array.isArray(collections.modelEvaluationCache)) setModelEvaluationCache(collections.modelEvaluationCache);
+    if (Array.isArray(collections.promptCandidateRuns)) setPromptCandidateRuns(collections.promptCandidateRuns);
+    if (Array.isArray(collections.corpusClusterRuns)) setCorpusClusterRuns(collections.corpusClusterRuns);
+    if (Array.isArray(collections.benchmarkV2Runs)) setBenchmarkV2Runs(collections.benchmarkV2Runs);
+    if (Array.isArray(collections.evaluationArtifacts)) setEvaluationArtifacts(collections.evaluationArtifacts);
+    if (Array.isArray(collections.hostedSetupChecks)) setHostedSetupChecks(collections.hostedSetupChecks);
     if (isWorkspaceKey(collections.activeWorkspace)) setActiveWorkspace(collections.activeWorkspace);
     setApiNotice(`Restored ${backup.label}.`);
   }
@@ -4329,6 +4772,13 @@ export default function App() {
         proofLearningRuns,
         screenshotJudgeRuns,
         mutationTournamentRuns,
+        trainingRuns,
+        modelEvaluationCache,
+        promptCandidateRuns,
+        corpusClusterRuns,
+        benchmarkV2Runs,
+        evaluationArtifacts,
+        hostedSetupChecks,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -4427,6 +4877,34 @@ export default function App() {
         setMutationTournamentRuns((collections.mutationTournamentRuns as MutationTournamentRun[]).slice(0, 40));
         restored.push("mutation tournaments");
       }
+      if (Array.isArray(collections.trainingRuns)) {
+        setTrainingRuns((collections.trainingRuns as TrainingRunRecord[]).slice(0, 100));
+        restored.push("training runs");
+      }
+      if (Array.isArray(collections.modelEvaluationCache)) {
+        setModelEvaluationCache((collections.modelEvaluationCache as ModelEvaluationCacheRecord[]).slice(0, 250));
+        restored.push("model cache");
+      }
+      if (Array.isArray(collections.promptCandidateRuns)) {
+        setPromptCandidateRuns((collections.promptCandidateRuns as PromptCandidateRun[]).slice(0, 80));
+        restored.push("candidate runs");
+      }
+      if (Array.isArray(collections.corpusClusterRuns)) {
+        setCorpusClusterRuns((collections.corpusClusterRuns as CorpusClusterRun[]).slice(0, 80));
+        restored.push("corpus intelligence");
+      }
+      if (Array.isArray(collections.benchmarkV2Runs)) {
+        setBenchmarkV2Runs((collections.benchmarkV2Runs as BenchmarkV2Run[]).slice(0, 80));
+        restored.push("benchmark v2");
+      }
+      if (Array.isArray(collections.evaluationArtifacts)) {
+        setEvaluationArtifacts((collections.evaluationArtifacts as EvaluationArtifact[]).slice(0, 120));
+        restored.push("evaluation artifacts");
+      }
+      if (Array.isArray(collections.hostedSetupChecks)) {
+        setHostedSetupChecks((collections.hostedSetupChecks as HostedSetupCheck[]).slice(0, 80));
+        restored.push("setup checks");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -4450,7 +4928,37 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace, closedLoopRuns, benchmarkRuns, claudeHealthChecks, promptComparisons, screenshotPromptRuns, workspacePackRuns, proofLearningRuns, screenshotJudgeRuns, mutationTournamentRuns },
+        collections: {
+          userPrompts,
+          history,
+          outcomes,
+          screenshots,
+          buildRuns,
+          queueJobs,
+          lineage: lineageNodes,
+          datasetVersions,
+          curationDecisions,
+          modelBatchEvaluations,
+          pairwiseReviews,
+          backupSnapshots,
+          activeWorkspace,
+          closedLoopRuns,
+          benchmarkRuns,
+          claudeHealthChecks,
+          promptComparisons,
+          screenshotPromptRuns,
+          workspacePackRuns,
+          proofLearningRuns,
+          screenshotJudgeRuns,
+          mutationTournamentRuns,
+          trainingRuns,
+          modelEvaluationCache,
+          promptCandidateRuns,
+          corpusClusterRuns,
+          benchmarkV2Runs,
+          evaluationArtifacts,
+          hostedSetupChecks,
+        },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -4553,6 +5061,34 @@ export default function App() {
         setMutationTournamentRuns((collections.mutationTournamentRuns as MutationTournamentRun[]).slice(0, 40));
         restored.push("mutation tournaments");
       }
+      if (Array.isArray(collections.trainingRuns)) {
+        setTrainingRuns((collections.trainingRuns as TrainingRunRecord[]).slice(0, 100));
+        restored.push("training runs");
+      }
+      if (Array.isArray(collections.modelEvaluationCache)) {
+        setModelEvaluationCache((collections.modelEvaluationCache as ModelEvaluationCacheRecord[]).slice(0, 250));
+        restored.push("model cache");
+      }
+      if (Array.isArray(collections.promptCandidateRuns)) {
+        setPromptCandidateRuns((collections.promptCandidateRuns as PromptCandidateRun[]).slice(0, 80));
+        restored.push("candidate runs");
+      }
+      if (Array.isArray(collections.corpusClusterRuns)) {
+        setCorpusClusterRuns((collections.corpusClusterRuns as CorpusClusterRun[]).slice(0, 80));
+        restored.push("corpus intelligence");
+      }
+      if (Array.isArray(collections.benchmarkV2Runs)) {
+        setBenchmarkV2Runs((collections.benchmarkV2Runs as BenchmarkV2Run[]).slice(0, 80));
+        restored.push("benchmark v2");
+      }
+      if (Array.isArray(collections.evaluationArtifacts)) {
+        setEvaluationArtifacts((collections.evaluationArtifacts as EvaluationArtifact[]).slice(0, 120));
+        restored.push("evaluation artifacts");
+      }
+      if (Array.isArray(collections.hostedSetupChecks)) {
+        setHostedSetupChecks((collections.hostedSetupChecks as HostedSetupCheck[]).slice(0, 80));
+        restored.push("setup checks");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -4590,6 +5126,13 @@ export default function App() {
           proofLearningRuns: collections.proofLearningRuns ?? proofLearningRuns,
           screenshotJudgeRuns: collections.screenshotJudgeRuns ?? screenshotJudgeRuns,
           mutationTournamentRuns: collections.mutationTournamentRuns ?? mutationTournamentRuns,
+          trainingRuns: collections.trainingRuns ?? trainingRuns,
+          modelEvaluationCache: collections.modelEvaluationCache ?? modelEvaluationCache,
+          promptCandidateRuns: collections.promptCandidateRuns ?? promptCandidateRuns,
+          corpusClusterRuns: collections.corpusClusterRuns ?? corpusClusterRuns,
+          benchmarkV2Runs: collections.benchmarkV2Runs ?? benchmarkV2Runs,
+          evaluationArtifacts: collections.evaluationArtifacts ?? evaluationArtifacts,
+          hostedSetupChecks: collections.hostedSetupChecks ?? hostedSetupChecks,
         });
       }
       setSnapshotImportText("");
@@ -5254,6 +5797,18 @@ export default function App() {
               learnerAnswer={learnerAnswer}
               learnerQuestion={learnerQuestion}
               learnedGeneratorVariants={learnedGeneratorVariants}
+              trainingRunSummary={trainingRunSummary}
+              modelEvaluationCacheReport={modelEvaluationCacheReport}
+              promptCandidateTournament={promptCandidateTournament}
+              promptCandidateRuns={promptCandidateRuns}
+              corpusIntelligence={corpusIntelligence}
+              corpusClusterRuns={corpusClusterRuns}
+              benchmarkV2Report={benchmarkV2Report}
+              benchmarkV2Runs={benchmarkV2Runs}
+              safeToTrain={safeToTrain}
+              evaluationArtifacts={evaluationArtifacts}
+              latestEvaluationArtifact={latestEvaluationArtifact}
+              hostedSetupChecks={hostedSetupChecks}
               leakageGuard={leakageGuard}
               experimentLeaderboard={experimentLeaderboard}
               leaderboard={leaderboard}
@@ -5309,11 +5864,18 @@ export default function App() {
               onRunClosedLoopTrainer={runClosedLoopTrainer}
               onRunCorpusHygieneSweep={runCorpusHygieneSweep}
               onRunHostedClaudeHealthCheck={runHostedClaudeHealthCheck}
+              onRunGuidedTraining={runGuidedTraining}
+              onRunCachedModelEvaluation={runCachedModelEvaluation}
+              onRunCorpusIntelligence={runCorpusIntelligence}
+              onRunBenchmarkV2={runBenchmarkV2}
               onRunProofLearningLoop={runProofLearningLoop}
               onRunModelBatchCalibration={runModelBatchCalibration}
               onRunPromptComparison={runPromptComparison}
               onRunScreenshotJudge={runScreenshotJudge}
               onRunMutationTournament={runMutationTournament}
+              onRunCandidateQualityLoop={runCandidateQualityLoop}
+              onCreateSelectedEvaluationArtifact={createSelectedEvaluationArtifact}
+              onRunHostedSetupWizard={runHostedSetupWizard}
               onTrainFromCorpus={trainFromCurrentCorpus}
               onGeneratePromptFromScreenshot={generatePromptFromScreenshot}
               onSaveWorkspacePackRun={saveWorkspacePackRun}
@@ -6354,6 +6916,18 @@ function TrainView({
   learnerAnswer,
   learnerQuestion,
   learnedGeneratorVariants,
+  trainingRunSummary,
+  modelEvaluationCacheReport,
+  promptCandidateTournament,
+  promptCandidateRuns,
+  corpusIntelligence,
+  corpusClusterRuns,
+  benchmarkV2Report,
+  benchmarkV2Runs,
+  safeToTrain,
+  evaluationArtifacts,
+  latestEvaluationArtifact,
+  hostedSetupChecks,
   leakageGuard,
   experimentLeaderboard,
   leaderboard,
@@ -6412,11 +6986,18 @@ function TrainView({
   onRunClosedLoopTrainer,
   onRunCorpusHygieneSweep,
   onRunHostedClaudeHealthCheck,
+  onRunGuidedTraining,
+  onRunCachedModelEvaluation,
+  onRunCorpusIntelligence,
+  onRunBenchmarkV2,
   onRunProofLearningLoop,
   onRunModelBatchCalibration,
   onRunPromptComparison,
   onRunScreenshotJudge,
   onRunMutationTournament,
+  onRunCandidateQualityLoop,
+  onCreateSelectedEvaluationArtifact,
+  onRunHostedSetupWizard,
   onTrainFromCorpus,
   onGeneratePromptFromScreenshot,
   onSaveWorkspacePackRun,
@@ -6575,6 +7156,18 @@ function TrainView({
   learnerAnswer: LearnerAnswerReport;
   learnerQuestion: string;
   learnedGeneratorVariants: LearnedGeneratorVariant[];
+  trainingRunSummary: ReturnType<typeof buildTrainingRunSummary>;
+  modelEvaluationCacheReport: ModelEvaluationCacheReport;
+  promptCandidateTournament: PromptCandidateTournamentReport;
+  promptCandidateRuns: PromptCandidateRun[];
+  corpusIntelligence: CorpusIntelligenceReport;
+  corpusClusterRuns: CorpusClusterRun[];
+  benchmarkV2Report: BenchmarkV2Report;
+  benchmarkV2Runs: BenchmarkV2Run[];
+  safeToTrain: SafeToTrainReport;
+  evaluationArtifacts: EvaluationArtifact[];
+  latestEvaluationArtifact?: EvaluationArtifact;
+  hostedSetupChecks: HostedSetupCheck[];
   leakageGuard: LeakageGuardReport;
   experimentLeaderboard: ExperimentLeaderboardReport;
   leaderboard: PromptRank[];
@@ -6641,11 +7234,18 @@ function TrainView({
   onRunClosedLoopTrainer: () => void;
   onRunCorpusHygieneSweep: () => void;
   onRunHostedClaudeHealthCheck: () => void;
+  onRunGuidedTraining: () => void;
+  onRunCachedModelEvaluation: () => void;
+  onRunCorpusIntelligence: () => void;
+  onRunBenchmarkV2: () => void;
   onRunProofLearningLoop: () => void;
   onRunModelBatchCalibration: () => void;
   onRunPromptComparison: (left: PromptExample | undefined, right: PromptExample | undefined) => void;
   onRunScreenshotJudge: () => void;
   onRunMutationTournament: () => void;
+  onRunCandidateQualityLoop: () => void;
+  onCreateSelectedEvaluationArtifact: () => void;
+  onRunHostedSetupWizard: () => void;
   onTrainFromCorpus: () => void;
   onGeneratePromptFromScreenshot: (input: { title: string; url: string; notes: string; siteType: string }) => Promise<ScreenshotPromptRun>;
   onSaveWorkspacePackRun: () => void;
@@ -6837,6 +7437,56 @@ function TrainView({
         memoryDiff={promptMemoryDiff}
         onTrainFromCorpus={onTrainFromCorpus}
         queueProgress={queueProgress}
+      />
+
+      <GuidedTrainingWorkflowPanel
+        benchmarkV2={benchmarkV2Report}
+        corpusIntelligence={corpusIntelligence}
+        modelCache={modelEvaluationCacheReport}
+        onRunGuidedTraining={onRunGuidedTraining}
+        safeToTrain={safeToTrain}
+        trainingRunSummary={trainingRunSummary}
+      />
+
+      <section className="train-columns">
+        <TrainingRunHistoryPanel summary={trainingRunSummary} runs={trainingRunSummary.runs} />
+        <ModelIntelligencePanel
+          cacheReport={modelEvaluationCacheReport}
+          modelBatchEvaluations={modelBatchEvaluations}
+          onRunCachedModelEvaluation={onRunCachedModelEvaluation}
+        />
+      </section>
+
+      <section className="train-columns">
+        <PromptCandidateLoopPanel
+          report={promptCandidateTournament}
+          runs={promptCandidateRuns}
+          onRunCandidateQualityLoop={onRunCandidateQualityLoop}
+        />
+        <CorpusIntelligencePanel
+          report={corpusIntelligence}
+          runs={corpusClusterRuns}
+          onRunCorpusIntelligence={onRunCorpusIntelligence}
+        />
+      </section>
+
+      <section className="train-columns">
+        <BenchmarkV2Panel
+          report={benchmarkV2Report}
+          runs={benchmarkV2Runs}
+          onRunBenchmarkV2={onRunBenchmarkV2}
+        />
+        <SafeToTrainSetupPanel
+          checks={hostedSetupChecks}
+          report={safeToTrain}
+          onRunHostedSetupWizard={onRunHostedSetupWizard}
+        />
+      </section>
+
+      <EvaluationArtifactsPanel
+        artifacts={evaluationArtifacts}
+        latest={latestEvaluationArtifact}
+        onCreateSelectedEvaluationArtifact={onCreateSelectedEvaluationArtifact}
       />
 
       <StartHereProofLoopPanel
@@ -7695,6 +8345,339 @@ function TrainWorkflowAccordionPanel({ onSelect }: { onSelect: (id: string) => v
             </button>
           </details>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function GuidedTrainingWorkflowPanel({
+  benchmarkV2,
+  corpusIntelligence,
+  modelCache,
+  onRunGuidedTraining,
+  safeToTrain,
+  trainingRunSummary,
+}: {
+  benchmarkV2: BenchmarkV2Report;
+  corpusIntelligence: CorpusIntelligenceReport;
+  modelCache: ModelEvaluationCacheReport;
+  onRunGuidedTraining: () => void;
+  safeToTrain: SafeToTrainReport;
+  trainingRunSummary: ReturnType<typeof buildTrainingRunSummary>;
+}) {
+  const stages = [
+    { label: "Curate", score: corpusIntelligence.score, detail: `${corpusIntelligence.clusters.length} cluster(s), ${corpusIntelligence.gaps.length} gap(s).` },
+    { label: "Evaluate", score: Math.max(0, 100 - modelCache.averageDelta), detail: `${modelCache.items.length} cached model row(s).` },
+    { label: "Benchmark", score: benchmarkV2.score, detail: benchmarkV2.summary[0] },
+    { label: "Generate", score: trainingRunSummary.score || corpusIntelligence.score, detail: trainingRunSummary.latest?.notes[0] ?? "Ready to generate candidates from memory." },
+    { label: "Prove", score: safeToTrain.score, detail: safeToTrain.safe ? "Environment is safe to train." : `${safeToTrain.blocking.length} setup blocker(s).` },
+    { label: "Export", score: trainingRunSummary.latest ? 100 : 30, detail: trainingRunSummary.latest ? "Latest run has artifacts." : "Run the guided workflow to create artifacts." },
+  ];
+  return (
+    <section className="panel lab-panel guided-training-workflow-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <ListChecks size={18} />
+          <h2>Guided training workflow</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunGuidedTraining}>
+          <Sparkles size={15} />
+          Run guided train
+        </button>
+      </div>
+      <div className="guided-workflow-grid">
+        {stages.map((stage, index) => (
+          <article className="guided-stage-card" key={stage.label} data-tone={scoreTone(stage.score)}>
+            <span>{index + 1}</span>
+            <strong>{stage.label}</strong>
+            <em>{stage.score}</em>
+            <p>{stage.detail}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Latest run notes" items={trainingRunSummary.notes} empty="No guided training run yet." />
+    </section>
+  );
+}
+
+function TrainingRunHistoryPanel({
+  runs,
+  summary,
+}: {
+  runs: TrainingRunRecord[];
+  summary: ReturnType<typeof buildTrainingRunSummary>;
+}) {
+  return (
+    <section className="panel lab-panel training-run-history-panel" data-train-section="workflow">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Training run history</h2>
+        </div>
+        <span className="workspace-pill">{summary.status}</span>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(summary.score)} label="Latest score" />
+        <Metric value={String(runs.length)} label="Visible runs" />
+        <Metric value={String(summary.latest?.benchmarkDelta ?? 0)} label="Bench delta" />
+      </div>
+      <div className="version-list compact-list">
+        {runs.length ? (
+          runs.map((run) => (
+            <article className="version-card" key={run.id}>
+              <div>
+                <strong>{run.source}</strong>
+                <span>{new Date(run.createdAt).toLocaleString()}</span>
+              </div>
+              <p>{run.notes[0] ?? `${run.inputCounts.prompts} prompt(s), ${run.inputCounts.outcomes} outcome(s).`}</p>
+              <small>{run.stage} / final {run.scores.final}</small>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">No training runs yet. Run guided train to create the first durable row.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ModelIntelligencePanel({
+  cacheReport,
+  modelBatchEvaluations,
+  onRunCachedModelEvaluation,
+}: {
+  cacheReport: ModelEvaluationCacheReport;
+  modelBatchEvaluations: ModelBatchEvaluation[];
+  onRunCachedModelEvaluation: () => void;
+}) {
+  const latest = cacheReport.items[0];
+  return (
+    <section className="panel lab-panel model-intelligence-panel" data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Model intelligence</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>
+          <Sparkles size={14} />
+          Cache eval
+        </button>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={`${cacheReport.cacheHitRate}%`} label="Cache posture" />
+        <Metric value={String(cacheReport.averageDelta)} label="Avg delta" />
+        <Metric value={String(modelBatchEvaluations.length)} label="Batch rows" />
+      </div>
+      <FeedbackList title="Agreement notes" items={cacheReport.notes} empty="No model notes yet." />
+      {latest ? (
+        <p className="selected-meta">
+          Latest cached row: {latest.provider} / {latest.readiness} / <span data-tone={latest.agreement === "agrees" ? "strong" : latest.agreement === "divergent" ? "weak" : "mixed"}>{latest.agreement}</span>.
+        </p>
+      ) : (
+        <p className="selected-meta">Cache the selected prompt to compare local DNA and model judgment without re-spending calls.</p>
+      )}
+    </section>
+  );
+}
+
+function PromptCandidateLoopPanel({
+  onRunCandidateQualityLoop,
+  report,
+  runs,
+}: {
+  onRunCandidateQualityLoop: () => void;
+  report: PromptCandidateTournamentReport;
+  runs: PromptCandidateRun[];
+}) {
+  return (
+    <section className="panel lab-panel prompt-candidate-loop-panel" data-train-section="generate">
+      <div className="output-header">
+        <div className="panel-header">
+          <Trophy size={18} />
+          <h2>Prompt candidate quality loop</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunCandidateQualityLoop}>
+          <Shuffle size={14} />
+          Pick winner
+        </button>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(report.winner.score)} label="Winner score" />
+        <Metric value={String(report.variants.length)} label="Variants" />
+        <Metric value={String(runs.length)} label="Saved loops" />
+      </div>
+      <div className="candidate-grid">
+        {[report.winner, ...report.mutations].slice(0, 4).map((variant) => (
+          <article className="candidate-card" key={variant.id}>
+            <span data-tone={scoreTone(variant.score)}>{variant.score}</span>
+            <strong>{variant.title}</strong>
+            <p>{variant.intent}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Why this wins" items={report.explanation} empty="No candidate explanation yet." />
+    </section>
+  );
+}
+
+function CorpusIntelligencePanel({
+  onRunCorpusIntelligence,
+  report,
+  runs,
+}: {
+  onRunCorpusIntelligence: () => void;
+  report: CorpusIntelligenceReport;
+  runs: CorpusClusterRun[];
+}) {
+  return (
+    <section className="panel lab-panel corpus-intelligence-product-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Corpus intelligence</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={onRunCorpusIntelligence}>
+          <Search size={14} />
+          Analyze
+        </button>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(report.score)} label="Corpus score" />
+        <Metric value={String(report.clusters.length)} label="Clusters" />
+        <Metric value={String(report.gaps.length)} label="Gaps" />
+        <Metric value={String(runs.length)} label="Runs" />
+      </div>
+      <div className="corpus-intelligence-grid">
+        {report.clusters.slice(0, 4).map((cluster) => (
+          <article className="index-card" key={cluster.label}>
+            <strong>{cluster.label}</strong>
+            <span>{cluster.count} prompt(s)</span>
+            <p>{cluster.examples.slice(0, 2).join(" / ") || "No examples listed."}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Suggested next corpus moves" items={report.suggestions.slice(0, 5)} empty="No corpus gaps detected." />
+    </section>
+  );
+}
+
+function BenchmarkV2Panel({
+  onRunBenchmarkV2,
+  report,
+  runs,
+}: {
+  onRunBenchmarkV2: () => void;
+  report: BenchmarkV2Report;
+  runs: BenchmarkV2Run[];
+}) {
+  return (
+    <section className="panel lab-panel benchmark-v2-panel" data-train-section="patterns">
+      <div className="output-header">
+        <div className="panel-header">
+          <BarChart3 size={18} />
+          <h2>Benchmark v2</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunBenchmarkV2}>
+          <Gauge size={14} />
+          Run v2
+        </button>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(report.score)} label="Average" />
+        <Metric value={String(report.rows.length)} label="Fixtures" />
+        <Metric value={String(runs.length)} label="Saved" />
+      </div>
+      <div className="benchmark-v2-grid">
+        {report.rows.slice(0, 4).map((row) => (
+          <article className="candidate-card" key={row.fixtureId}>
+            <span data-tone={scoreTone(row.modelScore)}>{row.modelScore}</span>
+            <strong>{row.title}</strong>
+            <p>{row.missingTraits.length ? `Missing ${row.missingTraits.join(", ")}` : row.regressionExplanation}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Benchmark v2 summary" items={report.summary} empty="Run benchmark v2 to create a trend." />
+    </section>
+  );
+}
+
+function SafeToTrainSetupPanel({
+  checks,
+  onRunHostedSetupWizard,
+  report,
+}: {
+  checks: HostedSetupCheck[];
+  onRunHostedSetupWizard: () => void;
+  report: SafeToTrainReport;
+}) {
+  return (
+    <section className="panel lab-panel safe-to-train-panel" data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Check size={18} />
+          <h2>Safe-to-train setup</h2>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={onRunHostedSetupWizard}>
+          <ListChecks size={14} />
+          Check setup
+        </button>
+      </div>
+      <div className="compact-scoreboard">
+        <Metric value={String(report.score)} label="Setup score" />
+        <Metric value={report.safe ? "Yes" : "Review"} label="Safe" />
+        <Metric value={String(checks.length)} label="Check runs" />
+      </div>
+      <div className="gate-check-grid">
+        {report.checks.map((check) => (
+          <article className="index-card" data-tone={check.ready ? "good" : "watch"} key={check.key}>
+            <strong>{check.label}</strong>
+            <span>{check.ready ? "ready" : "fix"}</span>
+            <p>{check.ready ? "Verified for this environment." : check.fix}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function EvaluationArtifactsPanel({
+  artifacts,
+  latest,
+  onCreateSelectedEvaluationArtifact,
+}: {
+  artifacts: EvaluationArtifact[];
+  latest?: EvaluationArtifact;
+  onCreateSelectedEvaluationArtifact: () => void;
+}) {
+  return (
+    <section className="panel lab-panel evaluation-artifacts-panel" data-train-section="packs">
+      <div className="output-header">
+        <div className="panel-header">
+          <FileText size={18} />
+          <h2>Evaluation artifacts</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onCreateSelectedEvaluationArtifact}>
+          <Plus size={14} />
+          Create artifact
+        </button>
+      </div>
+      <div className="artifact-preview-grid">
+        <div className="output-box mini-output">
+          <pre>{latest?.markdown ?? "Create an evaluation artifact to package the selected prompt, proof state, memory influences, and next mutation."}</pre>
+        </div>
+        <div className="version-list compact-list">
+          {artifacts.slice(0, 5).map((artifact) => (
+            <article className="version-card" key={artifact.id}>
+              <div>
+                <strong>{artifact.title}</strong>
+                <span>{artifact.proofStatus}</span>
+              </div>
+              <p>{artifact.nextMutation}</p>
+              <small>{artifact.influences.length} influence(s), {artifact.rulesUsed.length} rule(s)</small>
+            </article>
+          ))}
+          {!artifacts.length && <p className="selected-meta">No artifacts yet. Create one from the selected prompt.</p>}
+        </div>
       </div>
     </section>
   );
