@@ -145,6 +145,13 @@ export function runQueue(
   });
 }
 
+export function updateQueueJob(jobId: string, action: "retry" | "cancel" | "remove") {
+  return requestJson<{ ok: boolean; action: string; jobId: string; collections: { queueJobs: unknown[] } }>("/api/queue/job", {
+    method: "POST",
+    body: JSON.stringify({ jobId, action }),
+  });
+}
+
 export function captureResult(url: string, out?: string) {
   return requestJson<{ ok: boolean; parsed: unknown; stdout: string; stderr: string }>("/api/capture", {
     method: "POST",

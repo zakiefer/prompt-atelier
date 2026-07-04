@@ -267,6 +267,32 @@ try {
     throw new Error("Closed-loop proof route should redact prompt secrets.");
   }
 
+  const queueRetry = await fetch(`${base}/api/queue/job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ jobId: closedLoopProofPayload.job.id, action: "retry" }),
+  });
+  const queueRetryPayload = await queueRetry.json();
+  if (
+    !queueRetry.ok ||
+    !queueRetryPayload.collections?.queueJobs?.some((job) => job.id === closedLoopProofPayload.job.id && job.status === "queued")
+  ) {
+    throw new Error("Queue job operation route should retry failed or completed jobs into queued state.");
+  }
+
+  const queueCancel = await fetch(`${base}/api/queue/job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ jobId: closedLoopProofPayload.job.id, action: "cancel" }),
+  });
+  const queueCancelPayload = await queueCancel.json();
+  if (
+    !queueCancel.ok ||
+    !queueCancelPayload.collections?.queueJobs?.some((job) => job.id === closedLoopProofPayload.job.id && job.status === "failed")
+  ) {
+    throw new Error("Queue job operation route should cancel jobs into failed state for review.");
+  }
+
   const rejectedQueuePath = await fetch(`${base}/api/queue/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },

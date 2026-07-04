@@ -54,6 +54,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Hosted proof worker that chains closed-loop judging into scaffold/build/capture queue execution through `/api/closed-loop/prove`
 - Calibration fixtures, closed-loop run details, bulk-ingest pipeline preview, Golden Dataset v1 lock posture, beginner prompt maker, failure-memory autopilot, before/after proof comparison, provider routing, and API admin hardening
 - Production proof layer with worker command sandboxing, automatic proof import, screenshot artifact storage, queue observability, evaluator calibration workflow, dataset governance, beginner-mode cleanup, and provider plugin readiness
+- Measured-quality sprint layer with a golden benchmark harness, Prompt Generator v2, critique/repair loop, result quality dashboard, dataset review queue, and hosted worker operations controls
 
 ## Development
 
@@ -151,6 +152,7 @@ The Train tab now starts with:
 19. A hosted proof worker and admin layer that can run `/api/closed-loop/prove`, scaffold a Vite app, build, capture screenshots, record proof rows, and keep API health/backups/rate-limit/key posture visible.
 20. A beginner product path with one-click prompt generation, bulk-ingest preview, Golden Dataset v1 lock status, failure-memory autopilot, before/after visual proof, and provider routing for Claude, external evaluators, or local fallback.
 21. A production proof layer that fences worker files inside `PROMPT_LAB_DATA_DIR`, allowlists build commands, imports returned build/screenshot/lineage artifacts automatically, stores proof artifact rows, and exposes queue/evaluator/dataset/provider readiness in the Train tab.
+22. A measured-quality sprint layer that turns the training workspace into a scored operating loop: benchmark gaps feed Prompt Generator v2, critique patches repair thin prompts, result quality links generated prompts to build/screenshot/model evidence, dataset review rows protect curation, and hosted worker ops can retry or cancel queue jobs.
 
 The tightest improvement cycle is:
 

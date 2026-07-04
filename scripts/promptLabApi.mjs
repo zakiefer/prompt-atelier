@@ -897,6 +897,42 @@ async function handle(request, response) {
       return;
     }
 
+    if (request.method === "POST" && url.pathname === "/api/queue/job") {
+      const body = await readBody(request);
+      const jobId = String(body.jobId || "");
+      const action = String(body.action || "");
+      if (!jobId || !["retry", "cancel", "remove"].includes(action)) {
+        jsonResponse(response, 400, { ok: false, error: "Expected jobId and action retry, cancel, or remove." });
+        return;
+      }
+      const current = readCollections();
+      const queueJobs = Array.isArray(current.queueJobs) ? current.queueJobs : [];
+      const target = queueJobs.find((job) => job?.id === jobId);
+      if (!target) {
+        jsonResponse(response, 404, { ok: false, error: `Queue job not found: ${jobId}` });
+        return;
+      }
+      const updatedAt = now();
+      const nextJobs = action === "remove"
+        ? queueJobs.filter((job) => job?.id !== jobId)
+        : queueJobs.map((job) => {
+            if (job?.id !== jobId) return job;
+            return {
+              ...job,
+              status: action === "retry" ? "queued" : "failed",
+              updatedAt,
+              notes: [
+                action === "retry" ? "Queued for retry from hosted queue operations." : "Canceled from hosted queue operations.",
+                ...(Array.isArray(job.notes) ? job.notes : []),
+              ].slice(0, 8),
+            };
+          });
+      writeCollection("queueJobs", nextJobs);
+      logEvent("queue-job-operation", { jobId, action, status: action === "retry" ? "queued" : action === "cancel" ? "failed" : "removed" });
+      jsonResponse(response, 200, { ok: true, action, jobId, collections: { queueJobs: nextJobs } });
+      return;
+    }
+
     if (request.method === "POST" && url.pathname === "/api/capture") {
       const body = await readBody(request);
       if (!body.url) {
