@@ -1,6 +1,6 @@
 # AI Training Product Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Build the approved guided AI training product layer for Prompt Atelier, including durable training runs, cached model intelligence, corpus intelligence, benchmark v2, candidate prompt loops, hosted readiness, and evaluation artifacts.
 
@@ -15,6 +15,7 @@
 - Modify `src/promptEngine.ts`: add new records and pure report builders for training runs, cached evaluations, candidate tournaments, corpus intelligence, benchmark v2, safe-to-train readiness, and evaluation artifacts.
 - Modify `src/App.tsx`: add state, derived reports, action handlers, guided workflow panels, setup wizard, run history, candidate loop, corpus intelligence, benchmark v2, and artifact panels.
 - Modify `src/styles.css`: add responsive layout for guided workflow, run history, candidate cards, corpus clusters, setup wizard, and artifact cards.
+- Modify `src/promptDb.ts`: add IndexedDB collection keys for the guided training product records.
 - Modify `src/promptApi.ts`: add typed clients for new API routes.
 - Modify `scripts/promptLabApi.mjs`: add new collection keys and safe API routes.
 - Modify `scripts/testEngine.ts`: add regression assertions for pure engine reports.
@@ -27,7 +28,7 @@
 - Modify: `src/promptEngine.ts`
 - Test: `scripts/testEngine.ts`
 
-- [ ] **Step 1: Write failing engine tests**
+- [x] **Step 1: Write failing engine tests**
 
 Add tests that import:
 
@@ -90,7 +91,7 @@ const artifact = buildEvaluationArtifact({ prompt: examples[0], promptMemory, qu
 assert.ok(artifact.markdown.includes("Evaluation Artifact"));
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run:
 
@@ -100,7 +101,7 @@ npm run test:engine
 
 Expected: fail because the new exports do not exist.
 
-- [ ] **Step 3: Implement engine types and pure builders**
+- [x] **Step 3: Implement engine types and pure builders**
 
 Add exported types:
 
@@ -142,7 +143,7 @@ export function buildTrainingRunSummary(runs: TrainingRunRecord[]) {
 
 Add deterministic builders for model cache, candidate tournament, corpus intelligence, benchmark v2, safe-to-train, and evaluation artifacts using existing helpers such as `evaluatePrompt`, `analyzePrompt`, `analyzeArchetypeClusters`, `buildPromptMemoryDiffReport`, and `buildExportPresets`.
 
-- [ ] **Step 4: Run engine tests**
+- [x] **Step 4: Run engine tests**
 
 Run:
 
@@ -152,7 +153,7 @@ npm run test:engine
 
 Expected: pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/promptEngine.ts scripts/testEngine.ts
@@ -166,7 +167,7 @@ git commit -m "Add training product engine reports"
 - Modify: `scripts/promptLabApi.mjs`
 - Test: `scripts/testApiRoutes.mjs`
 
-- [ ] **Step 1: Write failing API tests**
+- [x] **Step 1: Write failing API tests**
 
 In `scripts/testApiRoutes.mjs`, assert:
 
@@ -182,7 +183,7 @@ if (!trainingRun.ok || !trainingRunPayload.trainingRun?.id) throw new Error("Tra
 
 Also test `/api/model/evaluate-cached`, `/api/corpus/analyze`, `/api/benchmark/v2`, and `/api/artifact/create`.
 
-- [ ] **Step 2: Run route tests to verify failure**
+- [x] **Step 2: Run route tests to verify failure**
 
 Run:
 
@@ -192,7 +193,7 @@ npm run test:api
 
 Expected: fail with missing route errors.
 
-- [ ] **Step 3: Add collection keys and route handlers**
+- [x] **Step 3: Add collection keys and route handlers**
 
 Add collection keys:
 
@@ -210,7 +211,7 @@ Implement route handlers that read current collections, append normalized record
 
 Use existing `redactSensitiveValue`, `withModelSchema`, `localModelEvaluation`, and `normalizeModelEvaluation`.
 
-- [ ] **Step 4: Add frontend API clients**
+- [x] **Step 4: Add frontend API clients**
 
 In `src/promptApi.ts`, add:
 
@@ -232,7 +233,7 @@ export function createEvaluationArtifact(payload: Record<string, unknown>) {
 }
 ```
 
-- [ ] **Step 5: Run route tests**
+- [x] **Step 5: Run route tests**
 
 Run:
 
@@ -242,7 +243,7 @@ npm run test:api
 
 Expected: pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/promptApi.ts scripts/promptLabApi.mjs scripts/testApiRoutes.mjs
@@ -255,7 +256,7 @@ git commit -m "Add training product API routes"
 - Modify: `src/App.tsx`
 - Modify: `src/styles.css`
 
-- [ ] **Step 1: Add new state collections**
+- [x] **Step 1: Add new state collections**
 
 Add local state and persistence entries for:
 
@@ -271,7 +272,7 @@ hostedSetupChecks,
 
 Wire them through browser storage, IndexedDB `readAllCollections`, `syncToApi`, `pullFromApi`, snapshot export, and snapshot restore.
 
-- [ ] **Step 2: Add derived reports**
+- [x] **Step 2: Add derived reports**
 
 Use `useMemo` to derive:
 
@@ -285,7 +286,7 @@ safeToTrain,
 latestEvaluationArtifact,
 ```
 
-- [ ] **Step 3: Add action handlers**
+- [x] **Step 3: Add action handlers**
 
 Add:
 
@@ -300,7 +301,7 @@ runHostedSetupWizard()
 
 Each handler should update local state first and use API routes when available.
 
-- [ ] **Step 4: Add panels near top of Train tab**
+- [x] **Step 4: Add panels near top of Train tab**
 
 Add components:
 
@@ -317,11 +318,11 @@ EvaluationArtifactsPanel
 
 Place them above the existing expert panels and keep all advanced panels intact.
 
-- [ ] **Step 5: Add responsive styles**
+- [x] **Step 5: Add responsive styles**
 
 Add CSS grids/cards for the new panels. At mobile widths, all grids collapse to one column and buttons remain touch-friendly.
 
-- [ ] **Step 6: Run lint/build**
+- [x] **Step 6: Run lint/build**
 
 Run:
 
@@ -332,7 +333,7 @@ npm run build
 
 Expected: both pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/App.tsx src/styles.css
@@ -345,7 +346,7 @@ git commit -m "Add guided training product UI"
 - Modify: `README.md`
 - Modify: `docs/hosted-api.md`
 
-- [ ] **Step 1: Update docs**
+- [x] **Step 1: Update docs**
 
 Document:
 
@@ -357,7 +358,7 @@ Document:
 - evaluation artifacts
 - hosted safe-to-train checks
 
-- [ ] **Step 2: Run full verification**
+- [x] **Step 2: Run full verification**
 
 Run:
 
@@ -377,7 +378,7 @@ git diff --check
 
 Expected: all pass.
 
-- [ ] **Step 3: Browser proof**
+- [x] **Step 3: Browser proof**
 
 Run API and preview:
 
@@ -398,14 +399,14 @@ Use Playwright to verify:
 - no console errors with API running
 - no horizontal overflow on desktop or mobile
 
-- [ ] **Step 4: Commit docs**
+- [x] **Step 4: Commit docs**
 
 ```bash
 git add README.md docs/hosted-api.md docs/superpowers/plans/2026-07-04-ai-training-product.md
 git commit -m "Document AI training product workflow"
 ```
 
-- [ ] **Step 5: Push and hosted proof**
+- [x] **Step 5: Push and hosted proof**
 
 ```bash
 git push origin main
