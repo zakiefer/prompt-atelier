@@ -1514,6 +1514,79 @@ button:disabled {
   color: var(--danger);
 }
 
+.mode-launcher-grid,
+.simple-front-door-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.mode-launcher-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.mode-launcher-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  min-height: 132px;
+  padding: 12px;
+  text-align: left;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.mode-launcher-card:hover {
+  background: rgba(31, 122, 104, 0.08);
+  border-color: rgba(31, 122, 104, 0.26);
+  transform: translateY(-1px);
+}
+
+.mode-launcher-card strong {
+  font-size: 0.82rem;
+}
+
+.mode-launcher-card span {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 2rem;
+  line-height: 0.95;
+}
+
+.mode-launcher-card p {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.38;
+}
+
+.simple-front-door-grid {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.simple-brief-fields,
+.simple-prompt-preview {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.simple-prompt-preview {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.simple-prompt-preview textarea {
+  min-height: 240px;
+}
+
 .command-center-card p,
 .workflow-strip span {
   color: var(--muted);
@@ -2773,8 +2846,13 @@ button.preset-card {
   }
 
   .api-base-row,
-  .coach-output-grid {
+  .coach-output-grid,
+  .simple-front-door-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mode-launcher-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .left-panel {
@@ -2861,6 +2939,7 @@ button.preset-card {
   .rubric-grid,
   .two-field-grid,
   .compare-controls,
+  .mode-launcher-grid,
   .screenshot-grid,
   .compact-health {
     grid-template-columns: 1fr;

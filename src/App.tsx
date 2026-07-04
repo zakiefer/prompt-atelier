@@ -227,6 +227,8 @@ const PAIRWISE_REVIEW_KEY = "prompt-atelier-pairwise-reviews";
 const BACKUP_KEY = "prompt-atelier-backup-snapshots";
 const ONBOARDING_KEY = "prompt-atelier-onboarding-mode";
 const WORKSPACE_KEY = "prompt-atelier-active-workspace";
+const CLOSED_LOOP_KEY = "prompt-atelier-closed-loop-runs";
+const BENCHMARK_KEY = "prompt-atelier-benchmark-runs";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -465,6 +467,30 @@ function readStoredBackupSnapshots() {
   }
 }
 
+function readStoredClosedLoopRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(CLOSED_LOOP_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ClosedLoopRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && item?.winnerPrompt).slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readStoredBenchmarkRuns() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(BENCHMARK_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as BenchmarkRun[];
+    return Array.isArray(parsed) ? parsed.filter((item) => item?.id && Array.isArray(item.rows)).slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+
 function readStoredOnboardingMode(): OnboardingMode {
   if (typeof window === "undefined") return "blank";
   const value = window.localStorage.getItem(ONBOARDING_KEY);
@@ -565,6 +591,172 @@ const workspacePresets: {
   { key: "auth-commerce", label: "Auth/commerce", description: "Signup, commerce, product, form, and conversion prompts.", query: ["signup", "login", "commerce", "product", "form"] },
 ];
 
+type ClosedLoopRun = {
+  id: string;
+  createdAt: string;
+  sourceTitle: string;
+  originalScore: number;
+  improvedScore: number;
+  winnerTitle: string;
+  winnerPrompt: string;
+  modelMode: string;
+  findings: string[];
+  recommendations: string[];
+};
+
+type BenchmarkBrief = {
+  id: string;
+  title: string;
+  brandName: string;
+  siteType: string;
+  audience: string;
+  goal: string;
+  visualDirection: string;
+  stack: string;
+  assets: string;
+  constraints: string;
+};
+
+type BenchmarkRun = {
+  id: string;
+  createdAt: string;
+  suite: string;
+  count: number;
+  averageScore: number;
+  modelMode: string;
+  rows: {
+    briefId: string;
+    title: string;
+    promptTitle: string;
+    score: number;
+    readiness: string;
+    findings: string[];
+  }[];
+};
+
+const benchmarkBriefs: BenchmarkBrief[] = [
+  {
+    id: "cinematic-saas-hero",
+    title: "Cinematic SaaS Hero",
+    brandName: "Northstar",
+    siteType: "single-page SaaS hero",
+    audience: "founders evaluating premium software",
+    goal: "prove the product is credible in the first viewport",
+    visualDirection: "cinematic video background, restrained glass controls, clear product promise",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    assets: "exact looping video URL, logo wordmark, desktop and mobile screenshot QA",
+    constraints: "no placeholder assets, no decorative blobs, no text overlap",
+  },
+  {
+    id: "ai-dashboard",
+    title: "AI Dashboard Surface",
+    brandName: "Metricflow",
+    siteType: "analytics dashboard landing page",
+    audience: "operations leaders and data teams",
+    goal: "show product depth without marketing fluff",
+    visualDirection: "dense but calm dashboard proof, neutral palette, readable metrics",
+    stack: "React + TypeScript + Tailwind CSS + lucide-react",
+    assets: "mock dashboard panels, charts, exact empty/loading/error states",
+    constraints: "no oversized hero-only marketing page; prioritize scanability",
+  },
+  {
+    id: "agency-portfolio",
+    title: "Agency Portfolio Hero",
+    brandName: "Atelier",
+    siteType: "creative studio portfolio",
+    audience: "brand teams looking for a design partner",
+    goal: "feel editorial, premium, and implementation-ready",
+    visualDirection: "full-screen video, expressive serif headline, mobile menu, case-study cues",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    assets: "exact video URL, project thumbnails, accessible navigation states",
+    constraints: "no generic agency copy; visible first-screen signal of craft",
+  },
+  {
+    id: "signup-flow",
+    title: "Conversion Signup Flow",
+    brandName: "Aurora",
+    siteType: "two-column registration interface",
+    audience: "new users onboarding into a premium app",
+    goal: "make signup feel trustworthy and fast",
+    visualDirection: "video-supported left rail, clean form right rail, progress steps",
+    stack: "React + TypeScript + Tailwind CSS + motion/react",
+    assets: "background video, social icons, password visibility toggle",
+    constraints: "no external auth wiring; form states must fit on mobile",
+  },
+  {
+    id: "commerce-product",
+    title: "Commerce Product Hero",
+    brandName: "CozyPaws",
+    siteType: "pet commerce hero",
+    audience: "mobile shoppers comparing product quality",
+    goal: "sell the product with proof, not a landing-page brochure",
+    visualDirection: "warm product photography, compact cards, offer and rating proof",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    assets: "product image URL, price/rating chips, responsive cart CTA",
+    constraints: "avoid one-note beige palette and generic stock placeholders",
+  },
+  {
+    id: "fintech-trust",
+    title: "Fintech Trust Hero",
+    brandName: "Harbor",
+    siteType: "stablecoin product landing page",
+    audience: "finance operators and technical buyers",
+    goal: "communicate trust, compliance, and product clarity",
+    visualDirection: "quiet fintech layout, proof badges, card/account visual",
+    stack: "React + TypeScript + Tailwind CSS",
+    assets: "logo, product mock, compliance badges, motion states",
+    constraints: "no hype crypto language; accessibility and contrast required",
+  },
+  {
+    id: "wellness-video",
+    title: "Wellness Video Hero",
+    brandName: "Aurai",
+    siteType: "AI wellness companion hero",
+    audience: "people seeking calm support",
+    goal: "feel personal, private, and safe",
+    visualDirection: "fullscreen video without dark overlay, glass email capture, feature pills",
+    stack: "React + TypeScript + Tailwind CSS + lucide-react",
+    assets: "exact video URL, custom SVG logo, email form states",
+    constraints: "no clinical overclaiming; protect mobile readability",
+  },
+  {
+    id: "education-platform",
+    title: "Education Platform Hero",
+    brandName: "DesignPro",
+    siteType: "product design education landing page",
+    audience: "emerging designers choosing a cohort",
+    goal: "make the program feel selective and career-ready",
+    visualDirection: "dark video hero, shiny headline treatment, cohort proof stats",
+    stack: "React + TypeScript + Tailwind CSS + Framer Motion",
+    assets: "exact video URL, animated gradient headline, application CTA",
+    constraints: "motion must be purposeful and responsive",
+  },
+  {
+    id: "feature-section",
+    title: "Core Feature Cards",
+    brandName: "Viktor",
+    siteType: "three-card marketing feature section",
+    audience: "builders evaluating an image-generation tool",
+    goal: "show concrete product capabilities in one section",
+    visualDirection: "gradient cards, exact SVG/image assets, no animation",
+    stack: "React + TypeScript + plain CSS or Tailwind CSS",
+    assets: "network SVG, folder SVG, cursor icon, search icon",
+    constraints: "static component, no hover behavior, exact card dimensions",
+  },
+  {
+    id: "error-page",
+    title: "404 Hero Page",
+    brandName: "Wayfinder",
+    siteType: "full-viewport error page",
+    audience: "users who hit a missing route",
+    goal: "recover gracefully with a polished empty state",
+    visualDirection: "minimal full-screen layout, useful navigation, subtle motion",
+    stack: "React + TypeScript + Tailwind CSS",
+    assets: "brand mark, background visual, home/search actions",
+    constraints: "100vh no scroll, accessible focus states, no dead CTAs",
+  },
+];
+
 type ModelBatchEvaluation = {
   id: string;
   promptId: string;
@@ -598,6 +790,8 @@ type StoredCollections = {
   pairwiseReviews: PairwiseReviewRecord[];
   backupSnapshots: TrainingBackupSnapshot[];
   activeWorkspace: WorkspaceKey;
+  closedLoopRuns: ClosedLoopRun[];
+  benchmarkRuns: BenchmarkRun[];
 };
 
 export default function App() {
@@ -627,6 +821,8 @@ export default function App() {
   const [backupSnapshots, setBackupSnapshots] = useState<TrainingBackupSnapshot[]>(() => readStoredBackupSnapshots());
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>(() => readStoredOnboardingMode());
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>(() => readStoredWorkspace());
+  const [closedLoopRuns, setClosedLoopRuns] = useState<ClosedLoopRun[]>(() => readStoredClosedLoopRuns());
+  const [benchmarkRuns, setBenchmarkRuns] = useState<BenchmarkRun[]>(() => readStoredBenchmarkRuns());
   const [dbReady, setDbReady] = useState(false);
   const [dbStatus, setDbStatus] = useState("Loading IndexedDB");
   const [apiHealth, setApiHealth] = useState<ApiHealth | undefined>();
@@ -1044,6 +1240,8 @@ export default function App() {
       pairwiseReviews,
       backupSnapshots,
       activeWorkspace,
+      closedLoopRuns,
+      benchmarkRuns,
     };
 
     const applyCollections = (stored: Partial<Record<keyof StoredCollections, unknown>>) => {
@@ -1063,6 +1261,8 @@ export default function App() {
       if (Array.isArray(stored.pairwiseReviews)) setPairwiseReviews((stored.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
       if (Array.isArray(stored.backupSnapshots)) setBackupSnapshots((stored.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
       if (isWorkspaceKey(stored.activeWorkspace)) setActiveWorkspace(stored.activeWorkspace);
+      if (Array.isArray(stored.closedLoopRuns)) setClosedLoopRuns((stored.closedLoopRuns as ClosedLoopRun[]).slice(0, 40));
+      if (Array.isArray(stored.benchmarkRuns)) setBenchmarkRuns((stored.benchmarkRuns as BenchmarkRun[]).slice(0, 20));
     };
 
     async function hydrate() {
@@ -1198,6 +1398,18 @@ export default function App() {
   }, [activeWorkspace, dbReady]);
 
   useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(CLOSED_LOOP_KEY, JSON.stringify(closedLoopRuns));
+    void writeCollection("closedLoopRuns", closedLoopRuns);
+  }, [closedLoopRuns, dbReady]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(BENCHMARK_KEY, JSON.stringify(benchmarkRuns));
+    void writeCollection("benchmarkRuns", benchmarkRuns);
+  }, [benchmarkRuns, dbReady]);
+
+  useEffect(() => {
     if (!dbReady || !apiHealth?.ok) return;
     const timer = window.setTimeout(() => {
       void syncCollections({
@@ -1214,12 +1426,14 @@ export default function App() {
         pairwiseReviews,
         backupSnapshots,
         activeWorkspace,
+        closedLoopRuns,
+        benchmarkRuns,
       })
         .then(() => setDbStatus("SQLite autosaved"))
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, buildRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, buildRuns, closedLoopRuns, curationDecisions, datasetVersions, dbReady, history, lineageNodes, modelBatchEvaluations, outcomes, pairwiseReviews, queueJobs, screenshots, userPrompts]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -1679,13 +1893,39 @@ export default function App() {
     setApiNotice(`API base set to ${getApiBase()}${apiTokenDraft.trim() ? " with bearer token." : "."}`);
   }
 
+  function modelSettingsPayload() {
+    return {
+      provider: modelSettings.provider,
+      endpoint: modelSettings.endpoint,
+      apiKey: modelSettings.apiKey,
+      model: modelSettings.model,
+      temperature: modelSettings.temperature,
+    };
+  }
+
+  function modelNumber(result: Record<string, unknown> | undefined, key: string, fallback = 0) {
+    const value = result?.[key];
+    const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : fallback;
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(100, Math.round(numeric))) : fallback;
+  }
+
+  function modelStringArray(result: Record<string, unknown> | undefined, key: string, fallback: string[] = []) {
+    const value = result?.[key];
+    return Array.isArray(value) ? value.map(String).filter(Boolean).slice(0, 8) : fallback;
+  }
+
+  function modelString(result: Record<string, unknown> | undefined, key: string, fallback = "") {
+    const value = result?.[key];
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+  }
+
   async function runModelBatchCalibration() {
-    const batch = learningExamples.slice(0, 24);
+    const batch = learningExamples.slice(0, Math.min(learningExamples.length, 60));
     if (!batch.length) {
       setModelNotice("No curated website prompts are available for batch evaluation.");
       return;
     }
-    setModelNotice(`Running model calibration for ${batch.length} prompt(s)...`);
+    setModelNotice(`Running ${modelSettings.provider === "anthropic" ? "Claude" : modelSettings.provider || "model"} corpus audit for ${batch.length} prompt(s)...`);
     const results: ModelBatchEvaluation[] = [];
     for (const prompt of batch) {
       try {
@@ -1697,13 +1937,7 @@ export default function App() {
             internalScore: evaluatePrompt(prompt.text).score,
             curation: curationReport.items.find((item) => item.promptId === prompt.id),
           },
-          settings: {
-            provider: modelSettings.provider,
-            endpoint: modelSettings.endpoint,
-            apiKey: modelSettings.apiKey,
-            model: modelSettings.model,
-            temperature: modelSettings.temperature,
-          },
+          settings: modelSettingsPayload(),
         });
         results.push({
           id: `model-batch-${prompt.id}-${Date.now()}`,
@@ -1731,6 +1965,252 @@ export default function App() {
     setModelBatchEvaluations((current) => [...results, ...current].slice(0, 200));
     const average = Math.round(results.reduce((sum, item) => sum + item.score, 0) / Math.max(1, results.length));
     setModelNotice(`Batch calibration complete: ${results.length} prompt(s), ${average} average model score.`);
+  }
+
+  async function runClosedLoopTrainer() {
+    const variant = guidedWizard.variants[0] ?? learnedGeneratorVariants[0];
+    if (!variant) {
+      setModelNotice("Closed-loop trainer needs a generated variant first.");
+      return;
+    }
+    const createdAt = new Date().toISOString();
+    const localRewrite = comparePromptImprovement(variant.prompt, profile, outcomes, resultScore);
+    setModelNotice(`Running closed-loop trainer with ${modelSettings.provider === "anthropic" ? "Claude" : modelSettings.provider || "model"}...`);
+
+    let originalResult: Record<string, unknown> | undefined;
+    let improvedResult: Record<string, unknown> | undefined;
+    try {
+      originalResult = await evaluateWithModel({
+        prompt: variant.prompt,
+        memory: promptMemory.markdown,
+        context: {
+          task: "Closed-loop trainer pass 1. Score this prompt and return diagnosis, questions, recommendations, and a rewrittenPrompt that would build a better website prompt.",
+          sourceTitle: variant.title,
+          localScore: variant.score,
+          currentFailures: resultScore.failureCategories,
+        },
+        settings: modelSettingsPayload(),
+      });
+      const improvedPrompt = modelString(originalResult, "rewrittenPrompt", localRewrite.improvedPrompt);
+      improvedResult = await evaluateWithModel({
+        prompt: improvedPrompt,
+        memory: promptMemory.markdown,
+        context: {
+          task: "Closed-loop trainer pass 2. Score this rewritten website prompt and explain whether it is stronger than the original.",
+          originalTitle: variant.title,
+          originalScore: modelNumber(originalResult, "score", variant.score),
+          localRewriteDelta: localRewrite.delta,
+        },
+        settings: modelSettingsPayload(),
+      });
+    } catch (error) {
+      originalResult = {
+        mode: "local-closed-loop",
+        score: localRewrite.originalScore,
+        findings: localRewrite.missingBefore,
+        recommendations: localRewrite.changes,
+        rewrittenPrompt: localRewrite.improvedPrompt,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      improvedResult = {
+        mode: "local-closed-loop",
+        score: localRewrite.improvedScore,
+        findings: localRewrite.changes,
+        recommendations: ["Local rewrite used because model evaluation was unavailable."],
+      };
+    }
+
+    const originalScore = modelNumber(originalResult, "score", localRewrite.originalScore);
+    const improvedPrompt = modelString(originalResult, "rewrittenPrompt", localRewrite.improvedPrompt);
+    const improvedScore = modelNumber(improvedResult, "score", evaluatePrompt(improvedPrompt).score);
+    const winnerPrompt = improvedScore >= originalScore ? improvedPrompt : variant.prompt;
+    const winnerScore = Math.max(originalScore, improvedScore);
+    const prompt: PromptExample = {
+      id: `closed-loop-${slugify(variant.title) || "prompt"}-${Date.now()}`,
+      title: `${variant.title} refined`,
+      text: winnerPrompt,
+      source: "user",
+      createdAt,
+    };
+    const historyVersion: PromptVersion = {
+      id: `closed-loop-version-${Date.now()}`,
+      kind: "improved",
+      title: prompt.title,
+      text: prompt.text,
+      score: winnerScore,
+      createdAt,
+    };
+    const run: ClosedLoopRun = {
+      id: `closed-loop-run-${Date.now()}`,
+      createdAt,
+      sourceTitle: variant.title,
+      originalScore,
+      improvedScore,
+      winnerTitle: prompt.title,
+      winnerPrompt,
+      modelMode: modelString(improvedResult, "mode", modelString(originalResult, "mode", "local")),
+      findings: [...modelStringArray(originalResult, "findings"), ...modelStringArray(improvedResult, "findings")].slice(0, 8),
+      recommendations: [...modelStringArray(originalResult, "recommendations"), ...modelStringArray(improvedResult, "recommendations")].slice(0, 8),
+    };
+    const batchRows: ModelBatchEvaluation[] = [
+      {
+        id: `model-closed-loop-original-${Date.now()}`,
+        promptId: prompt.id,
+        title: `${variant.title} original`,
+        score: originalScore,
+        readiness: modelString(originalResult, "readiness", "needs-review"),
+        mode: modelString(originalResult, "mode", "local"),
+        findings: modelStringArray(originalResult, "findings"),
+        createdAt,
+      },
+      {
+        id: `model-closed-loop-improved-${Date.now()}`,
+        promptId: prompt.id,
+        title: `${variant.title} improved`,
+        score: improvedScore,
+        readiness: modelString(improvedResult, "readiness", "needs-review"),
+        mode: modelString(improvedResult, "mode", "local"),
+        findings: modelStringArray(improvedResult, "findings"),
+        createdAt,
+      },
+    ];
+
+    setClosedLoopRuns((current) => [run, ...current].slice(0, 40));
+    setUserPrompts((current) => [prompt, ...current]);
+    setSelectedId(prompt.id);
+    setHistory((current) => [historyVersion, ...current].slice(0, 80));
+    setModelBatchEvaluations((current) => [...batchRows, ...current].slice(0, 200));
+    const closedLoopRating: OutcomeRating = winnerScore >= 82 ? "great" : winnerScore >= 70 ? "okay" : "unrated";
+    const closedLoopStatus: OutcomeRecord["status"] = winnerScore >= 82 ? "gold" : winnerScore >= 70 ? "good" : "experimental";
+    setOutcomes((current) => [
+      {
+        promptId: prompt.id,
+        title: prompt.title,
+        rating: closedLoopRating,
+        status: closedLoopStatus,
+        notes: `Closed-loop trainer winner. Original ${originalScore}/100, improved ${improvedScore}/100 using ${run.modelMode}.`,
+        createdAt,
+        updatedAt: createdAt,
+      },
+      ...current,
+    ].slice(0, 160));
+    addLineageNode({
+      id: `lineage-closed-loop-${prompt.id}-${Date.now()}`,
+      parentId: null,
+      promptId: prompt.id,
+      kind: "outcome",
+      title: prompt.title,
+      score: winnerScore,
+      status: "closed-loop",
+      detail: `Closed-loop trainer compared ${originalScore} to ${improvedScore}.`,
+      createdAt,
+    });
+    setImproveText(winnerPrompt);
+    setActiveTrainStage("Analyze");
+    setModelNotice(`Closed-loop trainer saved ${prompt.title}: ${originalScore} -> ${improvedScore} (${run.modelMode}).`);
+  }
+
+  async function runBenchmarkSuite() {
+    setModelNotice(`Running benchmark suite across ${benchmarkBriefs.length} canonical website briefs...`);
+    const rows: BenchmarkRun["rows"] = [];
+    const batchRows: ModelBatchEvaluation[] = [];
+    for (const brief of benchmarkBriefs) {
+      const compiled = compilePromptFromBrief(
+        {
+          roughIdea: `${brief.title}: ${brief.goal}`,
+          brandName: brief.brandName,
+          siteType: brief.siteType,
+          audience: brief.audience,
+          visualDirection: brief.visualDirection,
+          stack: brief.stack,
+          assets: brief.assets,
+          constraints: brief.constraints,
+        },
+        profile,
+        outcomes,
+        resultScore,
+      );
+      let result: Record<string, unknown>;
+      try {
+        result = await evaluateWithModel({
+          prompt: compiled.prompt,
+          memory: promptMemory.markdown,
+          context: {
+            task: "Benchmark this generated website prompt against the Prompt Atelier quality bar.",
+            benchmarkBrief: brief,
+            localScore: compiled.score,
+          },
+          settings: modelSettingsPayload(),
+        });
+      } catch (error) {
+        result = {
+          mode: "local-benchmark",
+          score: compiled.score,
+          readiness: "local-fallback",
+          findings: compiled.assumptions.length ? compiled.assumptions : ["Local compiler prompt scored without model access."],
+          recommendations: [error instanceof Error ? error.message : String(error)],
+        };
+      }
+      const score = modelNumber(result, "score", compiled.score);
+      const row = {
+        briefId: brief.id,
+        title: brief.title,
+        promptTitle: `${brief.brandName} ${brief.siteType}`,
+        score,
+        readiness: modelString(result, "readiness", "needs-review"),
+        findings: modelStringArray(result, "findings").slice(0, 4),
+      };
+      rows.push(row);
+      batchRows.push({
+        id: `model-benchmark-${brief.id}-${Date.now()}`,
+        promptId: `benchmark-${brief.id}`,
+        title: brief.title,
+        score,
+        readiness: row.readiness,
+        mode: modelString(result, "mode", "local"),
+        findings: row.findings,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    const averageScore = Math.round(rows.reduce((sum, row) => sum + row.score, 0) / Math.max(1, rows.length));
+    const benchmarkRun: BenchmarkRun = {
+      id: `benchmark-run-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      suite: "Prompt Atelier canonical website briefs",
+      count: rows.length,
+      averageScore,
+      modelMode: batchRows.find((row) => row.mode)?.mode || "local",
+      rows,
+    };
+    setBenchmarkRuns((current) => [benchmarkRun, ...current].slice(0, 20));
+    setModelBatchEvaluations((current) => [...batchRows, ...current].slice(0, 200));
+    setModelNotice(`Benchmark suite complete: ${rows.length} briefs, ${averageScore} average score.`);
+  }
+
+  function runCorpusHygieneSweep() {
+    const next: Record<string, CurationDecision> = {};
+    for (const item of curationReport.items) {
+      if (item.recommendation !== "learn") next[item.promptId] = item.recommendation;
+    }
+    for (const finding of leakageGuard.findings) {
+      next[finding.promptId] = finding.severity === "block" ? "quarantine" : "review";
+    }
+    for (const duplicate of corpusCleaning.exactDuplicates) {
+      for (const match of duplicate.matches) next[match.id] = "quarantine";
+    }
+    for (const duplicate of corpusCleaning.nearDuplicates) {
+      for (const match of duplicate.matches) next[match.id] = next[match.id] === "quarantine" ? "quarantine" : "review";
+    }
+    for (const weak of corpusCleaning.weakPrompts) next[weak.example.id] = "review";
+    setCurationDecisions((current) => ({ ...current, ...next }));
+    setApiNotice(`Corpus hygiene sweep applied ${Object.keys(next).length} review/quarantine decision(s).`);
+  }
+
+  function applyResultLearningPatch() {
+    setImproveText(repairedPrompt);
+    setCoachInput(repairedPrompt);
+    setActiveTrainStage("Improve");
+    setApiNotice("Loaded result-based repair prompt into Improve and Claude coach.");
   }
 
   function addPairwiseReview(left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) {
@@ -1834,6 +2314,8 @@ export default function App() {
       modelBatchEvaluations,
       pairwiseReviews,
       activeWorkspace,
+      closedLoopRuns,
+      benchmarkRuns,
     };
     const backup: TrainingBackupSnapshot = {
       id: `backup-${Date.now()}`,
@@ -1861,6 +2343,8 @@ export default function App() {
     if (collections.curationDecisions) setCurationDecisions(collections.curationDecisions);
     if (Array.isArray(collections.modelBatchEvaluations)) setModelBatchEvaluations(collections.modelBatchEvaluations);
     if (Array.isArray(collections.pairwiseReviews)) setPairwiseReviews(collections.pairwiseReviews);
+    if (Array.isArray(collections.closedLoopRuns)) setClosedLoopRuns(collections.closedLoopRuns);
+    if (Array.isArray(collections.benchmarkRuns)) setBenchmarkRuns(collections.benchmarkRuns);
     if (isWorkspaceKey(collections.activeWorkspace)) setActiveWorkspace(collections.activeWorkspace);
     setApiNotice(`Restored ${backup.label}.`);
   }
@@ -2173,6 +2657,8 @@ export default function App() {
         pairwiseReviews,
         backupSnapshots,
         activeWorkspace,
+        closedLoopRuns,
+        benchmarkRuns,
       };
       await syncCollections(payload);
       setApiNotice("Synced browser state to SQLite.");
@@ -2235,6 +2721,14 @@ export default function App() {
         setBackupSnapshots((collections.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
         restored.push("backups");
       }
+      if (Array.isArray(collections.closedLoopRuns)) {
+        setClosedLoopRuns((collections.closedLoopRuns as ClosedLoopRun[]).slice(0, 40));
+        restored.push("closed-loop runs");
+      }
+      if (Array.isArray(collections.benchmarkRuns)) {
+        setBenchmarkRuns((collections.benchmarkRuns as BenchmarkRun[]).slice(0, 20));
+        restored.push("benchmark runs");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -2258,7 +2752,7 @@ export default function App() {
         version: 1,
         exportedAt: new Date().toISOString(),
         source: "browser-fallback",
-        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace },
+        collections: { userPrompts, history, outcomes, screenshots, buildRuns, queueJobs, lineage: lineageNodes, datasetVersions, curationDecisions, modelBatchEvaluations, pairwiseReviews, backupSnapshots, activeWorkspace, closedLoopRuns, benchmarkRuns },
         skill: codexSkill,
         promptMemory,
         scoring: { scoreWeights, scoreBreakdown },
@@ -2325,6 +2819,14 @@ export default function App() {
         setBackupSnapshots((collections.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
         restored.push("backups");
       }
+      if (Array.isArray(collections.closedLoopRuns)) {
+        setClosedLoopRuns((collections.closedLoopRuns as ClosedLoopRun[]).slice(0, 40));
+        restored.push("closed-loop runs");
+      }
+      if (Array.isArray(collections.benchmarkRuns)) {
+        setBenchmarkRuns((collections.benchmarkRuns as BenchmarkRun[]).slice(0, 20));
+        restored.push("benchmark runs");
+      }
       if (isWorkspaceKey(collections.activeWorkspace)) {
         setActiveWorkspace(collections.activeWorkspace);
         restored.push("workspace");
@@ -2353,6 +2855,8 @@ export default function App() {
           pairwiseReviews: collections.pairwiseReviews ?? pairwiseReviews,
           backupSnapshots: collections.backupSnapshots ?? backupSnapshots,
           activeWorkspace: isWorkspaceKey(collections.activeWorkspace) ? collections.activeWorkspace : activeWorkspace,
+          closedLoopRuns: collections.closedLoopRuns ?? closedLoopRuns,
+          benchmarkRuns: collections.benchmarkRuns ?? benchmarkRuns,
         });
       }
       setSnapshotImportText("");
@@ -2836,8 +3340,10 @@ export default function App() {
               apiEvents={apiEvents}
               apiTokenDraft={apiTokenDraft}
               backupSnapshots={backupSnapshots}
+              benchmarkRuns={benchmarkRuns}
               buildFeedback={buildFeedback}
               buildRuns={buildRuns}
+              closedLoopRuns={closedLoopRuns}
               codexBuildPack={codexBuildPack}
               codexSkill={codexSkill}
               coachInput={coachInput}
@@ -2890,6 +3396,7 @@ export default function App() {
               onAddScreenshot={addScreenshot}
               onApplyCurationRecommendations={applyCurationRecommendations}
               onCaptureSelectedResult={captureSelectedResult}
+              onApplyResultLearningPatch={applyResultLearningPatch}
               onCheckApi={checkApi}
               onCreateDatasetVersion={createDatasetVersion}
               onApplyGoldReview={applyGoldReview}
@@ -2918,6 +3425,9 @@ export default function App() {
               onQueueBattle={() => queueBattleVariants(promptBattle, "prompt battle")}
               onRunAutonomousBattle={runAutonomousBattle}
               onRunAutomatedVisualQa={runAutomatedVisualQa}
+              onRunBenchmarkSuite={runBenchmarkSuite}
+              onRunClosedLoopTrainer={runClosedLoopTrainer}
+              onRunCorpusHygieneSweep={runCorpusHygieneSweep}
               onRunModelBatchCalibration={runModelBatchCalibration}
               onRunPromptCoach={runPromptCoach}
               onQueueTournament={queueTournamentFinalists}
@@ -3870,9 +4380,11 @@ function TrainView({
   apiEvents,
   apiTokenDraft,
   backupSnapshots,
+  benchmarkRuns,
   buildFeedback,
   buildRuns,
   codexBuildPack,
+  closedLoopRuns,
   codexSkill,
   coachInput,
   coachResult,
@@ -3924,6 +4436,7 @@ function TrainView({
   onAddPairwiseReview,
   onAddScreenshot,
   onApplyCurationRecommendations,
+  onApplyResultLearningPatch,
   onApplyGeneratorPreset,
   onApplyGeneratorVariant,
   onApplyGoldReview,
@@ -3956,6 +4469,9 @@ function TrainView({
   onRefreshApiEvents,
   onRunAutonomousBattle,
   onRunAutomatedVisualQa,
+  onRunBenchmarkSuite,
+  onRunClosedLoopTrainer,
+  onRunCorpusHygieneSweep,
   onRunModelBatchCalibration,
   onRunPromptCoach,
   onQueueTournament,
@@ -4048,9 +4564,11 @@ function TrainView({
   apiEvents: ApiEvent[];
   apiTokenDraft: string;
   backupSnapshots: TrainingBackupSnapshot[];
+  benchmarkRuns: BenchmarkRun[];
   buildFeedback: BuildFeedbackReport;
   buildRuns: BuildRunRecord[];
   codexBuildPack: CodexBuildPack;
+  closedLoopRuns: ClosedLoopRun[];
   codexSkill: string;
   coachInput: string;
   coachResult?: Record<string, unknown>;
@@ -4110,6 +4628,7 @@ function TrainView({
   onAddPairwiseReview: (left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) => void;
   onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
   onApplyCurationRecommendations: () => void;
+  onApplyResultLearningPatch: () => void;
   onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
   onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
   onApplyGoldReview: () => void;
@@ -4142,6 +4661,9 @@ function TrainView({
   onRefreshApiEvents: () => void;
   onRunAutonomousBattle: () => void;
   onRunAutomatedVisualQa: () => void;
+  onRunBenchmarkSuite: () => void;
+  onRunClosedLoopTrainer: () => void;
+  onRunCorpusHygieneSweep: () => void;
   onRunModelBatchCalibration: () => void;
   onRunPromptCoach: () => void;
   onQueueTournament: () => void;
@@ -4295,6 +4817,17 @@ function TrainView({
         scoreBreakdown={scoreBreakdown}
       />
 
+      <TrainModeLauncherPanel
+        benchmarkRuns={benchmarkRuns}
+        closedLoopRuns={closedLoopRuns}
+        curationReport={curationReport}
+        learningExamples={learningExamples}
+        modelBatchEvaluations={modelBatchEvaluations}
+        onSelect={scrollToTrainSection}
+        outcomes={outcomes}
+        queueJobs={queueJobs}
+      />
+
       <BackendApiPanel
         apiBaseDraft={apiBaseDraft}
         apiHealth={apiHealth}
@@ -4313,6 +4846,15 @@ function TrainView({
 
       <HostedApiDeployPanel copied={copied} onCopy={onCopy} />
 
+      <HostedClaudeSetupPanel
+        copied={copied}
+        modelEnvStatus={modelEnvStatus}
+        modelNotice={modelNotice}
+        modelSettings={modelSettings}
+        onApplyProviderPreset={onApplyProviderPreset}
+        onCopy={onCopy}
+      />
+
       <ProjectWorkspacePanel
         activeWorkspace={activeWorkspace}
         activeWorkspacePreset={activeWorkspacePreset}
@@ -4327,6 +4869,56 @@ function TrainView({
         queueJobs={queueJobs}
         resultScore={resultScore}
         selectedPrompt={selectedPrompt}
+      />
+
+      <SimplePromptFrontDoorPanel
+        copied={copied}
+        generatorInput={generatorInput}
+        guidedWizard={guidedWizard}
+        onApplyGeneratorVariant={onApplyGeneratorVariant}
+        onCopy={onCopy}
+        onRunClosedLoopTrainer={onRunClosedLoopTrainer}
+        onSave={onSave}
+        setGeneratorInput={setGeneratorInput}
+      />
+
+      <section className="train-columns">
+        <ClosedLoopTrainerPanel
+          closedLoopRuns={closedLoopRuns}
+          guidedWizard={guidedWizard}
+          modelSettings={modelSettings}
+          onRunClosedLoopTrainer={onRunClosedLoopTrainer}
+        />
+        <BenchmarkSuitePanel
+          benchmarkRuns={benchmarkRuns}
+          onRunBenchmarkSuite={onRunBenchmarkSuite}
+        />
+      </section>
+
+      <section className="train-columns">
+        <ReviewQueuePanel
+          curationReport={curationReport}
+          leaderboard={leaderboard}
+          onSetPromptCurationDecision={onSetPromptCurationDecision}
+          onUpdateOutcome={onUpdateOutcome}
+          outcomes={outcomes}
+        />
+        <CorpusHygieneSweepPanel
+          corpusCleaning={corpusCleaning}
+          curationReport={curationReport}
+          leakageGuard={leakageGuard}
+          onRunCorpusHygieneSweep={onRunCorpusHygieneSweep}
+        />
+      </section>
+
+      <ResultLearningPanel
+        buildFeedback={buildFeedback}
+        copied={copied}
+        onApplyResultLearningPatch={onApplyResultLearningPatch}
+        onCopy={onCopy}
+        onSave={onSave}
+        repairedPrompt={repairedPrompt}
+        resultScore={resultScore}
       />
 
       <SecurityOpsPanel
@@ -4972,6 +5564,439 @@ function OneClickLearningLoopPanel({
           <p>Labels generated prompts as good or experimental until screenshots prove gold.</p>
         </article>
       </div>
+    </section>
+  );
+}
+
+function TrainModeLauncherPanel({
+  benchmarkRuns,
+  closedLoopRuns,
+  curationReport,
+  learningExamples,
+  modelBatchEvaluations,
+  onSelect,
+  outcomes,
+  queueJobs,
+}: {
+  benchmarkRuns: BenchmarkRun[];
+  closedLoopRuns: ClosedLoopRun[];
+  curationReport: CorpusCurationReport;
+  learningExamples: PromptExample[];
+  modelBatchEvaluations: ModelBatchEvaluation[];
+  onSelect: (id: string) => void;
+  outcomes: OutcomeRecord[];
+  queueJobs: BuildQueueJob[];
+}) {
+  const modes = [
+    { id: "generate", title: "Generate", value: learningExamples.length, detail: "Create, refine, and save build-ready website prompts." },
+    { id: "patterns", title: "Patterns", value: outcomes.filter((outcome) => outcome.status === "gold").length, detail: "Mine gold/good examples for reusable prompt DNA." },
+    { id: "sync", title: "Sync", value: modelBatchEvaluations.length, detail: "Use Claude and SQLite to keep the corpus portable." },
+    { id: "queue", title: "Run", value: queueJobs.length, detail: "Queue prompts for implementation and visual proof." },
+    { id: "improve", title: "Review", value: curationReport.counts.review + curationReport.counts.quarantine, detail: "Promote, quarantine, or repair examples from evidence." },
+    { id: "packs", title: "Export", value: closedLoopRuns.length + benchmarkRuns.length, detail: "Ship memory packs, benchmarks, and build packs." },
+  ];
+  return (
+    <section className="panel lab-panel mode-launcher-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Train modes</h2>
+        </div>
+        <span className="selected-meta">Less hunting, more doing.</span>
+      </div>
+      <div className="mode-launcher-grid">
+        {modes.map((mode) => (
+          <button type="button" className="mode-launcher-card" key={mode.id} onClick={() => onSelect(mode.id)}>
+            <strong>{mode.title}</strong>
+            <span>{mode.value}</span>
+            <p>{mode.detail}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SimplePromptFrontDoorPanel({
+  copied,
+  generatorInput,
+  guidedWizard,
+  onApplyGeneratorVariant,
+  onCopy,
+  onRunClosedLoopTrainer,
+  onSave,
+  setGeneratorInput,
+}: {
+  copied: string;
+  generatorInput: LearnedGeneratorInput;
+  guidedWizard: GuidedPromptWizardReport;
+  onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
+  onCopy: (value: string, key: string) => void;
+  onRunClosedLoopTrainer: () => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  setGeneratorInput: Dispatch<SetStateAction<LearnedGeneratorInput>>;
+}) {
+  const best = guidedWizard.variants[0];
+  function update<K extends keyof LearnedGeneratorInput>(key: K, value: LearnedGeneratorInput[K]) {
+    setGeneratorInput((current) => ({ ...current, [key]: value }));
+  }
+  return (
+    <section className="panel lab-panel simple-front-door-panel" data-train-section="generate">
+      <div className="output-header">
+        <div className="panel-header">
+          <Wand2 size={18} />
+          <h2>Generate a great website prompt</h2>
+        </div>
+        <ScoreRing score={guidedWizard.readiness} label="brief" />
+      </div>
+      <div className="simple-front-door-grid">
+        <div className="simple-brief-fields">
+          <div className="two-field-grid">
+            <Field label="Brand">
+              <input value={generatorInput.brandName} onChange={(event) => update("brandName", event.target.value)} />
+            </Field>
+            <Field label="Website type">
+              <input value={generatorInput.siteType} onChange={(event) => update("siteType", event.target.value)} />
+            </Field>
+          </div>
+          <Field label="Visual signature">
+            <textarea value={generatorInput.visualStyle} onChange={(event) => update("visualStyle", event.target.value)} />
+          </Field>
+          <Field label="Assets and no-go rules">
+            <textarea
+              value={`${generatorInput.assets}\n\n${generatorInput.constraints}`}
+              onChange={(event) => {
+                const [assets, ...constraints] = event.target.value.split(/\n\s*\n/);
+                setGeneratorInput((current) => ({
+                  ...current,
+                  assets: assets ?? "",
+                  constraints: constraints.join("\n\n") || current.constraints,
+                }));
+              }}
+            />
+          </Field>
+        </div>
+        <article className="simple-prompt-preview">
+          <div className="dna-v2-topline">
+            <strong>{best?.title ?? "No variant yet"}</strong>
+            <span data-tone={scoreTone(best?.score ?? 0)}>{best?.score ?? 0}</span>
+          </div>
+          <p>{best?.bestFor ?? "Fill in the brief to generate a prompt candidate."}</p>
+          <textarea className="generated-output mini-output" readOnly value={best?.prompt ?? ""} />
+          <div className="button-row">
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onApplyGeneratorVariant(best)}>
+              Use
+            </button>
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onCopy(best.prompt, "simple-front-door")}>
+              {copied === "simple-front-door" ? <Check size={15} /> : <Copy size={15} />}
+              Copy
+            </button>
+            <button className="ghost-button compact-button" type="button" disabled={!best} onClick={() => best && onSave("generated", best.title, best.prompt, best.score)}>
+              <Save size={15} />
+              Save
+            </button>
+            <button className="primary-button compact-button" type="button" disabled={!best} onClick={onRunClosedLoopTrainer}>
+              <Sparkles size={15} />
+              Refine with Claude
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function ClosedLoopTrainerPanel({
+  closedLoopRuns,
+  guidedWizard,
+  modelSettings,
+  onRunClosedLoopTrainer,
+}: {
+  closedLoopRuns: ClosedLoopRun[];
+  guidedWizard: GuidedPromptWizardReport;
+  modelSettings: { provider: string; model: string };
+  onRunClosedLoopTrainer: () => void;
+}) {
+  const latest = closedLoopRuns[0];
+  const candidate = guidedWizard.variants[0];
+  const latestScore = typeof latest?.improvedScore === "number" ? latest.improvedScore : candidate?.score ?? 0;
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Closed-loop prompt trainer</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunClosedLoopTrainer} disabled={!candidate}>
+          Run trainer
+        </button>
+      </div>
+      <div className="gate-summary">
+        <ScoreRing score={latestScore} label="latest" />
+        <div>
+          <strong>{latest?.winnerTitle ?? latest?.sourceTitle ?? candidate?.title ?? "No generated prompt yet"}</strong>
+          <p className="selected-meta">
+            Uses {modelSettings.provider || "local"} {modelSettings.model ? `/${modelSettings.model}` : ""} to score, rewrite, score again, and save the winner.
+          </p>
+        </div>
+      </div>
+      <div className="version-list compact-list">
+        {closedLoopRuns.slice(0, 5).map((run) => (
+          <article className="version-card" key={run.id}>
+            <div className="dna-v2-topline">
+              <strong>{run.winnerTitle ?? run.sourceTitle ?? "Closed-loop run"}</strong>
+              <span data-tone={scoreTone(run.improvedScore ?? 0)}>{`${run.originalScore ?? "--"} -> ${run.improvedScore ?? "--"}`}</span>
+            </div>
+            <p>{run.recommendations?.[0] ?? run.findings?.[0] ?? "Winner saved back into the training corpus."}</p>
+            <small>{run.modelMode ?? "unknown mode"}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BenchmarkSuitePanel({
+  benchmarkRuns,
+  onRunBenchmarkSuite,
+}: {
+  benchmarkRuns: BenchmarkRun[];
+  onRunBenchmarkSuite: () => void;
+}) {
+  const latest = benchmarkRuns[0];
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Benchmark prompt suite</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunBenchmarkSuite}>
+          Run suite
+        </button>
+      </div>
+      <div className="backend-grid">
+        <article className="index-card">
+          <strong>{benchmarkBriefs.length}</strong>
+          <span>briefs</span>
+        </article>
+        <article className="index-card">
+          <strong>{latest?.averageScore ?? "--"}</strong>
+          <span>avg score</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>Coverage</h3>
+          <p>Hero, SaaS, dashboard, agency, signup, commerce, fintech, wellness, education, features, and 404 recovery.</p>
+        </article>
+      </div>
+      <div className="version-list compact-list">
+        {(latest?.rows ?? benchmarkBriefs.map((brief) => ({
+          briefId: brief.id,
+          title: brief.title,
+          promptTitle: brief.siteType,
+          score: 0,
+          readiness: "pending",
+          findings: [brief.goal],
+        }))).slice(0, 10).map((row) => (
+          <article className="version-card" key={row.briefId}>
+            <div className="dna-v2-topline">
+              <strong>{row.title}</strong>
+              <span data-tone={scoreTone(row.score)}>{row.score || "pending"}</span>
+            </div>
+            <p>{row.findings[0] ?? row.promptTitle}</p>
+            <small>{row.readiness}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ReviewQueuePanel({
+  curationReport,
+  leaderboard,
+  onSetPromptCurationDecision,
+  onUpdateOutcome,
+  outcomes,
+}: {
+  curationReport: CorpusCurationReport;
+  leaderboard: PromptRank[];
+  onSetPromptCurationDecision: (promptId: string, decision: CurationDecision) => void;
+  onUpdateOutcome: (prompt: PromptExample, patch: Partial<Pick<OutcomeRecord, "rating" | "status" | "notes">>) => void;
+  outcomes: OutcomeRecord[];
+}) {
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const curationMap = new Map(curationReport.items.map((item) => [item.promptId, item]));
+  const candidates = leaderboard
+    .filter((rank) => {
+      const outcome = outcomeMap.get(rank.example.id);
+      const curation = curationMap.get(rank.example.id);
+      return !outcome || outcome.status === "experimental" || outcome.status === "unrated" || curation?.recommendation !== "learn";
+    })
+    .slice(0, 8);
+  return (
+    <section className="panel lab-panel">
+      <div className="panel-header">
+        <ListChecks size={18} />
+        <h2>Gold / good / avoid review queue</h2>
+      </div>
+      <div className="version-list compact-list">
+        {candidates.map((candidate) => {
+          const prompt = candidate.example;
+          const curation = curationMap.get(prompt.id);
+          return (
+            <article className="version-card" key={prompt.id}>
+              <div className="dna-v2-topline">
+                <strong>{prompt.title}</strong>
+                <span data-tone={scoreTone(candidate.score)}>{candidate.score}</span>
+              </div>
+              <p>{curation?.reasons[0] ?? candidate.reasons[0]}</p>
+              <div className="button-row">
+                <button className="primary-button compact-button" type="button" onClick={() => onUpdateOutcome(prompt, { rating: "great", status: "gold", notes: "Promoted from review queue." })}>Gold</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onUpdateOutcome(prompt, { rating: "okay", status: "good", notes: "Marked good from review queue." })}>Good</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onUpdateOutcome(prompt, { rating: "bad", status: "avoid", notes: "Marked avoid from review queue." })}>Avoid</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onSetPromptCurationDecision(prompt.id, "review")}>Review</button>
+              </div>
+            </article>
+          );
+        })}
+        {!candidates.length ? <p className="selected-meta">No review candidates. Nice, the corpus is behaving for the moment.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function CorpusHygieneSweepPanel({
+  corpusCleaning,
+  curationReport,
+  leakageGuard,
+  onRunCorpusHygieneSweep,
+}: {
+  corpusCleaning: CorpusCleaningReport;
+  curationReport: CorpusCurationReport;
+  leakageGuard: LeakageGuardReport;
+  onRunCorpusHygieneSweep: () => void;
+}) {
+  const flagged = curationReport.counts.review + curationReport.counts.quarantine + corpusCleaning.weakPrompts.length + leakageGuard.findings.length;
+  return (
+    <section className="panel lab-panel">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Corpus hygiene sweep</h2>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRunCorpusHygieneSweep}>
+          Apply sweep
+        </button>
+      </div>
+      <div className="backend-grid">
+        <article className="index-card"><strong>{corpusCleaning.exactDuplicates.length}</strong><span>exact duplicate groups</span></article>
+        <article className="index-card"><strong>{corpusCleaning.nearDuplicates.length}</strong><span>near duplicate groups</span></article>
+        <article className="index-card"><strong>{flagged}</strong><span>flagged items</span></article>
+      </div>
+      <FeedbackList title="Sweep plan" items={[...corpusCleaning.recommendations, ...leakageGuard.recommendations].slice(0, 6)} empty="Corpus hygiene is clean." />
+    </section>
+  );
+}
+
+function ResultLearningPanel({
+  buildFeedback,
+  copied,
+  onApplyResultLearningPatch,
+  onCopy,
+  onSave,
+  repairedPrompt,
+  resultScore,
+}: {
+  buildFeedback: BuildFeedbackReport;
+  copied: string;
+  onApplyResultLearningPatch: () => void;
+  onCopy: (value: string, key: string) => void;
+  onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
+  repairedPrompt: string;
+  resultScore: ResultScore;
+}) {
+  return (
+    <section className="panel lab-panel" data-train-section="improve">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Result-based learning</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(repairedPrompt, "result-learning-repair")}>
+            {copied === "result-learning-repair" ? <Check size={15} /> : <Copy size={15} />}
+            Copy repair
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={onApplyResultLearningPatch}>
+            Apply repair
+          </button>
+        </div>
+      </div>
+      <div className="gate-summary">
+        <ScoreRing score={resultScore.score || buildFeedback.score} label="result" />
+        <FeedbackList title="What the next prompt should learn" items={[...resultScore.recommendations, ...buildFeedback.nextActions].slice(0, 6)} empty="No result feedback yet." />
+      </div>
+      <textarea className="generated-output mini-output" readOnly value={repairedPrompt} />
+      <button className="ghost-button compact-button" type="button" onClick={() => onSave("improved", "Result repair prompt", repairedPrompt, evaluatePrompt(repairedPrompt).score)}>
+        <Save size={15} />
+        Save repair
+      </button>
+    </section>
+  );
+}
+
+function HostedClaudeSetupPanel({
+  copied,
+  modelEnvStatus,
+  modelNotice,
+  modelSettings,
+  onApplyProviderPreset,
+  onCopy,
+}: {
+  copied: string;
+  modelEnvStatus?: Record<string, boolean>;
+  modelNotice: string;
+  modelSettings: { provider: string; model: string; endpoint: string };
+  onApplyProviderPreset: (kind: "local" | "anthropic" | "openai-compatible" | "codex-agent" | "scaffold-build") => void;
+  onCopy: (value: string, key: string) => void;
+}) {
+  const env = [
+    "PROMPT_LAB_MODEL_PROVIDER=anthropic",
+    "PROMPT_LAB_MODEL_NAME=claude-sonnet-5",
+    "ANTHROPIC_API_KEY=<set on the API host only>",
+  ].join("\n");
+  return (
+    <section className="panel lab-panel hosted-claude-panel" data-train-section="api">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>Hosted Claude setup</h2>
+        </div>
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => onApplyProviderPreset("anthropic")}>Use Claude</button>
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(env, "hosted-claude-env")}>
+            {copied === "hosted-claude-env" ? <Check size={15} /> : <Copy size={15} />}
+            Copy env
+          </button>
+        </div>
+      </div>
+      <div className="backend-grid">
+        <article className="index-card">
+          <strong>{modelSettings.provider || "local"}</strong>
+          <span>provider</span>
+        </article>
+        <article className="index-card">
+          <strong>{modelEnvStatus?.anthropicApiKeyConfigured ? "Ready" : "Needs key"}</strong>
+          <span>server key</span>
+        </article>
+        <article className="index-card wide-index-card">
+          <h3>{modelSettings.model || "claude-sonnet-5"}</h3>
+          <p>{modelNotice || modelSettings.endpoint}</p>
+        </article>
+      </div>
+      <pre className="prompt-patch-box">{env}</pre>
+      <p className="selected-meta">Keep the API key on the Node API host. GitHub Pages should only know the hosted API URL and token.</p>
     </section>
   );
 }

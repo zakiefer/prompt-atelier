@@ -1,10 +1,14 @@
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const port = 8792;
 const base = `http://127.0.0.1:${port}`;
+const dataDir = mkdtempSync(join(tmpdir(), "prompt-atelier-api-test-"));
 const child = spawn(process.execPath, ["scripts/promptLabApi.mjs"], {
   cwd: process.cwd(),
-  env: { ...process.env, PROMPT_LAB_API_PORT: String(port), PROMPT_LAB_API_TOKEN: "test-token" },
+  env: { ...process.env, PROMPT_LAB_API_PORT: String(port), PROMPT_LAB_API_TOKEN: "test-token", PROMPT_LAB_DATA_DIR: dataDir },
   stdio: ["ignore", "pipe", "pipe"],
 });
 
@@ -31,7 +35,7 @@ async function waitForHealth() {
 
 try {
   const health = await waitForHealth();
-  const expectedCollections = ["datasetVersions", "pairwiseReviews", "backupSnapshots", "activeWorkspace"];
+  const expectedCollections = ["datasetVersions", "pairwiseReviews", "backupSnapshots", "activeWorkspace", "closedLoopRuns", "benchmarkRuns"];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
   if (!health.rateLimitPerMinute) throw new Error("Health route should expose rate limit metadata.");
@@ -48,6 +52,19 @@ try {
         pairwiseReviews: [{ id: "pairwise-test" }],
         backupSnapshots: [{ id: "backup-test", payload: {} }],
         activeWorkspace: "hero",
+        closedLoopRuns: [{
+          id: "closed-loop-test",
+          createdAt: new Date().toISOString(),
+          sourceTitle: "Fixture",
+          originalScore: 62,
+          improvedScore: 78,
+          winnerTitle: "Fixture refined",
+          winnerPrompt: "Build a great hero.",
+          modelMode: "local-fallback",
+          findings: ["fixture"],
+          recommendations: ["fixture"],
+        }],
+        benchmarkRuns: [{ id: "benchmark-test", rows: [] }],
       },
     }),
   });
@@ -68,6 +85,8 @@ try {
     !payload.collections?.datasetVersions?.length ||
     !payload.collections?.pairwiseReviews?.length ||
     !payload.collections?.backupSnapshots?.length ||
+    !payload.collections?.closedLoopRuns?.length ||
+    !payload.collections?.benchmarkRuns?.length ||
     payload.collections?.activeWorkspace !== "hero"
   ) throw new Error("Snapshot route did not include synced collections.");
 
@@ -85,4 +104,5 @@ try {
   console.log(JSON.stringify({ ok: true, port, collections: health.collections.length, modelMode: evaluation.mode }, null, 2));
 } finally {
   child.kill("SIGTERM");
+  rmSync(dataDir, { recursive: true, force: true });
 }

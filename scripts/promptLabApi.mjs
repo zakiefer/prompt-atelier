@@ -27,6 +27,8 @@ const COLLECTION_KEYS = [
   "pairwiseReviews",
   "backupSnapshots",
   "activeWorkspace",
+  "closedLoopRuns",
+  "benchmarkRuns",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -265,7 +267,7 @@ function buildEvaluatorPrompt(body) {
     "You are a strict website-prompt evaluator for Prompt Atelier.",
     "Score whether the prompt is specific, buildable, visually strong, responsive, accessible, and ready for a coding agent.",
     "Return only JSON with this schema:",
-    '{"score": number, "findings": string[], "recommendations": string[], "readiness": "blocked" | "ready" | "excellent"}',
+    '{"score": number, "findings": string[], "recommendations": string[], "readiness": "blocked" | "ready" | "excellent", "diagnosis": string[], "questions": string[], "rewrittenPrompt": string}',
     "",
     "PROMPT:",
     clampText(body.prompt, 9000),
@@ -287,6 +289,8 @@ function normalizeModelEvaluation({ mode, payload, rawText }) {
     : Array.isArray(payload?.recommendations)
       ? payload.recommendations.map(String)
       : [];
+  const diagnosis = Array.isArray(parsed.diagnosis) ? parsed.diagnosis.map(String) : [];
+  const questions = Array.isArray(parsed.questions) ? parsed.questions.map(String) : [];
   return {
     ok: true,
     mode,
@@ -294,6 +298,9 @@ function normalizeModelEvaluation({ mode, payload, rawText }) {
     readiness: parsed.readiness || payload?.readiness || "needs-review",
     findings,
     recommendations,
+    diagnosis,
+    questions,
+    rewrittenPrompt: typeof parsed.rewrittenPrompt === "string" ? parsed.rewrittenPrompt : "",
     rawText,
     payload,
   };

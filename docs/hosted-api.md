@@ -1,6 +1,6 @@
 # Hosted Prompt Atelier API
 
-Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, and backups across browsers.
+Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labels, screenshots, build runs, closed-loop trainer results, benchmark runs, and backups across browsers.
 
 ## Render Blueprint
 
@@ -18,6 +18,14 @@ Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labe
 - `PROMPT_LAB_DATA_DIR=/var/data/prompt-atelier`
 - `PROMPT_LAB_ALLOWED_ORIGIN=https://zakiefer.github.io`
 - `PROMPT_LAB_RATE_LIMIT=240`
-- `ANTHROPIC_API_KEY` is optional. Leave it empty to use local fallback scoring.
+- `PROMPT_LAB_MODEL_PROVIDER=anthropic`
+- `PROMPT_LAB_MODEL_NAME=claude-sonnet-5`
+- `ANTHROPIC_API_KEY=<Claude API key on the API host only>`
 
 The SQLite file is stored on the mounted Render disk so the training state persists across deploys.
+
+## Claude Scoring
+
+Claude evaluation runs through `/api/model/evaluate` on the Node API. Keep `ANTHROPIC_API_KEY` on Render or your local API process; do not expose it to GitHub Pages or any browser-side `VITE_` variable. The static client only stores the API base URL and optional Prompt Atelier bearer token.
+
+If the key is absent, the API falls back to the local evaluator so the app remains usable, but Claude batch calibration, closed-loop training, prompt coach, and benchmark scoring are strongest when `ANTHROPIC_API_KEY` is configured on the API host.
