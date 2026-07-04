@@ -4,6 +4,8 @@ Prompt Atelier ships with a small Node 24 + SQLite API for syncing prompts, labe
 
 The browser also computes deterministic training intelligence locally: corpus provenance, guided step readiness, real build-result learning, Prompt Quality DNA explanations, prompt recipes, benchmark-library coverage, generated-prompt editor guidance, model/local/result comparison, and best-next-action recommendations. These reports do not require a model key, but they become stronger when cached model evaluations, build runs, screenshots, and hosted artifacts are synced through the API.
 
+The Train tab now exposes the same intelligence as a product runway: Product Command Center, Generate Prompt, Dataset Inbox, Proof Run Controller, Calibration, Hosted Readiness, and Quality Regression Gate. These panels are deterministic browser reports with API-backed actions where available; if the hosted API is offline, the proof controller still queues local proof work so the operator can continue.
+
 ## Render Blueprint
 
 1. Create a new Render Blueprint from this repository.
@@ -112,3 +114,9 @@ The top of the Train tab can run without a model key, then enrich through API ro
 The browser always writes a local deterministic fallback before trying these routes. Hosted deployments should still set `PROMPT_LAB_API_TOKEN`, `PROMPT_LAB_DATA_DIR`, `PROMPT_LAB_ALLOWED_ORIGIN`, `PROMPT_LAB_ALLOWED_BUILD_COMMANDS`, and `PROMPT_LAB_WORKER_TIMEOUT_MS` before treating the setup as safe to train.
 
 Safe-to-train should be considered a product gate, not just an API health check. A strong run has clean provenance, a locked dataset, recent backups, API auth, SQLite persistence, model-route readiness, redaction coverage, queue/proof history, benchmark coverage, and at least one imported build result or screenshot proof.
+
+## Product Quality Gate
+
+`npm run check:quality-gate` scans `src/prompts/*.md` for prompt-quality coverage and scans the corpus plus `public/attachment-prompts.json` for likely secrets or unrelated repo-operation contamination. It exits non-zero only for blocking contamination. Coverage gaps are report-only so the corpus can improve without hiding safety failures.
+
+The report tracks stack, assets, layout, responsive behavior, typography, interactions, constraints, and proof instructions. CI runs it immediately after corpus safety, before API tests and build, so the hosted product cannot publish a corpus containing leaked keys or unrelated project material.

@@ -1380,6 +1380,70 @@ export type MeasuredQualitySprintReport = {
   notes: string[];
 };
 
+export type ProductCommandCenterReport = {
+  score: number;
+  status: "ready" | "blocked" | "needs-review";
+  cards: {
+    id: "import" | "review" | "generate" | "prove" | "calibrate" | "export";
+    label: string;
+    status: "ready" | "blocked" | "running" | "complete" | "needs-review";
+    metric: string;
+    reason: string;
+    target: string;
+    cta: string;
+  }[];
+  nextAction: string;
+  notes: string[];
+};
+
+export type DatasetInboxReport = {
+  score: number;
+  status: "ready" | "review" | "blocked" | "empty";
+  counts: { learn: number; gold: number; review: number; quarantine: number; remove: number };
+  rows: {
+    promptId: string;
+    title: string;
+    source: string;
+    score: number;
+    recommendation: "learn" | "gold" | "review" | "quarantine" | "remove";
+    warnings: string[];
+    reason: string;
+  }[];
+  notes: string[];
+};
+
+export type ProofRunControllerReport = {
+  score: number;
+  status: "ready" | "running" | "needs-proof" | "blocked";
+  currentStage: "prompt" | "queue" | "build" | "screenshot" | "judge" | "repair" | "winner";
+  stages: { id: string; label: string; status: "done" | "active" | "blocked" | "todo"; detail: string }[];
+  actions: { id: "prove" | "retry" | "cancel" | "repair" | "import"; label: string; enabled: boolean; detail: string }[];
+  nextAction: string;
+  notes: string[];
+};
+
+export type CalibrationProductReport = {
+  score: number;
+  status: "aligned" | "review" | "divergent" | "empty";
+  rows: { label: string; localScore: number; modelScore: number; delta: number; verdict: string }[];
+  recommendation: "trust-local" | "trust-model" | "run-proof" | "manual-review";
+  notes: string[];
+};
+
+export type HostedReadinessProductReport = {
+  score: number;
+  verdict: "local-only" | "hosted-sync-ready" | "hosted-judge-ready" | "hosted-proof-ready" | "unsafe";
+  checks: { label: string; ready: boolean; detail: string; fix: string }[];
+  notes: string[];
+};
+
+export type QualityRegressionGateReport = {
+  score: number;
+  status: "pass" | "report-only" | "fail";
+  rows: { label: string; ready: boolean; blocking: boolean; detail: string }[];
+  notes: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -7139,6 +7203,340 @@ export function buildMeasuredQualitySprintReport({
     notes: [
       "Measured quality is strongest when benchmark, generator, critique, proof, dataset, and worker ops all have evidence.",
       "Use this as the sprint-level readiness readout before claiming the learner improved.",
+    ],
+  };
+}
+
+export function buildDatasetInboxReport({
+  curation,
+  examples = [],
+  outcomes = [],
+}: {
+  curation: CorpusCurationReport;
+  examples?: PromptExample[];
+  outcomes?: OutcomeRecord[];
+}): DatasetInboxReport {
+  const outcomeMap = new Map(outcomes.map((outcome) => [outcome.promptId, outcome]));
+  const rows = curation.items.map((item) => {
+    const example = examples.find((candidate) => candidate.id === item.promptId);
+    const outcome = outcomeMap.get(item.promptId);
+    const text = `${example?.title || item.title}\n${example?.text || ""}`;
+    const evaluation = evaluatePrompt(text);
+    const warnings = [
+      item.category !== "website-prompt" ? `Classified as ${item.category}.` : "",
+      /api key|password|token|secret|sk-ant-api03/i.test(text) ? "Possible secret or credential text." : "",
+      /kapital-next|review-read-manifest|launchctl|next-auth/i.test(text) ? "Looks like an unrelated repo-operation task." : "",
+      item.recommendation === "review" ? "Needs manual review before learning." : "",
+    ].filter(Boolean);
+    const recommendation: DatasetInboxReport["rows"][number]["recommendation"] =
+      item.recommendation === "quarantine" || warnings.some((warning) => /secret|unrelated/i.test(warning))
+        ? "quarantine"
+        : outcome?.status === "gold"
+          ? "gold"
+          : item.recommendation === "learn" && evaluation.score >= 70
+            ? "learn"
+            : "review";
+    return {
+      promptId: item.promptId,
+      title: example?.title || item.title,
+      source: example?.source || "unknown",
+      score: evaluation.score,
+      recommendation,
+      warnings,
+      reason: warnings[0] || item.reasons[0] || outcome?.notes || "Prompt is eligible for dataset review.",
+    };
+  }).sort((left, right) => {
+    const rank = { quarantine: 5, remove: 4, review: 3, gold: 2, learn: 1 };
+    return rank[right.recommendation] - rank[left.recommendation] || right.score - left.score;
+  }).slice(0, 18);
+  const counts = rows.reduce(
+    (acc, row) => ({ ...acc, [row.recommendation]: acc[row.recommendation] + 1 }),
+    { learn: 0, gold: 0, review: 0, quarantine: 0, remove: 0 },
+  );
+  const blocking = counts.quarantine + counts.remove;
+  const score = rows.length ? Math.round(((counts.learn + counts.gold) / rows.length) * 100) : 0;
+  return {
+    score,
+    status: rows.length ? (blocking ? "blocked" : counts.review ? "review" : "ready") : "empty",
+    counts,
+    rows,
+    notes: [
+      `${rows.length} prompt(s) are waiting in the product dataset inbox.`,
+      blocking ? "Resolve quarantine/remove rows before trusting another training export." : "No blocking dataset inbox rows are visible.",
+    ],
+  };
+}
+
+export function buildProofRunControllerReport({
+  generatedPrompt = "",
+  hostedWorker,
+  proofLearningRuns = [],
+  queueJobs = [],
+  resultQuality,
+  screenshotJudgeRuns = [],
+  screenshots = [],
+  selectedPrompt,
+}: {
+  generatedPrompt?: string;
+  hostedWorker: HostedWorkerOpsReport;
+  proofLearningRuns?: { phase?: string; learnedStatus?: string; resultScore?: number; visualScore?: number; notes?: string[] }[];
+  queueJobs?: BuildQueueJob[];
+  resultQuality: ResultQualityDashboardReport;
+  screenshotJudgeRuns?: { verdict?: string; score?: number; promptPatch?: string }[];
+  screenshots?: ScreenshotRecord[];
+  selectedPrompt?: PromptExample;
+}): ProofRunControllerReport {
+  const latestQueue = queueJobs[0];
+  const latestProof = proofLearningRuns[0];
+  const latestJudge = screenshotJudgeRuns[0];
+  const hasPrompt = Boolean(selectedPrompt || generatedPrompt.trim());
+  const hasQueue = Boolean(latestQueue);
+  const hasBuild = resultQuality.stages.some((stage) => stage.label === "Build result" && stage.ready);
+  const hasScreenshot = screenshots.length > 0 || resultQuality.stages.some((stage) => stage.label === "Screenshot proof" && stage.ready);
+  const hasJudge = Boolean(latestJudge);
+  const needsRepair = latestJudge?.verdict === "needs-proof" || resultQuality.status !== "proven";
+  const stages = [
+    { id: "prompt", label: "Prompt", status: hasPrompt ? "done" as const : "active" as const, detail: hasPrompt ? "Selected or generated prompt is available." : "Generate or select a prompt first." },
+    { id: "queue", label: "Queue", status: hasQueue ? "done" as const : hasPrompt ? "active" as const : "blocked" as const, detail: latestQueue ? `${latestQueue.status}: ${latestQueue.variantTitle}` : "No proof queue job yet." },
+    { id: "build", label: "Build", status: hasBuild ? "done" as const : hasQueue ? "active" as const : "todo" as const, detail: hasBuild ? "Build evidence imported." : "Run hosted proof or import a build result." },
+    { id: "screenshot", label: "Screenshot", status: hasScreenshot ? "done" as const : hasBuild ? "active" as const : "todo" as const, detail: hasScreenshot ? `${screenshots.length} screenshot(s) available.` : "Capture desktop and mobile screenshots." },
+    { id: "judge", label: "Judge", status: hasJudge ? "done" as const : hasScreenshot ? "active" as const : "todo" as const, detail: latestJudge ? `${latestJudge.score}/100 ${latestJudge.verdict}` : "Run screenshot judge." },
+    { id: "repair", label: "Repair", status: needsRepair ? "active" as const : hasJudge ? "done" as const : "todo" as const, detail: needsRepair ? "Apply repair patch before promotion." : "No repair needed from current evidence." },
+    { id: "winner", label: "Winner", status: resultQuality.status === "proven" ? "done" as const : "todo" as const, detail: resultQuality.status === "proven" ? "Prompt has proof-backed evidence." : "Winner is not proven yet." },
+  ];
+  const currentStage = (stages.find((stage) => stage.status === "active")?.id || "winner") as ProofRunControllerReport["currentStage"];
+  const canRetry = hostedWorker.jobs.some((job) => job.canRetry);
+  const canCancel = hostedWorker.jobs.some((job) => job.canCancel);
+  const actions = [
+    { id: "prove" as const, label: "Prove prompt", enabled: hasPrompt, detail: hasPrompt ? "Run hosted proof or local fallback." : "Needs a selected/generated prompt." },
+    { id: "retry" as const, label: "Retry failed job", enabled: canRetry, detail: canRetry ? "A failed job can be queued again." : "No failed proof jobs." },
+    { id: "cancel" as const, label: "Cancel active job", enabled: canCancel, detail: canCancel ? "An active job can be canceled." : "No active proof jobs." },
+    { id: "repair" as const, label: "Apply repair", enabled: needsRepair && Boolean(latestJudge?.promptPatch || generatedPrompt), detail: needsRepair ? "Use current critique or screenshot patch." : "Current proof does not request repair." },
+    { id: "import" as const, label: "Import result", enabled: hasQueue && !hasBuild, detail: hasQueue && !hasBuild ? "Import queue-result JSON if worker ran elsewhere." : "No import needed." },
+  ];
+  const doneCount = stages.filter((stage) => stage.status === "done").length;
+  return {
+    score: Math.round((doneCount / stages.length) * 100),
+    status: !hasPrompt ? "blocked" : queueJobs.some((job) => ["queued", "scaffolded", "building", "capturing"].includes(job.status)) ? "running" : resultQuality.status === "proven" ? "ready" : "needs-proof",
+    currentStage,
+    stages,
+    actions,
+    nextAction: actions.find((action) => action.enabled)?.label || "Add prompt evidence",
+    notes: [
+      latestProof?.learnedStatus ? `Latest proof status: ${latestProof.learnedStatus}.` : "Proof controller is waiting for a proof run.",
+      resultQuality.notes[1],
+    ],
+  };
+}
+
+export function buildCalibrationProductReport({
+  calibrationDashboard,
+  modelComparison,
+  resultQuality,
+}: {
+  calibrationDashboard: CalibrationDashboardReport;
+  modelComparison: ModelJudgeComparisonReport;
+  resultQuality: ResultQualityDashboardReport;
+}): CalibrationProductReport {
+  const modelRow = modelComparison.rows.find((row) => /model/i.test(row.label)) || modelComparison.rows[0];
+  const localRow = modelComparison.rows.find((row) => /local|DNA/i.test(row.label)) || modelComparison.rows[1] || modelRow;
+  const resultRow = resultQuality.stages.find((stage) => /Build|Screenshot/i.test(stage.label));
+  const rows = [
+    {
+      label: "Local vs model",
+      localScore: localRow?.score || 0,
+      modelScore: modelRow?.score || 0,
+      delta: Math.abs((localRow?.score || 0) - (modelRow?.score || 0)),
+      verdict: modelComparison.alignment,
+    },
+    {
+      label: "Model vs result",
+      localScore: resultRow?.score || 0,
+      modelScore: modelRow?.score || 0,
+      delta: Math.abs((resultRow?.score || 0) - (modelRow?.score || 0)),
+      verdict: resultQuality.status,
+    },
+    ...calibrationDashboard.rows.slice(0, 3).map((row) => ({
+      label: row.label,
+      localScore: row.score,
+      modelScore: Math.max(0, row.score - row.delta),
+      delta: Math.abs(row.delta),
+      verdict: calibrationDashboard.alignment,
+    })),
+  ];
+  const maxDelta = Math.max(0, ...rows.map((row) => row.delta));
+  const recommendation: CalibrationProductReport["recommendation"] =
+    rows.length === 0 ? "manual-review" : maxDelta >= 25 ? "manual-review" : resultQuality.status !== "proven" ? "run-proof" : modelComparison.alignment === "divergent" ? "trust-model" : "trust-local";
+  return {
+    score: Math.max(0, Math.min(100, 100 - maxDelta)),
+    status: !rows.length ? "empty" : maxDelta >= 30 ? "divergent" : maxDelta >= 15 || calibrationDashboard.alignment === "watch" ? "review" : "aligned",
+    rows,
+    recommendation,
+    notes: [
+      maxDelta ? `Largest local/model/result disagreement is ${maxDelta} points.` : "No calibration disagreement detected.",
+      recommendation === "run-proof" ? "Run proof before trusting evaluator calibration." : `Recommended posture: ${recommendation}.`,
+    ],
+  };
+}
+
+export function buildHostedReadinessProductReport({
+  apiOnline = false,
+  authRequired = false,
+  backupCount = 0,
+  buildCommands = [],
+  claudeConfigured = false,
+  queueSandboxed = false,
+  sqliteWritable = false,
+  workerEnabled = false,
+}: {
+  apiOnline?: boolean;
+  authRequired?: boolean;
+  backupCount?: number;
+  buildCommands?: string[];
+  claudeConfigured?: boolean;
+  queueSandboxed?: boolean;
+  sqliteWritable?: boolean;
+  workerEnabled?: boolean;
+}): HostedReadinessProductReport {
+  const checks = [
+    { label: "API URL", ready: apiOnline, detail: apiOnline ? "Hosted API is reachable." : "API is not connected.", fix: "Set API URL and run Check API." },
+    { label: "Token status", ready: authRequired, detail: authRequired ? "Bearer auth required." : "No hosted bearer auth detected.", fix: "Set PROMPT_LAB_API_TOKEN on hosted API." },
+    { label: "SQLite writable", ready: sqliteWritable, detail: sqliteWritable ? "Persistent storage is writable." : "SQLite write status is unknown.", fix: "Run hosted setup check with PROMPT_LAB_DATA_DIR." },
+    { label: "Server Claude key", ready: claudeConfigured, detail: claudeConfigured ? "Server-side Claude key is configured." : "Model route will use local fallback.", fix: "Set ANTHROPIC_API_KEY only on the API host." },
+    { label: "Worker enabled", ready: workerEnabled, detail: workerEnabled ? "Hosted proof worker is enabled." : "Worker execution disabled or unknown.", fix: "Set PROMPT_LAB_WORKER_ENABLED on trusted hosts only." },
+    { label: "Build allowlist", ready: buildCommands.length > 0, detail: buildCommands.length ? buildCommands.join(", ") : "No allowlisted build command visible.", fix: "Set PROMPT_LAB_ALLOWED_BUILD_COMMANDS." },
+    { label: "Queue sandbox", ready: queueSandboxed, detail: queueSandboxed ? "Queue paths are fenced to the data directory." : "Queue sandbox status unknown.", fix: "Run worker sandbox check." },
+    { label: "Backup/snapshot", ready: backupCount > 0, detail: `${backupCount} backup snapshot(s).`, fix: "Create a restore-point backup." },
+  ];
+  const readyCount = checks.filter((check) => check.ready).length;
+  const verdict: HostedReadinessProductReport["verdict"] =
+    !apiOnline ? "local-only" : !authRequired || !sqliteWritable ? "unsafe" : claudeConfigured && workerEnabled && queueSandboxed ? "hosted-proof-ready" : claudeConfigured ? "hosted-judge-ready" : "hosted-sync-ready";
+  return {
+    score: Math.round((readyCount / checks.length) * 100),
+    verdict,
+    checks,
+    notes: [
+      verdict === "hosted-proof-ready" ? "Hosted proof can run with server-side judging and worker safeguards." : `Current hosted readiness: ${verdict}.`,
+      "Model keys must remain server-side and never enter browser-visible state.",
+    ],
+  };
+}
+
+export function buildQualityRegressionGateReport({
+  benchmark,
+  corpusSafetyClean = true,
+  generator,
+  leakage,
+}: {
+  benchmark: GoldenBenchmarkHarnessReport;
+  corpusSafetyClean?: boolean;
+  generator: PromptGeneratorV2Report;
+  leakage: LeakageGuardReport;
+}): QualityRegressionGateReport {
+  const prompt = generator.compiledPrompt;
+  const rows = [
+    { label: "Corpus safety", ready: corpusSafetyClean && leakage.status === "clean", blocking: true, detail: leakage.status === "clean" ? "No known contamination detected." : leakage.recommendations[0] || "Resolve corpus leakage warnings." },
+    { label: "Benchmark coverage", ready: benchmark.score >= 55, blocking: false, detail: `${benchmark.score}/100 coverage across ${benchmark.total} cases.` },
+    { label: "Verification contract", ready: /verification|screenshot|console|build/i.test(prompt), blocking: true, detail: "Generated prompt includes proof instructions." },
+    { label: "Responsive contract", ready: /mobile|desktop|responsive|breakpoint/i.test(prompt), blocking: true, detail: "Generated prompt includes responsive requirements." },
+    { label: "Exact assets contract", ready: /asset|url|video|image|font/i.test(prompt), blocking: false, detail: "Generated prompt names asset handling." },
+    { label: "No-go constraints", ready: /avoid|no |do not|constraints/i.test(prompt), blocking: false, detail: "Generated prompt includes constraints." },
+  ];
+  const failedBlocking = rows.filter((row) => row.blocking && !row.ready);
+  const score = Math.round((rows.filter((row) => row.ready).length / rows.length) * 100);
+  return {
+    score,
+    status: failedBlocking.length ? "fail" : rows.some((row) => !row.ready) ? "report-only" : "pass",
+    rows,
+    notes: [
+      failedBlocking.length ? `${failedBlocking.length} blocking quality gate(s) failed.` : "No blocking quality gates failed.",
+      "Coverage thresholds are report-only until the benchmark harness is calibrated.",
+    ],
+  };
+}
+
+export function buildProductCommandCenterReport({
+  calibration,
+  curation,
+  exportsReady,
+  generator,
+  hosted,
+  proof,
+}: {
+  calibration: CalibrationProductReport;
+  curation: CorpusCurationReport;
+  exportsReady: boolean;
+  generator: PromptGeneratorV2Report;
+  hosted: HostedReadinessProductReport;
+  proof: ProofRunControllerReport;
+}): ProductCommandCenterReport {
+  const cards: ProductCommandCenterReport["cards"] = [
+    {
+      id: "import",
+      label: "Import prompts",
+      status: curation.items.length ? "complete" : "ready",
+      metric: String(curation.items.length),
+      reason: curation.items.length ? "Corpus is populated." : "Paste or import excellent prompts.",
+      target: "workflow",
+      cta: "Import",
+    },
+    {
+      id: "review",
+      label: "Review dataset",
+      status: curation.counts.quarantine ? "blocked" : curation.counts.review ? "needs-review" : "ready",
+      metric: `${curation.counts.learn}/${curation.items.length}`,
+      reason: curation.counts.quarantine ? "Quarantine rows block clean training." : "Dataset is ready for promotion review.",
+      target: "dataset",
+      cta: "Review",
+    },
+    {
+      id: "generate",
+      label: "Generate prompt",
+      status: generator.readiness === "ready" ? "ready" : "needs-review",
+      metric: `${generator.score}`,
+      reason: generator.notes[0],
+      target: "generate",
+      cta: "Generate",
+    },
+    {
+      id: "prove",
+      label: "Prove result",
+      status: proof.status === "running" ? "running" : proof.status === "ready" ? "complete" : proof.status === "blocked" ? "blocked" : "needs-review",
+      metric: `${proof.score}`,
+      reason: proof.nextAction,
+      target: "prove",
+      cta: "Prove",
+    },
+    {
+      id: "calibrate",
+      label: "Calibrate evaluator",
+      status: calibration.status === "aligned" ? "complete" : calibration.status === "empty" ? "blocked" : "needs-review",
+      metric: `${calibration.score}`,
+      reason: calibration.notes[0],
+      target: "calibrate",
+      cta: "Calibrate",
+    },
+    {
+      id: "export",
+      label: "Export pack",
+      status: exportsReady ? "ready" : "blocked",
+      metric: hosted.verdict,
+      reason: exportsReady ? "Export artifacts are available." : "Generate or evaluate a prompt before exporting.",
+      target: "packs",
+      cta: "Export",
+    },
+  ];
+  const readyCount = cards.filter((card) => ["ready", "complete"].includes(card.status)).length;
+  const blocked = cards.filter((card) => card.status === "blocked");
+  const next = cards.find((card) => card.status === "blocked" || card.status === "needs-review") || cards.find((card) => card.status === "ready") || cards[0];
+  return {
+    score: Math.round((readyCount / cards.length) * 100),
+    status: blocked.length ? "blocked" : readyCount === cards.length ? "ready" : "needs-review",
+    cards,
+    nextAction: `${next.cta}: ${next.reason}`,
+    notes: [
+      "Command Center summarizes the full Import -> Review -> Generate -> Prove -> Calibrate -> Export runway.",
+      hosted.notes[0],
     ],
   };
 }

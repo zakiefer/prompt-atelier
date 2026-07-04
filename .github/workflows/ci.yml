@@ -30,6 +30,9 @@ jobs:
       - name: Corpus safety
         run: npm run check:corpus-safety
 
+      - name: Quality gate
+        run: npm run check:quality-gate
+
       - name: API route tests
         run: npm run test:api
 

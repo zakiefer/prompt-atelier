@@ -18,6 +18,7 @@
     "install:skill": "node scripts/installCodexSkill.mjs",
     "export:prompts": "node scripts/exportPromptMarkdown.mjs",
     "check:corpus-safety": "node scripts/checkCorpusSafety.mjs",
+    "check:quality-gate": "node scripts/checkQualityGate.mjs",
     "test:engine": "tsx scripts/testEngine.ts",
     "test:api": "node scripts/testApiRoutes.mjs"
   },
