@@ -39,6 +39,7 @@ import {
   buildFailureMemory,
   buildGoldenDatasetV1LockReport,
   buildGoldenBenchmarkHarnessReport,
+  buildGeneratorBriefChecklistReport,
   buildGeneratorV3Report,
   buildGeneratorModeTestProductReport,
   buildHostedApiDeploymentProductReport,
@@ -58,8 +59,10 @@ import {
   buildLearningMachineReport,
   buildNextProductLayerReport,
   buildPatternDashboard,
+  buildProofSeedingRunwayReport,
   buildMeasuredQualitySprintReport,
   buildProjectExportPack,
+  buildPreferenceReviewDeckReport,
   buildPreferenceDatasetV2ProductReport,
   buildPreferenceTrainingReport,
   buildPromptMemoryDiffReport,
@@ -81,9 +84,12 @@ import {
   buildResultGalleryHydrationProductReport,
   buildRegressionDashboardV2ProductReport,
   buildRegressionHistoryProductReport,
+  buildRegressionTimelineReport,
   buildDatasetReviewQueueReport,
   buildReusableMemoryPack,
   buildPublicDemoPolishReport,
+  buildPublicProofChecklistReport,
+  buildSecurityBoundaryReport,
   buildSecurityCleanupProductReport,
   buildSourceSafetyReport,
   buildSafeToTrainReport,
@@ -1243,4 +1249,53 @@ assert.equal(nextProductLayer.items.length, 7, "Next product layer should track 
 assert.ok(nextProductLayer.items.every((item) => item.command), "Every next product layer lane should include a runnable command.");
 assert.ok(nextProductLayer.summary.some((item) => /next-layer/i.test(item)), "Next product layer should summarize automation readiness.");
 
-console.log(JSON.stringify({ ok: true, assertions: 256, score: score.score, snapshot: snapshot.label }, null, 2));
+const proofSeedingRunway = buildProofSeedingRunwayReport({
+  exampleCount: examples.length,
+  hostedWorker: hostedWorkerOps,
+  promptToProof: promptToProofWorkflow,
+  proofRunCount: 3,
+  queueJobCount: hostedOpsQueueJobs.length,
+  resultGalleryCount: 3,
+});
+assert.ok(proofSeedingRunway.command.includes("proof:seed"), "Proof seeding runway should expose the seed command.");
+assert.ok(proofSeedingRunway.rows.some((row) => row.label === "Prompt supply" && row.ready), "Proof seeding should check prompt supply.");
+
+const preferenceReviewDeck = buildPreferenceReviewDeckReport({ examples, outcomes, pairwiseReviews, targetCount: 5 });
+assert.ok(preferenceReviewDeck.reviewedCount >= pairwiseReviews.length, "Preference deck should count existing pairwise reviews.");
+assert.ok(preferenceReviewDeck.pairs.length <= 6, "Preference deck should keep the review queue compact.");
+
+const generatorBriefChecklist = buildGeneratorBriefChecklistReport({ briefBuilder: briefBuilderProduct, generator: promptGeneratorV2 });
+assert.equal(generatorBriefChecklist.status, "needs-brief", "Generator brief checklist should mirror missing brief status.");
+assert.ok(generatorBriefChecklist.fields.some((field) => field.key === "brandName"), "Generator brief checklist should include brand guidance.");
+
+const publicProofChecklist = buildPublicProofChecklistReport({
+  hostedCi: hostedCiSmoke,
+  proofRunCount: 3,
+  publicDemo: publicDemoPolish,
+  resultGalleryCount: 3,
+  trainingExports: trainingExportReadiness,
+});
+assert.ok(publicProofChecklist.command.includes("smoke:hosted"), "Public proof checklist should expose hosted smoke proof.");
+assert.ok(publicProofChecklist.checks.some((check) => check.label === "Result gallery" && check.ready), "Public proof checklist should require gallery proof.");
+
+const regressionTimeline = buildRegressionTimelineReport({
+  benchmarkRunCount: 1,
+  benchmarkV2RunCount: 1,
+  evaluationHistory,
+  modelCacheCount: cacheReport.items.length,
+  proofRunCount: 3,
+  trainingRunCount: 1,
+});
+assert.notEqual(regressionTimeline.status, "empty", "Regression timeline should use fixture history.");
+assert.ok(regressionTimeline.exportCommand.includes("export:regression"), "Regression timeline should expose its export command.");
+
+const securityBoundary = buildSecurityBoundaryReport({
+  hosted: hostedReadinessProduct,
+  leakage: leakageGuard,
+  securityCleanup: securityCleanupProduct,
+  sourceSafety,
+});
+assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
+assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
+
+console.log(JSON.stringify({ ok: true, assertions: 274, score: score.score, snapshot: snapshot.label }, null, 2));

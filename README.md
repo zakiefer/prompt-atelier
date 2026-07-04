@@ -63,6 +63,8 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Hosted app smoke CLI for loading the public Pages app, switching to Train, asserting the learning-machine headings, and saving a screenshot artifact
 - Next Product Layer panel that turns hosted deploy, autonomous proof batches, preference/repair dataset v2, generator mode tests, gallery hydration, regression history, and training exports into copyable operator commands
 - CLI automation for hosted API deploy checks, proof batch runs, result-gallery hydration, and supervised/preference/repair/failure training dataset exports
+- Proof seeding runway, preference review deck, generator brief checklist, public proof checklist, regression timeline export, and credential-boundary audit panels
+- CLI automation for offline proof seeding, regression timeline artifacts, and credential-boundary reports that do not change provider keys or deploy secrets
 
 ## Development
 
@@ -77,10 +79,11 @@ Start the local API in a second terminal for SQLite persistence, screenshots, qu
 npm run api
 ```
 
-Optional Claude evaluator:
+Optional server-side model evaluator:
 
 ```bash
-ANTHROPIC_API_KEY=... npm run api
+# Keep provider credentials on the API host only when live model judging is needed.
+npm run api
 ```
 
 Hosted-style API with persistent storage and bearer auth:
@@ -117,6 +120,9 @@ npm run check:quality-gate
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
 npm run smoke:hosted -- --url http://127.0.0.1:4173 --train --out output/playwright/learning-machine-local
 npm run deploy:hosted-api -- --out output/hosted-api-deploy
+npm run proof:seed -- --out output/proof-seed-runway
+npm run export:regression -- --out output/regression-timeline
+npm run audit:security-boundary -- --out output/security-boundary
 npm run export:training-v2 -- --out output/training-dataset-v2
 npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-gallery
 npm run proof:batch -- --url http://127.0.0.1:8787 --limit 1 --allow-fail --out output/autonomous-proof-batch
@@ -174,6 +180,7 @@ The Train tab now starts with:
 26. A hosted API verifier command so the hosted-backend lane can be checked from CI, a terminal, or a deployment smoke without exposing API tokens or model keys.
 27. A Learning Machine control plane that ties the next product layer together: autonomous proof orchestration, Prompt Generator v3 mode patches, a scaled 60+ case benchmark harness, plain-English explanations, public demo polish, hosted Pages smoke, and real training-format exports.
 28. A Next Product Layer panel and CLI lane that makes deploy checks, autonomous proof batches, preference/repair exports, generator mode tests, gallery hydration, and regression dashboards repeatable from both the Train tab and terminal.
+29. A proof-seeding and operator-proof layer that creates offline or hosted proof queues, speeds pairwise preference review, checks generator brief completeness, exports regression timeline evidence, and audits credential boundaries without changing provider keys.
 
 The tightest improvement cycle is:
 

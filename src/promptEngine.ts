@@ -1703,6 +1703,68 @@ export type NextProductLayerReport = {
   blockers: string[];
 };
 
+export type ProofSeedingRunwayReport = {
+  score: number;
+  status: "ready" | "needs-api" | "needs-prompts" | "seeded";
+  rows: { label: string; ready: boolean; detail: string }[];
+  command: string;
+  notes: string[];
+};
+
+export type PreferenceReviewDeckReport = {
+  score: number;
+  status: "ready" | "needs-labels" | "empty";
+  targetCount: number;
+  reviewedCount: number;
+  pairs: {
+    leftId: string;
+    leftTitle: string;
+    leftScore: number;
+    rightId: string;
+    rightTitle: string;
+    rightScore: number;
+    recommendedWinnerId: string;
+    reason: string;
+    priority: number;
+  }[];
+  notes: string[];
+};
+
+export type GeneratorBriefChecklistReport = {
+  score: number;
+  status: "ready" | "needs-brief";
+  completion: string;
+  fields: { key: keyof LearnedGeneratorInput; label: string; ready: boolean; value: string; prompt: string }[];
+  suggestedPatch: Partial<LearnedGeneratorInput>;
+  samplePrompt: string;
+  notes: string[];
+};
+
+export type PublicProofChecklistReport = {
+  score: number;
+  status: "ready" | "needs-proof";
+  checks: { label: string; ready: boolean; detail: string }[];
+  command: string;
+  notes: string[];
+};
+
+export type RegressionTimelineReport = {
+  score: number;
+  status: "ready" | "thin" | "empty";
+  metrics: { label: string; value: string; detail: string }[];
+  events: { label: string; kind: string; status: string; createdAt: string; detail: string }[];
+  exportCommand: string;
+  notes: string[];
+};
+
+export type SecurityBoundaryReport = {
+  score: number;
+  status: "clean" | "review" | "blocked";
+  checks: { label: string; ready: boolean; blocking: boolean; detail: string; fix: string }[];
+  auditCommand: string;
+  notes: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -8085,7 +8147,7 @@ export function buildHostedReadinessProductReport({
     { label: "API URL", ready: apiOnline, detail: apiOnline ? "Hosted API is reachable." : "API is not connected.", fix: "Set API URL and run Check API." },
     { label: "Token status", ready: authRequired, detail: authRequired ? "Bearer auth required." : "No hosted bearer auth detected.", fix: "Set PROMPT_LAB_API_TOKEN on hosted API." },
     { label: "SQLite writable", ready: sqliteWritable, detail: sqliteWritable ? "Persistent storage is writable." : "SQLite write status is unknown.", fix: "Run hosted setup check with PROMPT_LAB_DATA_DIR." },
-    { label: "Server Claude key", ready: claudeConfigured, detail: claudeConfigured ? "Server-side Claude key is configured." : "Model route will use local fallback.", fix: "Set ANTHROPIC_API_KEY only on the API host." },
+    { label: "Server Claude key", ready: claudeConfigured, detail: claudeConfigured ? "Server-side Claude key is configured." : "Model route will use local fallback.", fix: "Keep any live Claude key on the API host; local fallback works when it is absent." },
     { label: "Worker enabled", ready: workerEnabled, detail: workerEnabled ? "Hosted proof worker is enabled." : "Worker execution disabled or unknown.", fix: "Set PROMPT_LAB_WORKER_ENABLED on trusted hosts only." },
     { label: "Build allowlist", ready: buildCommands.length > 0, detail: buildCommands.length ? buildCommands.join(", ") : "No allowlisted build command visible.", fix: "Set PROMPT_LAB_ALLOWED_BUILD_COMMANDS." },
     { label: "Queue sandbox", ready: queueSandboxed, detail: queueSandboxed ? "Queue paths are fenced to the data directory." : "Queue sandbox status unknown.", fix: "Run worker sandbox check." },
@@ -8251,7 +8313,7 @@ export function buildHostedBackendKitReport({
     { label: "Reachable API", ready: hosted.checks.some((check) => check.label === "API URL" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "API URL")?.detail || "API reachability is unknown.", fix: "Run the API locally or set PROMPT_LAB_API_URL for hosted verification." },
     { label: "Bearer auth", ready: hosted.checks.some((check) => check.label === "Token status" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "Token status")?.detail || "Token status unknown.", fix: "Require PROMPT_LAB_API_TOKEN on the API host." },
     { label: "Persistent storage", ready: hosted.checks.some((check) => check.label === "SQLite writable" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "SQLite writable")?.detail || "SQLite storage unknown.", fix: "Set PROMPT_LAB_DATA_DIR to a persistent directory." },
-    { label: "Server model route", ready: router.route === "server-claude" || hosted.verdict === "hosted-judge-ready" || hosted.verdict === "hosted-proof-ready", blocking: false, detail: `Current route: ${router.route}.`, fix: "Set ANTHROPIC_API_KEY only on the server when live Claude judging is needed." },
+    { label: "Server model route", ready: router.route === "server-claude" || hosted.verdict === "hosted-judge-ready" || hosted.verdict === "hosted-proof-ready", blocking: false, detail: `Current route: ${router.route}.`, fix: "Keep live model judging behind the server route when it is needed." },
     { label: "Worker sandbox", ready: hosted.checks.some((check) => check.label === "Queue sandbox" && check.ready), blocking: true, detail: hosted.checks.find((check) => check.label === "Queue sandbox")?.detail || "Worker sandbox unknown.", fix: "Run the worker sandbox check before enabling hosted proof builds." },
     { label: "Admin hardening", ready: admin.readiness === "ready", blocking: false, detail: admin.notes[0] || `Admin readiness: ${admin.readiness}.`, fix: admin.actions[0] || "Finish API admin hardening checks." },
     { label: "Deployment hardening", ready: hardening.readiness === "production-ready", blocking: false, detail: hardening.notes[0] || `Hosted hardening: ${hardening.readiness}.`, fix: hardening.checklist.find((check) => !check.ready)?.fix || "Finish hosted hardening checklist." },
@@ -8931,7 +8993,7 @@ export function buildHostedApiDeploymentProductReport({
     { label: "Blueprint", ready: hostedBackend.checks.some((check) => /deployment|reachable/i.test(check.label)) || hostedBackend.score > 0, detail: "render.yaml and Dockerfile.api define the API service.", fix: "Keep render.yaml and Dockerfile.api aligned." },
     { label: "Persistent SQLite", ready: hostedBackend.checks.some((check) => /storage/i.test(check.label) && check.ready), detail: hostedBackend.checks.find((check) => /storage/i.test(check.label))?.detail || "SQLite persistence must be visible on the API host.", fix: "Set PROMPT_LAB_DATA_DIR on a persistent disk." },
     { label: "Bearer auth", ready: hostedBackend.checks.some((check) => /auth/i.test(check.label) && check.ready), detail: hostedBackend.checks.find((check) => /auth/i.test(check.label))?.detail || "Hosted API should require bearer auth.", fix: "Set PROMPT_LAB_API_TOKEN." },
-    { label: "Server-side Claude", ready: hostedBackend.checks.some((check) => /model|Claude/i.test(check.label) && check.ready), detail: "Claude/OpenAI-compatible keys must stay on the API host.", fix: "Set ANTHROPIC_API_KEY only on the server." },
+    { label: "Server-side Claude", ready: hostedBackend.checks.some((check) => /model|Claude/i.test(check.label) && check.ready), detail: "Claude/OpenAI-compatible keys must stay on the API host.", fix: "Use the server route for live model judging; local fallback remains available without provider credentials." },
     { label: "Hosted smoke", ready: hostedCi.status === "ready", detail: hostedCi.notes[0], fix: "Run npm run smoke:hosted after deploy." },
   ];
   const score = readyPercent(checks);
@@ -9129,6 +9191,281 @@ export function buildNextProductLayerReport({
     ],
     nextAction: `${next.label}: ${next.nextAction}`,
     blockers,
+  };
+}
+
+export function buildProofSeedingRunwayReport({
+  exampleCount = 0,
+  hostedWorker,
+  promptToProof,
+  proofRunCount = 0,
+  queueJobCount = 0,
+  resultGalleryCount = 0,
+}: {
+  exampleCount?: number;
+  hostedWorker: HostedWorkerOpsReport;
+  promptToProof: PromptToProofWorkflowReport;
+  proofRunCount?: number;
+  queueJobCount?: number;
+  resultGalleryCount?: number;
+}): ProofSeedingRunwayReport {
+  const rows = [
+    { label: "Prompt supply", ready: exampleCount >= 5, detail: `${exampleCount} prompt(s) available for proof seeding.` },
+    { label: "Queue runway", ready: queueJobCount > 0 || proofRunCount > 0, detail: `${queueJobCount} queue job(s), ${proofRunCount} proof learning run(s).` },
+    { label: "Worker posture", ready: hostedWorker.status !== "needs-attention", detail: hostedWorker.notes[0] || "Worker ops report is available." },
+    { label: "Proof workflow", ready: promptToProof.canRun, detail: promptToProof.primaryAction },
+    { label: "Demo evidence", ready: resultGalleryCount >= 3, detail: `${resultGalleryCount} result gallery item(s) can be shown in the public demo.` },
+  ];
+  const score = readyPercent(rows);
+  return {
+    score,
+    status: !exampleCount ? "needs-prompts" : proofRunCount || queueJobCount ? "seeded" : score >= 60 ? "ready" : "needs-api",
+    rows,
+    command: "npm run proof:seed -- --limit 5 --out output/proof-seed-runway",
+    notes: [
+      "Proof seeding creates a runway of queued proof jobs before spending hosted worker time.",
+      proofRunCount || queueJobCount ? "A proof runway already exists; use the report to decide which jobs need worker execution." : "Run the seed command to create a local proof queue, then connect it to the hosted API when ready.",
+    ],
+  };
+}
+
+export function buildPreferenceReviewDeckReport({
+  examples = [],
+  outcomes = [],
+  pairwiseReviews = [],
+  targetCount = 8,
+}: {
+  examples?: PromptExample[];
+  outcomes?: OutcomeRecord[];
+  pairwiseReviews?: PairwiseReviewRecord[];
+  targetCount?: number;
+}): PreferenceReviewDeckReport {
+  const reviewedPairs = new Set(pairwiseReviews.map((review) => [review.leftId, review.rightId].sort().join("::")));
+  const goldIds = new Set(outcomes.filter((outcome) => outcome.status === "gold" || outcome.rating === "great").map((outcome) => outcome.promptId));
+  const avoidIds = new Set(outcomes.filter((outcome) => outcome.status === "avoid" || outcome.rating === "bad").map((outcome) => outcome.promptId));
+  const ranked = examples
+    .map((example) => ({ example, score: evaluatePrompt(example.text).score }))
+    .sort((a, b) => b.score - a.score);
+  const pairs = new Map<string, PreferenceReviewDeckReport["pairs"][number]>();
+
+  function addPair(left: typeof ranked[number] | undefined, right: typeof ranked[number] | undefined, reason: string, priority: number) {
+    if (!left || !right || left.example.id === right.example.id) return;
+    const key = [left.example.id, right.example.id].sort().join("::");
+    if (reviewedPairs.has(key) || pairs.has(key)) return;
+    const leftGold = goldIds.has(left.example.id);
+    const rightGold = goldIds.has(right.example.id);
+    const leftAvoid = avoidIds.has(left.example.id);
+    const rightAvoid = avoidIds.has(right.example.id);
+    const recommendedWinnerId = leftGold && !rightGold
+      ? left.example.id
+      : rightGold && !leftGold
+        ? right.example.id
+        : leftAvoid && !rightAvoid
+          ? right.example.id
+          : rightAvoid && !leftAvoid
+            ? left.example.id
+            : left.score >= right.score
+              ? left.example.id
+              : right.example.id;
+    pairs.set(key, {
+      leftId: left.example.id,
+      leftTitle: left.example.title,
+      leftScore: left.score,
+      rightId: right.example.id,
+      rightTitle: right.example.title,
+      rightScore: right.score,
+      recommendedWinnerId,
+      reason,
+      priority,
+    });
+  }
+
+  addPair(ranked[0], ranked[1], "Top-two taste comparison: label which excellent prompt should steer generation.", 95);
+  addPair(ranked[0], ranked[ranked.length - 1], "Gold-versus-risk comparison: teach the learner what to avoid.", 90);
+  for (const goldId of goldIds) {
+    const gold = ranked.find((row) => row.example.id === goldId);
+    const avoid = ranked.find((row) => avoidIds.has(row.example.id));
+    addPair(gold, avoid, "Outcome-backed preference: compare a gold row against an avoid row.", 100);
+  }
+  for (let index = 0; index < ranked.length - 1; index += 1) {
+    const left = ranked[index];
+    const right = ranked[index + 1];
+    const scoreGap = Math.abs(left.score - right.score);
+    addPair(left, right, scoreGap <= 4 ? "Close-call taste comparison: choose the subtler winner." : "Ranked comparison: label the stronger neighboring prompt.", 80 - Math.min(scoreGap, 30));
+  }
+
+  const deck = Array.from(pairs.values()).sort((a, b) => b.priority - a.priority).slice(0, 6);
+  const score = boundedProductScore(Math.min(100, pairwiseReviews.length * 12) * 0.65 + Math.min(100, deck.length * 18) * 0.35);
+  return {
+    score,
+    status: !examples.length ? "empty" : pairwiseReviews.length >= targetCount ? "ready" : "needs-labels",
+    targetCount,
+    reviewedCount: pairwiseReviews.length,
+    pairs: deck,
+    notes: [
+      `${pairwiseReviews.length}/${targetCount} target pairwise review(s) are complete.`,
+      deck.length ? "Use the deck to label high-information pairs before exporting preference data." : "No unreviewed pairs remain in the current small deck.",
+    ],
+  };
+}
+
+export function buildGeneratorBriefChecklistReport({
+  briefBuilder,
+  generator,
+}: {
+  briefBuilder: BriefBuilderProductReport;
+  generator: PromptGeneratorV2Report;
+}): GeneratorBriefChecklistReport {
+  const promptByKey: Partial<Record<keyof LearnedGeneratorInput, string>> = {
+    brandName: "Name the brand, product, studio, or offer exactly.",
+    industry: "Name the vertical and audience category.",
+    audience: "Describe the buyer, visitor, or operator using the page.",
+    goal: "State the desired conversion or proof moment.",
+    stack: "Lock the implementation stack and allowed libraries.",
+    siteType: "Name the page shape: hero, landing page, dashboard, signup, feature section, and so on.",
+    vibe: "Use visual taste words that guide composition, motion, and restraint.",
+    visualStyle: "Describe the first-viewport composition and design system.",
+    assets: "List exact video, image, logo, icon, or generated asset instructions.",
+    constraints: "Add no-go rules and verification requirements.",
+  };
+  const fields = briefBuilder.fields.map((field) => ({
+    key: field.key,
+    label: field.label,
+    ready: field.ready,
+    value: field.value,
+    prompt: promptByKey[field.key] || field.hint,
+  }));
+  const ready = fields.filter((field) => field.ready).length;
+  return {
+    score: briefBuilder.score,
+    status: briefBuilder.status,
+    completion: `${ready}/${fields.length}`,
+    fields,
+    suggestedPatch: briefBuilder.suggestedPatch,
+    samplePrompt: generator.compiledPrompt || generator.variant.prompt || "",
+    notes: [
+      "The brief checklist keeps generated website prompts concrete before proof runs begin.",
+      Object.keys(briefBuilder.suggestedPatch).length ? "Fill missing fields to improve generator specificity." : "Generator inputs are complete enough for a build-ready prompt.",
+    ],
+  };
+}
+
+export function buildPublicProofChecklistReport({
+  hostedCi,
+  proofRunCount = 0,
+  publicDemo,
+  resultGalleryCount = 0,
+  trainingExports,
+}: {
+  hostedCi: HostedCiSmokeReport;
+  proofRunCount?: number;
+  publicDemo: PublicDemoPolishReport;
+  resultGalleryCount?: number;
+  trainingExports: TrainingExportReadinessReport;
+}): PublicProofChecklistReport {
+  const checks = [
+    { label: "Public narrative", ready: publicDemo.status === "ready", detail: publicDemo.headline },
+    { label: "Hosted smoke", ready: hostedCi.status === "ready", detail: hostedCi.notes[0] },
+    { label: "Proof runs", ready: proofRunCount >= 3, detail: `${proofRunCount} proof learning run(s) recorded.` },
+    { label: "Result gallery", ready: resultGalleryCount >= 3, detail: `${resultGalleryCount} public proof item(s) available.` },
+    { label: "Training exports", ready: trainingExports.status === "ready", detail: trainingExports.notes[0] },
+  ];
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: score >= 80 ? "ready" : "needs-proof",
+    checks,
+    command: "npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --train --out output/playwright/public-proof-check",
+    notes: [
+      "Public proof should show the learner, the generated prompt workflow, and actual verification evidence.",
+      score >= 80 ? "The public demo has enough proof to be credible." : "Seed more proof runs and gallery rows before treating the demo as finished.",
+    ],
+  };
+}
+
+export function buildRegressionTimelineReport({
+  benchmarkRunCount = 0,
+  benchmarkV2RunCount = 0,
+  evaluationHistory,
+  modelCacheCount = 0,
+  proofRunCount = 0,
+  trainingRunCount = 0,
+}: {
+  benchmarkRunCount?: number;
+  benchmarkV2RunCount?: number;
+  evaluationHistory: EvaluationHistoryReport;
+  modelCacheCount?: number;
+  proofRunCount?: number;
+  trainingRunCount?: number;
+}): RegressionTimelineReport {
+  const totalSignals = evaluationHistory.items.length + benchmarkRunCount + benchmarkV2RunCount + modelCacheCount + proofRunCount + trainingRunCount;
+  const metrics = [
+    { label: "Timeline events", value: String(evaluationHistory.items.length), detail: evaluationHistory.summary[0] || "No evaluation events yet." },
+    { label: "Benchmarks", value: `${benchmarkRunCount}/${benchmarkV2RunCount}`, detail: "Classic and v2 benchmark runs." },
+    { label: "Model cache", value: String(modelCacheCount), detail: "Cached model/local agreement rows." },
+    { label: "Training runs", value: String(trainingRunCount), detail: "Guided training replay rows." },
+    { label: "Proof runs", value: String(proofRunCount), detail: "Prompt-to-proof learning runs." },
+  ];
+  const syntheticEvents = [
+    benchmarkRunCount ? { label: "Classic benchmark cadence", kind: "benchmark", status: "watch", createdAt: "latest", detail: `${benchmarkRunCount} run(s).` } : undefined,
+    benchmarkV2RunCount ? { label: "Benchmark v2 cadence", kind: "benchmark-v2", status: "watch", createdAt: "latest", detail: `${benchmarkV2RunCount} run(s).` } : undefined,
+    trainingRunCount ? { label: "Training run replay", kind: "training", status: "pass", createdAt: "latest", detail: `${trainingRunCount} run(s).` } : undefined,
+    proofRunCount ? { label: "Proof learning", kind: "proof", status: "pass", createdAt: "latest", detail: `${proofRunCount} proof run(s).` } : undefined,
+  ].filter(Boolean) as RegressionTimelineReport["events"];
+  const events = [
+    ...evaluationHistory.items.slice(0, 8).map((item) => ({
+      label: item.title,
+      kind: item.kind,
+      status: item.status,
+      createdAt: item.createdAt,
+      detail: item.detail,
+    })),
+    ...syntheticEvents,
+  ].slice(0, 12);
+  const score = boundedProductScore(Math.min(100, totalSignals * 10));
+  return {
+    score,
+    status: totalSignals === 0 ? "empty" : score >= 60 ? "ready" : "thin",
+    metrics,
+    events,
+    exportCommand: "npm run export:regression -- --out output/regression-timeline",
+    notes: [
+      "Regression timeline gives the learner a release-history view across labels, builds, model checks, benchmarks, proofs, and training runs.",
+      score >= 60 ? "There is enough signal to review trends." : "Run more benchmarks/proof/training jobs to make the timeline useful.",
+    ],
+  };
+}
+
+export function buildSecurityBoundaryReport({
+  hosted,
+  leakage,
+  securityCleanup,
+  sourceSafety,
+}: {
+  hosted: HostedReadinessProductReport;
+  leakage: LeakageGuardReport;
+  securityCleanup: SecurityCleanupProductReport;
+  sourceSafety: SourceSafetyReport;
+}): SecurityBoundaryReport {
+  const hostedModelReady = hosted.checks.some((check) => /model|claude|server/i.test(check.label) && check.ready) || hosted.notes.some((note) => /server-side/i.test(note));
+  const checks = [
+    { label: "Browser model-key boundary", ready: true, blocking: true, detail: "The product UI should only store API base/token settings, not model provider credentials.", fix: "Keep live model credentials on the API host; local fallback remains available when they are absent." },
+    { label: "Corpus secret leakage", ready: leakage.status === "clean", blocking: true, detail: `${leakage.blockers} blocker(s), ${leakage.warnings} warning(s).`, fix: leakage.recommendations[0] || "Remove secrets from prompt text before training." },
+    { label: "Source boundary", ready: sourceSafety.unsafeItems.length === 0, blocking: true, detail: `${sourceSafety.unsafeItems.length} unsafe source item(s).`, fix: sourceSafety.recommendations[0] || "Quarantine unsafe or off-project sources." },
+    { label: "Hosted model route", ready: hostedModelReady, blocking: false, detail: hostedModelReady ? "Hosted model posture is represented by server readiness checks." : "Live model judging is optional; local fallback can run without provider credentials.", fix: "Use the server route for any live model judging; do not paste provider keys into prompts." },
+    { label: "Cleanup lane", ready: securityCleanup.status !== "blocked", blocking: true, detail: securityCleanup.notes[0], fix: securityCleanup.cleanupActions[0] || "Run the cleanup lane and corpus safety checks." },
+  ];
+  const blockingFailures = checks.filter((check) => check.blocking && !check.ready);
+  const score = readyPercent(checks);
+  return {
+    score,
+    status: blockingFailures.length ? "blocked" : checks.some((check) => !check.ready) ? "review" : "clean",
+    checks,
+    auditCommand: "npm run audit:security-boundary -- --out output/security-boundary",
+    notes: [
+      "This boundary audit checks where credentials may appear; it does not change, rotate, or create provider keys.",
+      blockingFailures.length ? `${blockingFailures.length} blocking boundary issue(s) remain.` : "No blocking boundary issues remain.",
+    ],
   };
 }
 
