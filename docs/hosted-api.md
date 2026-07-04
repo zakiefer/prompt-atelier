@@ -40,7 +40,16 @@ The Claude/local/result comparison panel reads cached model rows, local DNA scor
 
 The true closed-loop route is `POST /api/closed-loop/run`. It redacts the prompt payload, scores the original prompt, requests or creates a rewritten prompt, scores the rewrite, persists a `closedLoopRuns` row, writes a `closed-loop-run` API event, and returns `{ run, original, improved, winnerPrompt, redactions, collections.closedLoopRuns }`. When `ANTHROPIC_API_KEY` is present on the API host, the route uses Claude through the same normalized schema as `/api/model/evaluate`; when it is absent, it returns a deterministic local fallback without exposing browser secrets.
 
-The hosted proof worker route is `POST /api/closed-loop/prove`. It performs the same redacted original-vs-rewrite judging, then creates a queue job, writes a queue file under `PROMPT_LAB_DATA_DIR`, invokes `scripts/runQueue.mjs` with scaffold/build/capture options, stores `closedLoopRuns`, `queueJobs`, and `proofLearningRuns`, and returns `{ run, job, proofRun, queueResult, winnerPrompt, collections }`. Treat this as a trusted-worker route: only enable it behind bearer auth on infrastructure where running scaffold/build commands is acceptable.
+The hosted proof worker route is `POST /api/closed-loop/prove`. It performs the same redacted original-vs-rewrite judging, then creates a queue job, writes a queue file under `PROMPT_LAB_DATA_DIR`, invokes `scripts/runQueue.mjs` with scaffold/build/capture options, imports the returned build result, stores `closedLoopRuns`, `queueJobs`, `proofLearningRuns`, `buildRuns`, `screenshots`, `lineage`, and `proofArtifacts`, and returns `{ run, job, proofRun, queueResult, winnerPrompt, collections }`. Treat this as a trusted-worker route: only enable it behind bearer auth on infrastructure where running scaffold/build commands is acceptable.
+
+Worker execution is now explicitly fenced:
+
+- `PROMPT_LAB_WORKER_ENABLED=false` disables `/api/queue/run` and `/api/closed-loop/prove`.
+- `PROMPT_LAB_ALLOWED_BUILD_COMMANDS` is a comma-separated allowlist. Default: `npm run build,true`.
+- `PROMPT_LAB_ALLOWED_AGENT_PREFIXES` is empty by default, which disables arbitrary agent commands. Add narrow prefixes only on trusted hosts.
+- `PROMPT_LAB_WORKER_TIMEOUT_MS` caps worker execution time. Default: `240000`.
+- `PROMPT_LAB_MAX_BODY_BYTES` caps request bodies before JSON parsing. Default: `1000000`.
+- Queue files must resolve inside `PROMPT_LAB_DATA_DIR`; paths outside the data directory are rejected before write or spawn.
 
 ## Training Artifacts
 
@@ -60,17 +69,18 @@ The hosted API advertises all durable collection keys from `/api/health` and sto
 - `benchmarkV2Runs`: deterministic benchmark v2 snapshots with fixture rows, missing traits, deltas, and suggested fixes.
 - `evaluationArtifacts`: markdown/JSON proof packages for selected prompts, memory influences, quality gates, and next mutations.
 - `hostedSetupChecks`: safe-to-train readiness runs covering API, auth, SQLite, model route, redaction, queue, and snapshot posture.
+- `proofArtifacts`: screenshot/build artifacts imported from hosted proof worker queue results for drilldown and promotion review.
 - `healthChecks`: lightweight write probes used by the hosted readiness check.
 
 Screenshot uploads are sent to `/api/model/evaluate` as data URL image blocks only when the API route has access to the model key. Do not put image-generation or Claude keys in browser-visible environment variables.
 
 ## One-click Proof Runs
 
-The Train tab's Run proof now action uses `/api/queue/run` with scaffold, install, build, and screenshot capture enabled. It imports the returned build run, desktop/mobile screenshot records, and proof-learning score into the browser state.
+The Train tab's Run proof now action uses `/api/queue/run` with scaffold, install, build, and screenshot capture enabled. It imports the returned build run, desktop/mobile screenshot records, and proof-learning score into the browser state. The hosted proof worker does the same import server-side after `/api/closed-loop/prove`, so the browser receives durable collections instead of a loose `queue-result.json` handoff.
 
 Run this only against a trusted API worker. The hosted static frontend never receives shell access or model secrets; it sends the selected prompt and queue options to the API, and the API decides whether queue execution is allowed in that environment.
 
-The queue runner now returns a `progress` array, and the API writes durable `queue-progress` events for queued, requested scaffold/install/build/capture stages, and final complete/failed state. The Train tab's queue ledger reads those events through `/api/events`.
+The queue runner now returns a `progress` array, and the API writes durable `queue-progress` events for queued, requested scaffold/install/build/capture stages, hosted proof worker start/complete/failure, import status, and final complete/failed state. The Train tab's queue observability timeline reads those events through `/api/events`.
 
 ## Training Export Pack
 
@@ -93,11 +103,11 @@ The top of the Train tab can run without a model key, then enrich through API ro
 - `GET /api/training/runs`: returns stored guided training runs.
 - `POST /api/model/evaluate-cached`: redacts prompt/model payloads, checks the cache, and appends a schema-versioned cache row when needed.
 - `POST /api/closed-loop/run`: performs server-side original-vs-rewrite judging and appends a closed-loop winner row.
-- `POST /api/closed-loop/prove`: chains closed-loop judging into the queue worker and appends proof-learning rows.
+- `POST /api/closed-loop/prove`: chains closed-loop judging into the queue worker and appends closed-loop, queue, proof-learning, build-run, screenshot, lineage, and proof-artifact rows.
 - `POST /api/corpus/analyze`: creates a deterministic corpus intelligence run from supplied examples.
 - `POST /api/benchmark/v2`: creates a deterministic benchmark v2 run from supplied examples.
 - `POST /api/artifact/create`: creates a markdown/JSON evaluation artifact for the selected prompt.
 
-The browser always writes a local deterministic fallback before trying these routes. Hosted deployments should still set `PROMPT_LAB_API_TOKEN`, `PROMPT_LAB_DATA_DIR`, and `PROMPT_LAB_ALLOWED_ORIGIN` before treating the setup as safe to train.
+The browser always writes a local deterministic fallback before trying these routes. Hosted deployments should still set `PROMPT_LAB_API_TOKEN`, `PROMPT_LAB_DATA_DIR`, `PROMPT_LAB_ALLOWED_ORIGIN`, `PROMPT_LAB_ALLOWED_BUILD_COMMANDS`, and `PROMPT_LAB_WORKER_TIMEOUT_MS` before treating the setup as safe to train.
 
 Safe-to-train should be considered a product gate, not just an API health check. A strong run has clean provenance, a locked dataset, recent backups, API auth, SQLite persistence, model-route readiness, redaction coverage, queue/proof history, benchmark coverage, and at least one imported build result or screenshot proof.

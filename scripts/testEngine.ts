@@ -19,7 +19,9 @@ import {
   buildClaudeCalibrationSetReport,
   buildClosedLoopRunDetailReport,
   buildCorpusIntelligenceReport,
+  buildDatasetGovernanceReport,
   buildEvaluationArtifact,
+  buildEvaluatorCalibrationWorkflowReport,
   buildEvaluationHistoryReport,
   buildExperimentLeaderboard,
   buildExportPresets,
@@ -53,10 +55,15 @@ import {
   buildModelJudgeComparisonReport,
   buildModelProviderRouterReport,
   buildOperatorModeReport,
+  buildProofArtifactStorageReport,
+  buildProviderPluginLayerReport,
+  buildQueueObservabilityReport,
+  buildSimpleModeReport,
   buildTrainingRunSummary,
   buildTrueClosedLoopReport,
   buildVisualProofComparisonReport,
   buildVisualRegressionReport,
+  buildWorkerSandboxReport,
   buildPromptSectionRegenerationReport,
   buildSpeedLabelingReport,
   answerLearnerQuestion,
@@ -731,4 +738,61 @@ const apiAdminHardening = buildApiAdminHardeningReport({
 assert.equal(apiAdminHardening.readiness, "ready", "API admin hardening should pass a complete hosted posture.");
 assert.ok(apiAdminHardening.actions.some((action) => /restore point/i.test(action)), "API admin hardening should include backup actions.");
 
-console.log(JSON.stringify({ ok: true, assertions: 146, score: score.score, snapshot: snapshot.label }, null, 2));
+const workerSandbox = buildWorkerSandboxReport({
+  apiAdmin: apiAdminHardening,
+  configuredBuildCommand: "npm run build",
+  health: {
+    maxBodyBytes: 1_000_000,
+    worker: {
+      enabled: true,
+      timeoutMs: 240000,
+      allowedBuildCommands: ["npm run build", "true"],
+      agentPrefixesConfigured: 0,
+      dataDir: "data",
+    },
+  },
+  hostedWorker: hostedBuildWorker,
+});
+assert.equal(workerSandbox.readiness, "locked", "Worker sandbox should lock down a fully guarded worker posture.");
+assert.ok(workerSandbox.checks.some((check) => check.label === "Build allowlist" && check.ready), "Worker sandbox should enforce build allowlists.");
+
+const proofArtifacts = buildProofArtifactStorageReport({ buildRuns, screenshots });
+assert.notEqual(proofArtifacts.status, "empty", "Proof artifact storage should find stored build or screenshot artifacts.");
+assert.ok(proofArtifacts.notes.some((note) => /build run/i.test(note) || /proof artifact/i.test(note)), "Proof artifact storage should describe ledger attachment.");
+
+const queueObservability = buildQueueObservabilityReport({
+  apiEvents: [
+    { kind: "queue-progress", detail: { stage: "queued" } },
+    { kind: "closed-loop-proof", detail: { stage: "rewrite-complete" } },
+    { kind: "queue-progress", detail: { stage: "scaffold-requested" } },
+    { kind: "queue-progress", detail: { stage: "build-requested" } },
+    { kind: "queue-progress", detail: { stage: "capture-requested" } },
+    { kind: "queue-progress", detail: { stage: "hosted-proof-worker-complete", imported: true, artifactCount: 1 } },
+  ],
+  proofLearningRuns: [{ id: "proof-1", phase: "complete", learnedStatus: "proof-ready" }],
+  queueProgress,
+});
+assert.equal(queueObservability.stages.length, 7, "Queue observability should expose the full proof timeline.");
+assert.equal(queueObservability.status, "live", "Queue observability should classify a complete event stream as live.");
+
+const simpleMode = buildSimpleModeReport({ beginnerPromptMaker, hostedBuildWorker, operatorMode, trueClosedLoop });
+assert.equal(simpleMode.steps.length, 5, "Simple beginner mode should reduce the workflow to five steps.");
+assert.ok(simpleMode.hiddenPanels.length > 0, "Simple beginner mode should hide expert panels.");
+
+const datasetGovernance = buildDatasetGovernanceReport({
+  comparison: { baseline: snapshot, current: { ...snapshot, id: "test-current" }, deltas: { score: 4 }, notes: ["stable"] },
+  goldenDataset: { goldCount: 6, trainCount: 5, testCount: 1 },
+  versions: [{ ...snapshot, label: "Golden Dataset v1" }],
+});
+assert.equal(datasetGovernance.status, "locked", "Dataset governance should detect a locked Golden Dataset v1.");
+assert.ok(datasetGovernance.actions.some((action) => /snapshot/i.test(action)), "Dataset governance should require snapshot exports.");
+
+const providerPluginLayer = buildProviderPluginLayerReport({ cache: cacheReport, router: providerRouter });
+assert.ok(providerPluginLayer.adapters.some((adapter) => adapter.id === "local-fallback" && adapter.ready), "Provider plugin layer should always include local fallback.");
+assert.equal(providerPluginLayer.activeRoute, "server-claude", "Provider plugin layer should expose the active provider route.");
+
+const calibrationWorkflow = buildEvaluatorCalibrationWorkflowReport({ calibrationDashboard, calibrationSet: claudeCalibrationSet });
+assert.ok(calibrationWorkflow.rows.some((row) => row.label === "Manual review queue"), "Evaluator calibration workflow should expose manual review rows.");
+assert.ok(["aligned", "review", "needs-runs"].includes(calibrationWorkflow.status), "Evaluator calibration workflow should classify readiness.");
+
+console.log(JSON.stringify({ ok: true, assertions: 160, score: score.score, snapshot: snapshot.label }, null, 2));

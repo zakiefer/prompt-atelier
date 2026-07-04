@@ -1,7 +1,8 @@
+import { Buffer } from "node:buffer";
 import { createServer } from "node:http";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
@@ -14,6 +15,19 @@ const DB_PATH = join(DATA_DIR, "prompt-atelier.sqlite");
 const API_TOKEN = process.env.PROMPT_LAB_API_TOKEN || "";
 const ALLOWED_ORIGIN = process.env.PROMPT_LAB_ALLOWED_ORIGIN || "*";
 const API_RATE_LIMIT = Number(process.env.PROMPT_LAB_RATE_LIMIT || 240);
+const MAX_BODY_BYTES = Number(process.env.PROMPT_LAB_MAX_BODY_BYTES || 1_000_000);
+const WORKER_ENABLED = process.env.PROMPT_LAB_WORKER_ENABLED !== "false";
+const WORKER_TIMEOUT_MS = Number(process.env.PROMPT_LAB_WORKER_TIMEOUT_MS || 240000);
+const WORKER_ALLOWED_BUILD_COMMANDS = new Set(
+  (process.env.PROMPT_LAB_ALLOWED_BUILD_COMMANDS || "npm run build,true")
+    .split(",")
+    .map((command) => command.trim())
+    .filter(Boolean),
+);
+const WORKER_ALLOWED_AGENT_PREFIXES = (process.env.PROMPT_LAB_ALLOWED_AGENT_PREFIXES || "")
+  .split(",")
+  .map((prefix) => prefix.trim())
+  .filter(Boolean);
 const COLLECTION_KEYS = [
   "userPrompts",
   "history",
@@ -45,6 +59,7 @@ const COLLECTION_KEYS = [
   "benchmarkV2Runs",
   "evaluationArtifacts",
   "hostedSetupChecks",
+  "proofArtifacts",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -125,11 +140,20 @@ function rateLimitAllows(request) {
 function readBody(request) {
   return new Promise((resolve, reject) => {
     let body = "";
+    let bytes = 0;
+    let rejected = false;
     request.on("data", (chunk) => {
+      bytes += Buffer.byteLength(chunk);
+      if (bytes > MAX_BODY_BYTES) {
+        rejected = true;
+        reject(new Error(`Request body too large. Limit is ${MAX_BODY_BYTES} bytes.`));
+        request.destroy();
+        return;
+      }
       body += chunk;
-      if (body.length > 15_000_000) reject(new Error("Request body too large."));
     });
     request.on("end", () => {
+      if (rejected) return;
       if (!body.trim()) {
         resolve({});
         return;
@@ -365,6 +389,64 @@ function runNodeScript(script, args, timeout = 120000) {
     stderr: result.error?.message || result.stderr.trim(),
     parsed,
   };
+}
+
+function pathIsInside(parent, child) {
+  const parentPath = resolve(parent);
+  const childPath = resolve(child);
+  return childPath === parentPath || childPath.startsWith(`${parentPath}${sep}`);
+}
+
+function safeDataPath(input, fallback) {
+  const target = resolve(input || fallback);
+  if (!pathIsInside(DATA_DIR, target)) {
+    throw new Error(`Worker path must stay inside PROMPT_LAB_DATA_DIR: ${DATA_DIR}`);
+  }
+  return target;
+}
+
+function safeBuildCommand(command) {
+  const value = String(command || "").trim();
+  if (!value) return "";
+  if (!WORKER_ALLOWED_BUILD_COMMANDS.has(value)) {
+    throw new Error(`Build command is not allowlisted: ${value}`);
+  }
+  return value;
+}
+
+function safeAgentCommand(command) {
+  const value = String(command || "").trim();
+  if (!value) return "";
+  if (!WORKER_ALLOWED_AGENT_PREFIXES.length || !WORKER_ALLOWED_AGENT_PREFIXES.some((prefix) => value.startsWith(prefix))) {
+    throw new Error("Agent command is disabled or does not match PROMPT_LAB_ALLOWED_AGENT_PREFIXES.");
+  }
+  return value;
+}
+
+function safeWorkerTimeout(value) {
+  const requested = Number(value || WORKER_TIMEOUT_MS);
+  if (!Number.isFinite(requested) || requested <= 0) return Math.min(WORKER_TIMEOUT_MS, 240000);
+  return Math.max(10_000, Math.min(requested, WORKER_TIMEOUT_MS));
+}
+
+function proofArtifactsFromResult(result, job, createdAt) {
+  const artifacts = [];
+  if (result?.screenshotUrl) {
+    artifacts.push({
+      id: `artifact-${job.id}-desktop`,
+      jobId: job.id,
+      promptId: job.promptId,
+      title: `${job.promptTitle} desktop screenshot`,
+      kind: "screenshot",
+      viewport: "desktop",
+      path: result.screenshotUrl,
+      url: result.screenshotUrl,
+      resultUrl: result.resultUrl || job.resultUrl || "",
+      score: Number(result.score || 0),
+      createdAt,
+    });
+  }
+  return artifacts;
 }
 
 function normalizeImportedResult(result) {
@@ -677,6 +759,14 @@ async function handle(request, response) {
         authRequired: Boolean(API_TOKEN),
         allowedOrigin: ALLOWED_ORIGIN,
         rateLimitPerMinute: API_RATE_LIMIT,
+        maxBodyBytes: MAX_BODY_BYTES,
+        worker: {
+          enabled: WORKER_ENABLED,
+          timeoutMs: WORKER_TIMEOUT_MS,
+          allowedBuildCommands: [...WORKER_ALLOWED_BUILD_COMMANDS],
+          agentPrefixesConfigured: WORKER_ALLOWED_AGENT_PREFIXES.length,
+          dataDir: DATA_DIR,
+        },
         skill: skillStatus(),
         collections: COLLECTION_KEYS,
       });
@@ -755,29 +845,45 @@ async function handle(request, response) {
 
     if (request.method === "POST" && url.pathname === "/api/queue/run") {
       const body = await readBody(request);
-      const queuePath = resolve(body.queuePath || join(DATA_DIR, "api-queue.json"));
+      if (!WORKER_ENABLED) {
+        jsonResponse(response, 403, { ok: false, error: "Hosted worker execution is disabled." });
+        return;
+      }
+      let queuePath;
+      let buildCommand;
+      let agentCommand;
+      let timeoutMs;
+      try {
+        queuePath = safeDataPath(body.queuePath, join(DATA_DIR, "api-queue.json"));
+        buildCommand = safeBuildCommand(body.buildCommand);
+        agentCommand = safeAgentCommand(body.agentCommand);
+        timeoutMs = safeWorkerTimeout(body.timeoutMs || 180000);
+      } catch (error) {
+        jsonResponse(response, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+        return;
+      }
       if (body.queue) writeFileSync(queuePath, `${JSON.stringify(body.queue, null, 2)}\n`);
       const args = ["--queue", queuePath];
       if (body.jobId) args.push("--job", body.jobId);
       if (body.capture) args.push("--capture");
       if (body.scaffold) args.push("--scaffold");
       if (body.install) args.push("--install");
-      if (body.buildCommand) args.push("--build", body.buildCommand);
-      if (body.agentCommand) args.push("--agent", body.agentCommand);
+      if (buildCommand) args.push("--build", buildCommand);
+      if (agentCommand) args.push("--agent", agentCommand);
       logEvent("queue-progress", {
         stage: "queued",
         jobId: body.jobId || "all",
         queuePath,
         scaffold: Boolean(body.scaffold),
         install: Boolean(body.install),
-        build: Boolean(body.buildCommand),
+        build: Boolean(buildCommand),
         capture: Boolean(body.capture),
       });
       if (body.scaffold) logEvent("queue-progress", { stage: "scaffold-requested", jobId: body.jobId || "all", queuePath });
       if (body.install) logEvent("queue-progress", { stage: "install-requested", jobId: body.jobId || "all", queuePath });
-      if (body.buildCommand) logEvent("queue-progress", { stage: "build-requested", jobId: body.jobId || "all", queuePath });
+      if (buildCommand) logEvent("queue-progress", { stage: "build-requested", jobId: body.jobId || "all", queuePath, buildCommand });
       if (body.capture) logEvent("queue-progress", { stage: "capture-requested", jobId: body.jobId || "all", queuePath });
-      const result = runNodeScript("runQueue.mjs", args, 180000);
+      const result = runNodeScript("runQueue.mjs", args, timeoutMs);
       const stage = result.ok ? "complete" : "failed";
       logEvent("queue-progress", {
         stage,
@@ -899,8 +1005,23 @@ async function handle(request, response) {
 
     if (request.method === "POST" && url.pathname === "/api/closed-loop/prove") {
       const body = await readBody(request);
+      if (!WORKER_ENABLED) {
+        jsonResponse(response, 403, { ok: false, error: "Hosted worker execution is disabled." });
+        return;
+      }
       const redacted = redactModelBody(body);
       const safeBody = redacted.body;
+      let buildCommand;
+      let agentCommand;
+      let timeoutMs;
+      try {
+        buildCommand = safeBuildCommand(safeBody.buildCommand || process.env.PROMPT_LAB_BUILD_COMMAND || "npm run build");
+        agentCommand = safeAgentCommand(safeBody.agentCommand || process.env.PROMPT_LAB_AGENT_COMMAND);
+        timeoutMs = safeWorkerTimeout(safeBody.timeoutMs);
+      } catch (error) {
+        jsonResponse(response, 400, { ok: false, error: error instanceof Error ? error.message : String(error) });
+        return;
+      }
       const sourceTitle = String(safeBody.title || safeBody.context?.sourceTitle || "Closed-loop proof prompt");
       const original = await evaluatePromptForClosedLoop({
         ...safeBody,
@@ -911,6 +1032,7 @@ async function handle(request, response) {
         },
       });
       const rewrittenPrompt = String(original.rewrittenPrompt || localClosedLoopRewrite(safeBody.prompt, safeBody.memory, { sourceTitle }));
+      logEvent("closed-loop-proof", { stage: "rewrite-complete", sourceTitle, originalScore: original.score, redactions: redacted.findings });
       const improved = await evaluatePromptForClosedLoop({
         ...safeBody,
         prompt: rewrittenPrompt,
@@ -956,15 +1078,18 @@ async function handle(request, response) {
         updatedAt: createdAt,
       };
       const queue = { jobs: [job], createdAt };
-      const queuePath = join(DATA_DIR, `${jobId}.json`);
+      const queuePath = safeDataPath(join(DATA_DIR, `${jobId}.json`), join(DATA_DIR, `${jobId}.json`));
       writeFileSync(queuePath, `${JSON.stringify(queue, null, 2)}\n`);
-      const args = ["--queue", queuePath, "--job", jobId, "--scaffold", "--build", String(safeBody.buildCommand || process.env.PROMPT_LAB_BUILD_COMMAND || "npm run build")];
+      const args = ["--queue", queuePath, "--job", jobId, "--scaffold", "--build", buildCommand];
       if (safeBody.install !== false) args.push("--install");
       if (safeBody.capture !== false) args.push("--capture");
-      if (safeBody.agentCommand || process.env.PROMPT_LAB_AGENT_COMMAND) args.push("--agent", String(safeBody.agentCommand || process.env.PROMPT_LAB_AGENT_COMMAND));
-      logEvent("closed-loop-proof", { id: run.id, jobId, stage: "queued", mode: run.modelMode });
-      const queueResult = runNodeScript("runQueue.mjs", args, Number(safeBody.timeoutMs || 240000));
+      if (agentCommand) args.push("--agent", agentCommand);
+      logEvent("closed-loop-proof", { id: run.id, jobId, stage: "job-created", mode: run.modelMode, queuePath, buildCommand, timeoutMs });
+      logEvent("queue-progress", { stage: "hosted-proof-worker-started", jobId, queuePath });
+      const queueResult = runNodeScript("runQueue.mjs", args, timeoutMs);
       const parsedResult = Array.isArray(queueResult.parsed?.results) ? queueResult.parsed.results[0] : null;
+      const normalizedResult = parsedResult ? normalizeImportedResult(parsedResult) : null;
+      const artifactRows = parsedResult ? proofArtifactsFromResult(parsedResult, job, createdAt) : [];
       const proofRun = {
         id: `proof-${jobId}`,
         createdAt,
@@ -987,9 +1112,32 @@ async function handle(request, response) {
       const current = readCollections();
       const queueJobs = [job, ...((current.queueJobs || []).filter((item) => item.id !== job.id))].slice(0, 140);
       const proofLearningRuns = [proofRun, ...(current.proofLearningRuns || [])].slice(0, 80);
+      const buildRuns = normalizedResult
+        ? [normalizedResult.buildRun, ...((current.buildRuns || []).filter((item) => item.id !== normalizedResult.buildRun.id))].slice(0, 120)
+        : current.buildRuns || [];
+      const screenshots = normalizedResult?.screenshot
+        ? [normalizedResult.screenshot, ...(current.screenshots || [])].slice(0, 120)
+        : current.screenshots || [];
+      const lineage = normalizedResult
+        ? [normalizedResult.lineage, ...(current.lineage || [])].slice(0, 220)
+        : current.lineage || [];
+      const proofArtifacts = artifactRows.length
+        ? [...artifactRows, ...((current.proofArtifacts || []).filter((item) => !artifactRows.some((artifact) => artifact.id === item?.id)))].slice(0, 160)
+        : current.proofArtifacts || [];
       writeCollection("queueJobs", queueJobs);
       writeCollection("proofLearningRuns", proofLearningRuns);
-      logEvent("closed-loop-proof", { id: run.id, jobId, stage: queueResult.ok ? "complete" : "failed", ok: queueResult.ok });
+      writeCollection("buildRuns", buildRuns);
+      writeCollection("screenshots", screenshots);
+      writeCollection("lineage", lineage);
+      writeCollection("proofArtifacts", proofArtifacts);
+      logEvent("queue-progress", {
+        stage: queueResult.ok ? "hosted-proof-worker-complete" : "hosted-proof-worker-failed",
+        jobId,
+        queuePath,
+        imported: Boolean(normalizedResult),
+        artifactCount: artifactRows.length,
+      });
+      logEvent("closed-loop-proof", { id: run.id, jobId, stage: queueResult.ok ? "complete" : "failed", ok: queueResult.ok, imported: Boolean(normalizedResult), artifactCount: artifactRows.length });
       jsonResponse(response, queueResult.ok ? 200 : 500, {
         ok: queueResult.ok,
         run,
@@ -1000,7 +1148,7 @@ async function handle(request, response) {
         winnerPrompt,
         queueResult,
         redactions: redacted.findings,
-        collections: { closedLoopRuns, queueJobs, proofLearningRuns },
+        collections: { closedLoopRuns, queueJobs, proofLearningRuns, buildRuns, screenshots, lineage, proofArtifacts },
       });
       return;
     }

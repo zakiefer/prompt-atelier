@@ -1252,6 +1252,57 @@ export type ApiAdminHardeningReport = {
   notes: string[];
 };
 
+export type WorkerSandboxReport = {
+  score: number;
+  readiness: "locked" | "watch" | "blocked";
+  checks: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type ProofArtifactStorageReport = {
+  score: number;
+  status: "ready" | "partial" | "empty";
+  artifacts: { id: string; title: string; kind: string; path: string; source: string }[];
+  notes: string[];
+};
+
+export type QueueObservabilityReport = {
+  score: number;
+  status: "live" | "partial" | "quiet";
+  stages: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type SimpleModeReport = {
+  score: number;
+  mode: "beginner" | "expert";
+  steps: { label: string; ready: boolean; detail: string }[];
+  hiddenPanels: string[];
+  notes: string[];
+};
+
+export type DatasetGovernanceReport = {
+  score: number;
+  status: "locked" | "draft" | "empty";
+  rows: { label: string; ready: boolean; detail: string }[];
+  actions: string[];
+  notes: string[];
+};
+
+export type ProviderPluginLayerReport = {
+  score: number;
+  activeRoute: string;
+  adapters: { id: string; label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
+export type EvaluatorCalibrationWorkflowReport = {
+  score: number;
+  status: "aligned" | "review" | "needs-runs";
+  rows: { label: string; ready: boolean; detail: string }[];
+  notes: string[];
+};
+
 export type EvaluationHistoryItem = {
   id: string;
   title: string;
@@ -6241,6 +6292,248 @@ export function buildApiAdminHardeningReport({
     notes: [
       score >= 85 ? "Admin posture is ready for hosted learning." : "Admin hardening still has gaps.",
       hostedHardening.notes[0],
+    ],
+  };
+}
+
+export function buildWorkerSandboxReport({
+  apiAdmin,
+  hostedWorker,
+  health,
+  configuredBuildCommand = "npm run build",
+}: {
+  apiAdmin: ApiAdminHardeningReport;
+  hostedWorker: HostedBuildWorkerReport;
+  health?: { worker?: { enabled?: boolean; timeoutMs?: number; allowedBuildCommands?: string[]; agentPrefixesConfigured?: number; dataDir?: string }; maxBodyBytes?: number };
+  configuredBuildCommand?: string;
+}): WorkerSandboxReport {
+  const allowedCommands = health?.worker?.allowedBuildCommands || [];
+  const workerEnabled = health?.worker?.enabled !== false;
+  const checks = [
+    { label: "Worker enabled flag", ready: workerEnabled, detail: workerEnabled ? "Hosted execution is explicitly enabled." : "PROMPT_LAB_WORKER_ENABLED=false blocks execution." },
+    { label: "Data-directory fence", ready: Boolean(health?.worker?.dataDir), detail: health?.worker?.dataDir || "API has not reported a worker data directory." },
+    { label: "Build allowlist", ready: allowedCommands.includes(configuredBuildCommand || "npm run build"), detail: allowedCommands.length ? allowedCommands.join(", ") : "No build commands reported." },
+    { label: "Timeout cap", ready: Boolean(health?.worker?.timeoutMs && health.worker.timeoutMs <= 300000), detail: health?.worker?.timeoutMs ? `${health.worker.timeoutMs}ms cap.` : "No timeout cap reported." },
+    { label: "Body-size cap", ready: Boolean(health?.maxBodyBytes && health.maxBodyBytes <= 2_000_000), detail: health?.maxBodyBytes ? `${health.maxBodyBytes} byte request cap.` : "No request-size cap reported." },
+    { label: "Auth before execution", ready: apiAdmin.checks.some((check) => check.label === "Auth enabled" && check.ready), detail: apiAdmin.checks.find((check) => check.label === "Auth enabled")?.detail || "Auth status unknown." },
+    { label: "Worker readiness", ready: hostedWorker.readiness === "ready", detail: hostedWorker.notes[0] || "Hosted worker has not been checked." },
+  ];
+  const readyCount = checks.filter((check) => check.ready).length;
+  return {
+    score: Math.round((readyCount / checks.length) * 100),
+    readiness: readyCount === checks.length ? "locked" : workerEnabled ? "watch" : "blocked",
+    checks,
+    notes: [
+      "Hosted proof runs should only spawn commands that pass the API allowlist.",
+      health?.worker?.agentPrefixesConfigured ? `${health.worker.agentPrefixesConfigured} agent command prefix rule(s) configured.` : "Agent commands stay disabled until allowed prefixes are configured.",
+    ],
+  };
+}
+
+export function buildProofArtifactStorageReport({
+  buildRuns = [],
+  proofArtifacts = [],
+  screenshots = [],
+}: {
+  buildRuns?: BuildRunRecord[];
+  proofArtifacts?: { id?: string; title?: string; kind?: string; path?: string; url?: string; resultUrl?: string }[];
+  screenshots?: ScreenshotRecord[];
+}): ProofArtifactStorageReport {
+  const explicitArtifacts = proofArtifacts.map((artifact, index) => ({
+    id: String(artifact.id || `proof-artifact-${index + 1}`),
+    title: String(artifact.title || `Proof artifact ${index + 1}`),
+    kind: String(artifact.kind || "screenshot"),
+    path: String(artifact.path || artifact.url || ""),
+    source: String(artifact.resultUrl || "proofArtifacts"),
+  }));
+  const screenshotArtifacts = screenshots.slice(0, 8).map((screenshot) => ({
+    id: screenshot.id,
+    title: screenshot.title,
+    kind: "screenshot",
+    path: screenshot.url,
+    source: screenshot.promptId,
+  }));
+  const buildArtifacts = buildRuns.filter((run) => run.screenshotUrl || run.folderPath).slice(0, 6).map((run) => ({
+    id: `build-artifact-${run.id}`,
+    title: run.promptTitle,
+    kind: run.screenshotUrl ? "build+screenshot" : "build-folder",
+    path: run.screenshotUrl || run.folderPath,
+    source: run.resultUrl || run.status,
+  }));
+  const artifacts = [...explicitArtifacts, ...screenshotArtifacts, ...buildArtifacts].filter((artifact, index, list) => list.findIndex((item) => item.id === artifact.id) === index).slice(0, 12);
+  const hasBuild = buildRuns.length > 0;
+  const hasScreenshot = screenshots.length > 0 || proofArtifacts.length > 0;
+  return {
+    score: Math.round(((hasBuild ? 1 : 0) + (hasScreenshot ? 1 : 0) + (artifacts.length ? 1 : 0)) / 3 * 100),
+    status: artifacts.length && hasBuild && hasScreenshot ? "ready" : artifacts.length ? "partial" : "empty",
+    artifacts,
+    notes: [
+      artifacts.length ? `${artifacts.length} proof artifact(s) are addressable from the learning ledger.` : "No screenshot artifacts have been stored yet.",
+      "Hosted proof imports should attach build run, screenshot, lineage, and proof artifact rows together.",
+    ],
+  };
+}
+
+export function buildQueueObservabilityReport({
+  apiEvents = [],
+  proofLearningRuns = [],
+  queueProgress,
+}: {
+  apiEvents?: { kind?: string; detail?: unknown; createdAt?: string }[];
+  proofLearningRuns?: { id?: string; phase?: string; learnedStatus?: string }[];
+  queueProgress?: QueueProgressReport;
+}): QueueObservabilityReport {
+  const eventText = apiEvents.map((event) => `${event.kind || ""} ${JSON.stringify(event.detail || {})}`.toLowerCase()).join("\n");
+  const stageDefinitions = [
+    { label: "Queued", terms: ["queued"] },
+    { label: "Rewrite", terms: ["rewrite-complete", "closed-loop-proof"] },
+    { label: "Scaffold", terms: ["scaffold"] },
+    { label: "Build", terms: ["build", "built"] },
+    { label: "Capture", terms: ["capture", "captured"] },
+    { label: "Import", terms: ["imported", "artifact"] },
+    { label: "Learned", terms: ["proof-ready", "complete"] },
+  ];
+  const stages = stageDefinitions.map((stage) => {
+    const eventReady = stage.terms.some((term) => eventText.includes(term));
+    const proofReady = stage.label === "Learned" && proofLearningRuns.some((run) => run.learnedStatus || run.phase);
+    const queueReady = Boolean(queueProgress?.status && ["Queued", "Build", "Capture"].includes(stage.label));
+    return {
+      label: stage.label,
+      ready: eventReady || proofReady || queueReady,
+      detail: eventReady ? "Seen in API event stream." : proofReady ? `${proofLearningRuns.length} proof learning row(s).` : queueReady ? `Queue status is ${queueProgress?.status}.` : "Waiting for worker evidence.",
+    };
+  });
+  const readyCount = stages.filter((stage) => stage.ready).length;
+  return {
+    score: Math.round((readyCount / stages.length) * 100),
+    status: readyCount >= 5 ? "live" : readyCount ? "partial" : "quiet",
+    stages,
+    notes: [
+      `${apiEvents.length} API event(s) and ${proofLearningRuns.length} proof run(s) are available for the queue timeline.`,
+      "Use this timeline to diagnose whether a hosted proof stopped at judge, scaffold, build, capture, import, or learning.",
+    ],
+  };
+}
+
+export function buildSimpleModeReport({
+  beginnerPromptMaker,
+  hostedBuildWorker,
+  operatorMode,
+  trueClosedLoop,
+}: {
+  beginnerPromptMaker: BeginnerPromptMakerReport;
+  hostedBuildWorker: HostedBuildWorkerReport;
+  operatorMode: OperatorModeReport;
+  trueClosedLoop: TrueClosedLoopReport;
+}): SimpleModeReport {
+  const steps = [
+    { label: "Describe", ready: beginnerPromptMaker.readiness === "ready", detail: beginnerPromptMaker.notes[0] },
+    { label: "Generate", ready: beginnerPromptMaker.score >= 70, detail: "Turn the brief into one build-ready prompt." },
+    { label: "Judge", ready: trueClosedLoop.readiness !== "blocked", detail: trueClosedLoop.notes[0] },
+    { label: "Prove", ready: hostedBuildWorker.readiness === "ready", detail: hostedBuildWorker.notes[0] },
+    { label: "Export", ready: operatorMode.cards.some((card) => /next|export/i.test(`${card.title} ${card.detail}`)), detail: operatorMode.primaryCta },
+  ];
+  const readyCount = steps.filter((step) => step.ready).length;
+  return {
+    score: Math.round((readyCount / steps.length) * 100),
+    mode: operatorMode.mode,
+    steps,
+    hiddenPanels: operatorMode.mode === "beginner" ? ["Calibration internals", "Raw queue JSON", "Provider secrets", "Benchmark plumbing"] : [],
+    notes: [
+      operatorMode.mode === "beginner" ? "Beginner mode keeps the path to five verbs: describe, generate, judge, prove, export." : "Expert mode can keep the production panels expanded.",
+      beginnerPromptMaker.suggestedPrompt.split("\n")[0] || "No generated prompt preview yet.",
+    ],
+  };
+}
+
+export function buildDatasetGovernanceReport({
+  comparison,
+  goldenDataset,
+  versions = [],
+}: {
+  comparison?: { baseline?: unknown; current?: unknown; deltas?: Record<string, number>; scoreDelta?: number; notes?: string[] };
+  goldenDataset: { goldCount: number; trainCount: number; testCount: number };
+  versions?: DatasetVersion[];
+}): DatasetGovernanceReport {
+  const hasGoldenV1 = versions.some((version) => version.label.toLowerCase() === "golden dataset v1");
+  const scoreDelta = typeof comparison?.scoreDelta === "number"
+    ? comparison.scoreDelta
+    : Math.max(0, ...Object.values(comparison?.deltas || {}).map((value) => Math.abs(Number(value) || 0)));
+  const rows = [
+    { label: "Golden Dataset v1", ready: hasGoldenV1, detail: hasGoldenV1 ? "Frozen baseline exists." : "Lock the first frozen baseline." },
+    { label: "Gold coverage", ready: goldenDataset.goldCount >= 5, detail: `${goldenDataset.goldCount} gold prompt(s).` },
+    { label: "Train split", ready: goldenDataset.trainCount >= 4, detail: `${goldenDataset.trainCount} train row(s).` },
+    { label: "Test split", ready: goldenDataset.testCount >= 1, detail: `${goldenDataset.testCount} test row(s).` },
+    { label: "Version diff", ready: Boolean(comparison?.current && comparison?.baseline) || scoreDelta > 0, detail: comparison ? `Largest score delta ${scoreDelta}.` : "Create a second version to compare drift." },
+  ];
+  const readyCount = rows.filter((row) => row.ready).length;
+  return {
+    score: Math.round((readyCount / rows.length) * 100),
+    status: hasGoldenV1 ? "locked" : versions.length ? "draft" : "empty",
+    rows,
+    actions: [
+      "Lock Golden Dataset v1 before tuning model weights.",
+      "Export a snapshot before promoting labels.",
+      "Compare every new dataset version against the frozen baseline.",
+      "Quarantine off-project prompts before training.",
+    ],
+    notes: [
+      comparison?.notes?.[0] || "Governance keeps prompt quality changes explainable and reversible.",
+      `${versions.length} dataset version(s) are present.`,
+    ],
+  };
+}
+
+export function buildProviderPluginLayerReport({
+  cache,
+  router,
+}: {
+  cache: ModelEvaluationCacheReport;
+  router: ModelProviderRouterReport;
+}): ProviderPluginLayerReport {
+  const adapters = [
+    { id: "server-claude", label: "Server Claude", ready: router.route === "server-claude", detail: router.route === "server-claude" ? "Active provider route." : "Configure Anthropic on the API host." },
+    { id: "external-endpoint", label: "OpenAI-compatible endpoint", ready: router.route === "external-endpoint", detail: router.route === "external-endpoint" ? "External endpoint route active." : "Available when endpoint is configured." },
+    { id: "local-fallback", label: "Deterministic local judge", ready: true, detail: "Always available for offline evaluation and tests." },
+    { id: "codex-agent", label: "Codex build worker", ready: router.checks.some((check) => /Server route|Provider/i.test(check.label) && check.ready), detail: "Feeds rewritten prompts into queue execution." },
+    { id: "screenshot-judge", label: "Screenshot judge", ready: cache.items.length > 0, detail: `${cache.items.length} cached model evaluation row(s).` },
+  ];
+  return {
+    score: Math.round((adapters.filter((adapter) => adapter.ready).length / adapters.length) * 100),
+    activeRoute: router.route,
+    adapters,
+    notes: [
+      "Provider plugins share one normalized score/readiness/findings schema.",
+      router.notes[0],
+    ],
+  };
+}
+
+export function buildEvaluatorCalibrationWorkflowReport({
+  calibrationDashboard,
+  calibrationSet,
+}: {
+  calibrationDashboard: CalibrationDashboardReport;
+  calibrationSet: ClaudeCalibrationSetReport;
+}): EvaluatorCalibrationWorkflowReport {
+  const aligned = calibrationSet.rows.filter((row) => row.status === "aligned").length;
+  const watch = calibrationSet.rows.filter((row) => row.status === "watch").length;
+  const missing = calibrationSet.rows.filter((row) => row.status === "missing").length;
+  const rows = [
+    { label: "Golden fixtures", ready: calibrationSet.rows.length >= 5, detail: `${calibrationSet.rows.length} calibration fixture(s).` },
+    { label: "Aligned scores", ready: aligned > 0, detail: `${aligned} aligned score(s).` },
+    { label: "Manual review queue", ready: watch + missing > 0, detail: `${watch + missing} row(s) need review or model runs.` },
+    { label: "Drift dashboard", ready: calibrationDashboard.alignment !== "empty", detail: `${calibrationDashboard.alignment} / ${calibrationDashboard.score}/100.` },
+    { label: "Re-run action", ready: calibrationSet.readiness !== "needs-model", detail: calibrationSet.notes[1] || "Run cached model evaluation to fill missing rows." },
+  ];
+  const readyCount = rows.filter((row) => row.ready).length;
+  return {
+    score: Math.round((readyCount / rows.length) * 100),
+    status: calibrationSet.readiness === "ready" && calibrationDashboard.alignment === "aligned" ? "aligned" : readyCount ? "review" : "needs-runs",
+    rows,
+    notes: [
+      "Calibration compares known prompt fixtures against observed model/local scores.",
+      calibrationDashboard.notes[0] || calibrationSet.notes[0],
     ],
   };
 }

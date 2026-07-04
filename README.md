@@ -53,6 +53,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - True closed-loop runner that can generate, build-queue, screenshot-proof, judge, rewrite, and save the winning prompt through the hosted API when available
 - Hosted proof worker that chains closed-loop judging into scaffold/build/capture queue execution through `/api/closed-loop/prove`
 - Calibration fixtures, closed-loop run details, bulk-ingest pipeline preview, Golden Dataset v1 lock posture, beginner prompt maker, failure-memory autopilot, before/after proof comparison, provider routing, and API admin hardening
+- Production proof layer with worker command sandboxing, automatic proof import, screenshot artifact storage, queue observability, evaluator calibration workflow, dataset governance, beginner-mode cleanup, and provider plugin readiness
 
 ## Development
 
@@ -149,6 +150,7 @@ The Train tab now starts with:
 18. Calibration, benchmark battle, replay, and hosted-hardening panels that show whether model scores, labels, API posture, backups, and real build proof are strong enough to keep learning.
 19. A hosted proof worker and admin layer that can run `/api/closed-loop/prove`, scaffold a Vite app, build, capture screenshots, record proof rows, and keep API health/backups/rate-limit/key posture visible.
 20. A beginner product path with one-click prompt generation, bulk-ingest preview, Golden Dataset v1 lock status, failure-memory autopilot, before/after visual proof, and provider routing for Claude, external evaluators, or local fallback.
+21. A production proof layer that fences worker files inside `PROMPT_LAB_DATA_DIR`, allowlists build commands, imports returned build/screenshot/lineage artifacts automatically, stores proof artifact rows, and exposes queue/evaluator/dataset/provider readiness in the Train tab.
 
 The tightest improvement cycle is:
 
@@ -172,7 +174,9 @@ Use the best-next-action panel when the system feels noisy. It prioritizes the n
 
 Use Run true closed loop when you want the product path. It creates a local proof ledger entry, tries `/api/closed-loop/run` for server-side Claude/local judging, saves the rewritten winner as a user prompt, and queues the winner for real build proof. Use Run server judge when you only want the hosted evaluator to rewrite and persist a winner without creating a queue job.
 
-Use Run hosted proof worker when the API is trusted to execute builds. It calls `/api/closed-loop/prove`, creates the rewritten winner, writes a queue job under the API data directory, runs the scaffold/build/capture worker, and returns closed-loop, queue, and proof-learning rows to the browser.
+Use Run hosted proof worker when the API is trusted to execute builds. It calls `/api/closed-loop/prove`, creates the rewritten winner, writes a queue job under the API data directory, runs the scaffold/build/capture worker, and returns closed-loop, queue, proof-learning, build-run, screenshot, lineage, and proof-artifact rows to the browser.
+
+Hosted worker execution is guarded by `PROMPT_LAB_WORKER_ENABLED`, `PROMPT_LAB_ALLOWED_BUILD_COMMANDS`, `PROMPT_LAB_ALLOWED_AGENT_PREFIXES`, `PROMPT_LAB_WORKER_TIMEOUT_MS`, and `PROMPT_LAB_MAX_BODY_BYTES`. Leave agent command prefixes empty unless the host is intentionally allowed to run a known Codex or build-agent command.
 
 ## Prompt Corpus
 
