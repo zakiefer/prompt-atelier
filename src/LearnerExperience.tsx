@@ -33,6 +33,14 @@ import {
   type LearningProfile,
   type TargetExportPreset,
 } from "./learnerProduct";
+import {
+  buildExportDifferentiators,
+  buildLearnerCorpusSafety,
+  buildLearnerDiagnosis,
+  buildLearnerProofPlan,
+  buildLearnerRegressionSummary,
+} from "./learnerViewModel";
+import { type HoldoutBenchmarkReport } from "./productEvolution";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -165,7 +173,7 @@ export function PublicDemoRoute({
   const sourceText = learnerText.trim() || selectedPrompt?.text || "";
   const demoSteps = [
     { label: "Paste", ready: Boolean(sourceText), detail: "Start with a high-quality website prompt." },
-    { label: "Score", ready: learnerEvaluation.score > 0, detail: `${learnerEvaluation.score}/100 prompt score.` },
+    { label: "Score", ready: learnerEvaluation.score > 0, detail: `${learnerEvaluation.score}/100 prompt strength.` },
     { label: "Improve", ready: improvedPrompt.length > sourceText.length, detail: "Better prompt generated from learned patterns." },
     { label: "Export", ready: learnerExportPack.files.every((file) => file.ready || file.label === "Screenshot proof refs"), detail: "Markdown and JSON pack ready." },
   ];
@@ -190,13 +198,13 @@ export function PublicDemoRoute({
             <p className="eyebrow">Paste one great prompt</p>
             <h2>Score it clearly, then revise it.</h2>
             <p>
-              Prompt Atelier scores stack, assets, typography, layout, motion, responsiveness, constraints, and QA, then exports
+              Prompt Atelier diagnoses stack, assets, typography, layout, motion, responsiveness, constraints, and QA, then exports
               a builder-ready prompt pack.
             </p>
           </div>
           <div className="demo-score-row">
             <ScoreRing score={learnerEvaluation.score || activeLearningProfile.score || profile.detailScore} label="Prompt" />
-            <ScoreRing score={dnaExplanation.overall} label="Quality" />
+            <ScoreRing score={dnaExplanation.overall} label="Strength" />
           </div>
         </section>
 
@@ -312,6 +320,7 @@ export function LearnView({
   learnerProofGallery,
   learnerText,
   learningProfiles,
+  holdoutBenchmark,
   corpusReviewRows,
   samplePrompts,
   savedLearnerSessions,
@@ -353,6 +362,7 @@ export function LearnView({
   learnerProofGallery: LearnerProofItem[];
   learnerText: string;
   learningProfiles: LearningProfile[];
+  holdoutBenchmark: HoldoutBenchmarkReport;
   corpusReviewRows: CorpusReviewRow[];
   samplePrompts: LearnerSamplePrompt[];
   savedLearnerSessions: LearnerSession[];
@@ -407,12 +417,20 @@ export function LearnView({
       rejected.length ? `Do not import these sections without review: ${rejected.join(", ")}.` : "No sections rejected.",
     ].join("\n");
   }, [diffCategories, diffDecisions, improvedPrompt]);
+  const learnerProofPlan = useMemo(() => buildLearnerProofPlan({ proofGallery: learnerProofGallery }), [learnerProofGallery]);
+  const learnerDiagnosis = useMemo(
+    () => buildLearnerDiagnosis({ dnaExplanation, evaluation: learnerEvaluation, neighbors: corpusNeighbors, proofGallery: learnerProofGallery }),
+    [corpusNeighbors, dnaExplanation, learnerEvaluation, learnerProofGallery],
+  );
+  const corpusSafety = useMemo(() => buildLearnerCorpusSafety(corpusReviewRows), [corpusReviewRows]);
+  const regressionSummary = useMemo(() => buildLearnerRegressionSummary(holdoutBenchmark), [holdoutBenchmark]);
+  const exportDifferentiators = useMemo(() => buildExportDifferentiators(learnerExportPack), [learnerExportPack]);
   const flowSteps = [
     { label: "Paste", ready: Boolean(learnerSource.trim()), detail: "Bring in one website prompt." },
     { label: "Score", ready: learnerEvaluation.score >= 20, detail: `${learnerEvaluation.score}/100 local score.` },
     { label: "Improve", ready: improvedPrompt.length > learnerSource.length, detail: "One-click stronger prompt is ready." },
     { label: "Battle", ready: learnerEvaluation.categoryScores.constraints >= 40, detail: "Constraints are strong enough to compare variants." },
-    { label: "Prove", ready: /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: "Proof checklist is present." },
+    { label: "Prove", ready: learnerProofPlan.status !== "missing" || /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: learnerProofPlan.nextAction },
     { label: "Export", ready: Boolean(improvedPrompt.trim()), detail: "Copy or save the improved prompt." },
   ];
   const workspaceTabs: { id: "compose" | "review" | "export"; label: string; detail: string }[] = [
@@ -422,7 +440,6 @@ export function LearnView({
   ];
   const activeStepIndex = workspaceTabs.findIndex((tab) => tab.id === activeWorkspaceTab);
   const nextWorkspaceTab = workspaceTabs[Math.min(workspaceTabs.length - 1, activeStepIndex + 1)]?.id ?? "export";
-  const promptStrengthReasons = (dnaExplanation.summary.length ? dnaExplanation.summary : learnerEvaluation.upgrades).slice(0, 3);
   const interactionChecks = [
     { label: "Profile switching", ready: Boolean(activeLearningProfile.id), detail: `${activeLearningProfile.label} is active.` },
     { label: "Diff decisions", ready: acceptedDiffLabels.length > 0 || rejectedDiffLabels.length > 0, detail: `${acceptedDiffLabels.length} accepted / ${rejectedDiffLabels.length} rejected.` },
@@ -457,6 +474,24 @@ export function LearnView({
               New run
             </button>
           </div>
+        </section>
+
+        <section className="learner-diagnosis-strip" data-train-section="prompt-diagnosis">
+          <article>
+            <span>Diagnosis</span>
+            <strong>{learnerDiagnosis.confidence.label}</strong>
+            <p>{learnerDiagnosis.confidence.detail}</p>
+          </article>
+          <article>
+            <span>Next rewrite</span>
+            <strong>{learnerDiagnosis.rewriteMoves[0] ?? "Tighten the prompt"}</strong>
+            <p>{learnerDiagnosis.gaps[0] ?? "No major missing ingredient detected."}</p>
+          </article>
+          <article>
+            <span>Nearest gold</span>
+            <strong>{learnerDiagnosis.closestGold[0] ?? "Add gold examples"}</strong>
+            <p>{learnerDiagnosis.closestGold.slice(1, 3).join(" / ") || "Closest examples appear here after import."}</p>
+          </article>
         </section>
 
         <div className="profile-strip" aria-label="Learning profiles">
@@ -614,10 +649,15 @@ export function LearnView({
         <div className="self-serve-grid">
           <article className="learner-mini-panel">
             <div className="output-header">
-              <h3>Prompt strength</h3>
-              <ScoreRing score={dnaExplanation.overall} label="Strength" />
+              <div>
+                <h3>Prompt diagnosis</h3>
+                <p>What is working, what is missing, and what to rewrite next.</p>
+              </div>
+              <ScoreRing score={learnerDiagnosis.confidence.score} label={learnerDiagnosis.confidence.label} />
             </div>
-            <FeedbackList title="Top reasons" items={promptStrengthReasons} empty="No strength explanation." />
+            <FeedbackList title="Strengths" items={learnerDiagnosis.strengths} empty="No strengths detected yet." />
+            <FeedbackList title="Missing ingredients" items={learnerDiagnosis.gaps} empty="No major gaps detected." />
+            <FeedbackList title="Rewrite moves" items={learnerDiagnosis.rewriteMoves} empty="No rewrite moves available." />
             <div className="mini-stat-row">
               {dnaExplanation.dimensions.slice(0, 4).map((dimension) => (
                 <span key={dimension.key}>{dimension.label}: {dimension.score}</span>
@@ -713,6 +753,25 @@ export function LearnView({
           </div>
         </section>
 
+        <section className="learner-mini-panel proof-plan-card" data-status={learnerProofPlan.status} data-train-section="proof-learning-plan">
+          <div className="output-header">
+            <div>
+              <h3>Proof learning plan</h3>
+              <p>{learnerProofPlan.headline}: {learnerProofPlan.nextAction}</p>
+            </div>
+            <span className="selected-meta">{learnerProofPlan.status}</span>
+          </div>
+          <div className="proof-plan-grid">
+            {learnerProofPlan.items.map((item) => (
+              <article className="safe-check" key={item.label} data-ready={item.ready ? "true" : "false"}>
+                <strong>{item.ready ? "Ready" : "Next"}</strong>
+                <span>{item.label}</span>
+                <p>{item.detail}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="learner-mini-panel" data-train-section="outcome-feedback-loop" id="learner-feedback">
           <div className="output-header">
             <div>
@@ -775,6 +834,18 @@ export function LearnView({
               <span>proof items</span>
             </article>
           </div>
+          <div className="learner-export-readiness">
+            <article data-status={corpusSafety.label}>
+              <strong>Corpus safety</strong>
+              <span>{corpusSafety.detail}</span>
+              <small>{corpusSafety.counts.website} website / {corpusSafety.counts.maybe} review / {corpusSafety.counts.quarantine} quarantine</small>
+            </article>
+            <article data-status={regressionSummary.label}>
+              <strong>Regression guard</strong>
+              <span>{regressionSummary.detail}</span>
+              <small>{regressionSummary.score}/100 holdout score</small>
+            </article>
+          </div>
         </section>
         <div className="modal-layer" hidden={!exportModalOpen}>
           <button className="modal-scrim" type="button" aria-label="Close export center" onClick={() => setExportModalOpen(false)} />
@@ -787,6 +858,38 @@ export function LearnView({
               <button className="icon-button" type="button" aria-label="Close export center" onClick={() => setExportModalOpen(false)}>x</button>
             </div>
         <div className="self-serve-grid">
+          <article className="learner-mini-panel" data-train-section="export-target-differences">
+            <div className="output-header">
+              <h3>Target export differences</h3>
+              <span className="selected-meta">Not just labels</span>
+            </div>
+            <FeedbackList title="How exports differ" items={exportDifferentiators} empty="No export differences available." />
+          </article>
+
+          <article className="learner-mini-panel" data-train-section="corpus-safety">
+            <div className="output-header">
+              <h3>Corpus safety</h3>
+              <span className="selected-meta">{corpusSafety.label}</span>
+            </div>
+            <div className="mini-stat-row">
+              <span>{corpusSafety.counts.website} website</span>
+              <span>{corpusSafety.counts.maybe} review</span>
+              <span>{corpusSafety.counts.quarantine} quarantine</span>
+            </div>
+            <FeedbackList title="Safety actions" items={corpusSafety.actions} empty="No safety actions." />
+          </article>
+        </div>
+
+        <div className="self-serve-grid">
+          <article className="learner-mini-panel" data-train-section="learner-regression-guard">
+            <div className="output-header">
+              <h3>Regression guard</h3>
+              <ScoreRing score={regressionSummary.score} label={regressionSummary.label} />
+            </div>
+            <p>{regressionSummary.detail}</p>
+            <FeedbackList title="Holdout rows" items={regressionSummary.rows} empty="No holdout rows." />
+          </article>
+
           <article className="learner-mini-panel" data-train-section="house-compiler">
             <div className="output-header">
               <h3>House-format compiler</h3>
@@ -915,11 +1018,19 @@ export function LearnView({
               <h3>Corpus review queue</h3>
               <span className="selected-meta">{corpusReviewRows.length} candidate(s)</span>
             </div>
+            <div className="mini-stat-row">
+              <span>{corpusSafety.counts.website} website prompt</span>
+              <span>{corpusSafety.counts.maybe} maybe useful</span>
+              <span>{corpusSafety.counts.quarantine} quarantine</span>
+            </div>
             <div className="version-list compact-list">
               {corpusReviewRows.slice(0, 5).map((row) => (
                 <article className="version-card review-card" key={row.id} data-decision={row.decision}>
                   <strong>{row.title}</strong>
-                  <span>{row.decision} / {row.score}% / {row.cluster}</span>
+                  <span>
+                    {row.decision === "quarantine" ? "Quarantine" : row.decision === "review" ? "Maybe useful" : "Website prompt"}
+                    {" / "}{row.score}% / {row.cluster}
+                  </span>
                   <p>{row.duplicate}</p>
                   <small>{row.reasons.slice(0, 3).join(" / ")}</small>
                   <textarea

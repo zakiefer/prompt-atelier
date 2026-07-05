@@ -7680,6 +7680,7 @@ export default function App() {
               learnerRecipes={learnerRecipes}
               learnerText={improveText}
               learningProfiles={learningProfiles}
+              holdoutBenchmark={holdoutBenchmark}
               samplePrompts={learnerSamples}
               savedLearnerSessions={learnerSessions}
               targetExportPresets={learnerTargetExportPresets}

@@ -636,7 +636,7 @@ export function buildLearnerExportPack({
   screenshots: ScreenshotRecord[];
 }): LearnerExportPack {
   const scorecard = [
-    { label: "Quality", score: dnaExplanation.overall, detail: dnaExplanation.summary[0] || "Quality score blends static prompt traits with proof evidence." },
+    { label: "Prompt strength", score: dnaExplanation.overall, detail: dnaExplanation.summary[0] || "Prompt strength blends static prompt traits with proof evidence." },
     { label: "Memory", score: learningMemory.score, detail: `${learningMemory.rules.length} rule(s), ${learningMemory.rules.filter((rule) => rule.decision === "pinned").length} pinned.` },
     { label: "Diff", score: diff?.similarity ?? 0, detail: diff ? `${diff.categories.filter((category) => category.rightOnly.length).length} section(s) gained explicit signals.` : "No diff available." },
   ];

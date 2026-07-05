@@ -72,6 +72,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Self-serve learner experience with saved learning profiles, prompt diff review, house-format compiler output, benchmark battles, batch review, public demo routing, learner export packs, and split learner/app chrome chunks that keep the main bundle under the Vite warning line
 - Learner workbench upgrades for saved learner sessions, nearest-neighbor corpus examples, why-not-100 rewrite moves, learned recipe cards, sample prompts, Codex/Claude/v0/GPT export presets, corpus quarantine review, hosted learner-session sync, and Pages CI smokes for learner, Train, and demo routes
 - Productized learner flow with sticky first-run navigation, structured brief builder, saved-session reopen/details, actionable corpus review queue, result feedback capture, visual proof gallery, stronger target-specific exports, and mobile single-column polish
+- Learner product hardening with a one-viewport workbench, prompt diagnosis, proof learning plan, explicit corpus safety, target-specific export differences, and a regression guard in the main learner workflow
 
 ## Development
 
