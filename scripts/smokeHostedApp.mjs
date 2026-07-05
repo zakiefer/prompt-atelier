@@ -21,6 +21,7 @@ const url = args.get("url") || "http://127.0.0.1:4173";
 const outDir = resolve(args.get("out") || "output/playwright/hosted-smoke");
 const shouldOpenTrain = args.get("train") === "true";
 const shouldOpenDemo = args.get("demo") === "true";
+const readyTimeoutMs = Number(args.get("ready-timeout-ms") || 15_000);
 const targetUrl = new URL(url);
 if (shouldOpenTrain) {
   targetUrl.searchParams.set("tab", "train");
@@ -92,12 +93,18 @@ const expectedHeadings = shouldOpenTrain ? trainHeadings : shouldOpenDemo ? demo
 await mkdir(outDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1200 } });
+const context = await browser.newContext({
+  acceptDownloads: true,
+  viewport: { width: 1440, height: 1200 },
+  extraHTTPHeaders: {
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+  },
+});
 const page = await context.newPage();
 
 try {
-  await page.goto(targetUrl.toString(), { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await page.waitForLoadState("networkidle", { timeout: 12_000 }).catch(() => undefined);
+  await gotoTarget(page, targetUrl);
 
   const waitForTrainContent = () =>
     page.waitForFunction("(document.body.textContent || '').includes('Learning machine control plane')", null, { timeout: 20_000 });
@@ -125,7 +132,7 @@ try {
   }
 
   const bodyText = await pageText();
-  const missing = expectedHeadings.filter((heading) => !bodyText.includes(heading));
+  const missing = await waitForExpectedHeadings(page, targetUrl, expectedHeadings, bodyText, readyTimeoutMs);
   const interactionState = !shouldOpenTrain && !shouldOpenDemo
     ? await runLearnerInteractions(page)
     : { checked: [], sessionCount: 0, historyCount: 0 };
@@ -205,6 +212,28 @@ try {
 } finally {
   await context.close();
   await browser.close();
+}
+
+async function gotoTarget(page, target) {
+  await page.goto(target.toString(), { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await page.waitForLoadState("networkidle", { timeout: 12_000 }).catch(() => undefined);
+}
+
+async function waitForExpectedHeadings(page, target, headings, initialText, timeoutMs) {
+  const startedAt = Date.now();
+  let bodyText = initialText;
+  let missing = headings.filter((heading) => !bodyText.includes(heading));
+
+  while (missing.length && Date.now() - startedAt < timeoutMs) {
+    await page.waitForTimeout(3_000);
+    const nextTarget = new URL(target.toString());
+    nextTarget.searchParams.set("smokeReady", String(Date.now()));
+    await gotoTarget(page, nextTarget);
+    bodyText = await page.evaluate("document.body.textContent || ''");
+    missing = headings.filter((heading) => !bodyText.includes(heading));
+  }
+
+  return missing;
 }
 
 async function runLearnerInteractions(page) {
