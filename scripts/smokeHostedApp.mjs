@@ -64,6 +64,7 @@ const trainHeadings = [
 const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
   "Next best action",
+  "Guided start",
   "Proof-first action",
   "Brief builder",
   "Generated prompt section editor",
@@ -75,7 +76,7 @@ const learnerHeadings = [
   "Prompt battle",
   "Proof learning plan",
   "Ingestion safety",
-  "Why not 100",
+  "Strength gap plan",
   "Learned from similar prompts",
   "Outcome feedback loop",
   "Prompt diff editor",
@@ -96,6 +97,7 @@ const learnerHeadings = [
   "Corpus quarantine queue",
   "Saved learner sessions",
   "Visual proof gallery",
+  "Recent activity",
 ];
 const demoHeadings = [
   "Website prompt learner",
@@ -174,6 +176,7 @@ try {
           : [
               "public-learner",
               "learner-command-deck",
+              "beginner-prompt-path",
               "guided-first-run",
               "prompt-diagnosis",
               "proof-first-action",
@@ -182,7 +185,7 @@ try {
               "prompt-battle-flow",
               "one-prompt-run",
               "brief-builder",
-              "dna-rewrite-plan",
+              "strength-rewrite-plan",
               "corpus-neighbors",
               "prompt-diff-editor",
               "proof-learning-plan",
@@ -205,6 +208,7 @@ try {
               "corpus-quarantine",
               "learner-session-history",
               "visual-proof-gallery",
+              "learner-activity",
             ];
         return {
           missingSections: requiredSections.filter((section) => !pageDocument.querySelector(`[data-train-section="${section}"]`)),
@@ -289,6 +293,11 @@ async function runLearnerInteractions(page) {
     await sectionCopyButton.click();
     checked.push("section editor copied");
   }
+  const sectionApplyButton = page.locator('[data-train-section="learner-section-editor"] button').filter({ hasText: /Apply edits/ }).first();
+  if (await sectionApplyButton.count()) {
+    await sectionApplyButton.click();
+    checked.push("section editor applied");
+  }
 
   const profileButton = page.locator(".profile-chip").nth(1);
   if (await profileButton.count()) {
@@ -364,7 +373,7 @@ async function runLearnerInteractions(page) {
   }
 
   await page.waitForFunction("document.body.textContent.includes('candidate') || document.body.textContent.includes('Corpus review queue')", null, { timeout: 5000 }).catch(() => undefined);
-  const fastGoldButton = page.locator('[data-train-section="corpus-triage-toolbar"] button').filter({ hasText: /Gold first/ }).first();
+  const fastGoldButton = page.locator('[data-train-section="corpus-triage-toolbar"] button').filter({ hasText: /Gold selected/ }).first();
   if (await fastGoldButton.count()) {
     await fastGoldButton.click();
     checked.push("fast triage marked gold");
@@ -412,7 +421,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("profile switched") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
+  if (!checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {

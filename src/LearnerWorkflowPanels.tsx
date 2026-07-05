@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, Copy, Download, ExternalLink, ImagePlus, ListChecks, MonitorCheck, Save } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Check, Clock, Copy, Download, ExternalLink, ImagePlus, ListChecks, MonitorCheck, Save, Sparkles, Upload } from "lucide-react";
 import { type OutcomeRating } from "./promptEngine";
 import { type CorpusReviewRow, type LearnerSession, type TargetExportPreset } from "./learnerProduct";
 import {
@@ -9,6 +9,14 @@ import {
 } from "./learnerViewModel";
 
 export type LearnerWorkspaceTab = "compose" | "review" | "export";
+
+export type LearnerActivityItem = {
+  id: string;
+  label: string;
+  detail: string;
+  tone?: "good" | "watch" | "neutral";
+  at: string;
+};
 
 export function LearnerCommandDeck({
   activeTab,
@@ -88,10 +96,12 @@ export function LearnerCommandDeck({
 
 export function LearnedPromptSectionEditor({
   copied,
+  onApplyPrompt,
   onCopy,
   sections,
 }: {
   copied: string;
+  onApplyPrompt?: (value: string) => void;
   onCopy: (value: string, key: string) => void;
   sections: LearnedPromptSection[];
 }) {
@@ -114,6 +124,10 @@ export function LearnedPromptSectionEditor({
         <div className="button-row compact-row">
           <button className="ghost-button compact-button" type="button" onClick={() => setDrafts(initialDrafts)}>
             Reset
+          </button>
+          <button className="primary-button compact-button" type="button" onClick={() => onApplyPrompt?.(combinedDraft)}>
+            <Check size={15} />
+            Apply edits
           </button>
           <button className="primary-button compact-button" type="button" onClick={() => onCopy(combinedDraft, "section-editor-all")}>
             {copied === "section-editor-all" ? <Check size={15} /> : <Copy size={15} />}
@@ -153,8 +167,33 @@ export function ProofIntakePanel({
 }) {
   const [rating, setRating] = useState<OutcomeRating>("great");
   const [screenshotUrl, setScreenshotUrl] = useState("");
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [viewport, setViewport] = useState("desktop");
+  const [isDragging, setIsDragging] = useState(false);
   const [notes, setNotes] = useState("Result matched the intended layout, media treatment, hierarchy, and responsive behavior.");
   const [screenshotNotes, setScreenshotNotes] = useState("Desktop and mobile screenshots prove the build is nonblank, readable, and overflow-free.");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function ingestFile(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setScreenshotNotes(`Rejected ${file.name}: proof files must be images.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      setPreviewUrl(value);
+      setScreenshotUrl(value);
+      setScreenshotNotes(`${viewport} screenshot: ${file.name}. Confirm first viewport is nonblank, text fits, and no horizontal overflow is visible.`);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function saveProof() {
+    const taggedNotes = `[${viewport}] ${screenshotNotes}`;
+    onRecordOutcomeFeedback(rating, notes, screenshotUrl, taggedNotes);
+  }
 
   return (
     <section className="learner-mini-panel proof-intake-panel" data-train-section="proof-intake">
@@ -166,7 +205,7 @@ export function ProofIntakePanel({
         <button
           className="primary-button compact-button"
           type="button"
-          onClick={() => onRecordOutcomeFeedback(rating, notes, screenshotUrl, screenshotNotes)}
+          onClick={saveProof}
         >
           <Save size={15} />
           Save proof
@@ -183,9 +222,43 @@ export function ProofIntakePanel({
           </select>
         </label>
         <label className="field">
+          <span>Viewport</span>
+          <select value={viewport} onChange={(event) => setViewport(event.target.value)}>
+            <option value="desktop">Desktop</option>
+            <option value="mobile">Mobile</option>
+            <option value="wide">Wide desktop</option>
+            <option value="tablet">Tablet</option>
+          </select>
+        </label>
+        <label className="field">
           <span>Screenshot URL or path</span>
           <input value={screenshotUrl} onChange={(event) => setScreenshotUrl(event.target.value)} placeholder="/tmp/desktop.png or https://..." />
         </label>
+        <div
+          className="proof-dropzone"
+          data-dragging={isDragging ? "true" : "false"}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragging(false);
+            ingestFile(event.dataTransfer.files[0]);
+          }}
+        >
+          <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(event) => ingestFile(event.target.files?.[0])} />
+          {previewUrl ? <img src={previewUrl} alt="Uploaded proof preview" /> : <Upload size={18} />}
+          <div>
+            <strong>{previewUrl ? "Screenshot preview loaded" : "Drop screenshot here"}</strong>
+            <span>Desktop, mobile, wide, or tablet proof. URL/path still works too.</span>
+          </div>
+          <button className="ghost-button compact-button" type="button" onClick={() => fileInputRef.current?.click()}>
+            Choose file
+          </button>
+        </div>
         <label className="field">
           <span>Result notes</span>
           <textarea className="compact-textarea" value={notes} onChange={(event) => setNotes(event.target.value)} />
@@ -218,12 +291,26 @@ export function CorpusTriageToolbar({
   onReviewCorpusCandidate: (row: CorpusReviewRow, action: "import" | "gold" | "bad" | "quarantine" | "merge", notes: string) => void;
   rows: CorpusReviewRow[];
 }) {
-  const firstReview = rows.find((row) => row.decision === "review") ?? rows[0];
+  const [filter, setFilter] = useState<"review" | "gold" | "quarantine" | "all">("review");
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
+  const visibleRows = rows.filter((row) => {
+    if (filter === "all") return true;
+    if (filter === "gold") return row.decision === "gold" || row.decision === "learn";
+    return row.decision === filter;
+  });
+  const firstReview = visibleRows.find((row) => row.decision === "review") ?? visibleRows[0] ?? rows[0];
+  const selectedRows = rows.filter((row) => selectedIds[row.id]);
   const counts = {
     gold: rows.filter((row) => row.decision === "gold" || row.decision === "learn").length,
     review: rows.filter((row) => row.decision === "review").length,
     quarantine: rows.filter((row) => row.decision === "quarantine").length,
   };
+  const bulkTargets = selectedRows.length ? selectedRows : firstReview ? [firstReview] : [];
+
+  function applyBulk(action: "import" | "gold" | "bad" | "quarantine" | "merge") {
+    bulkTargets.forEach((row) => onReviewCorpusCandidate(row, action, `Bulk triage: ${action} from ${filter} view.`));
+    setSelectedIds({});
+  }
 
   return (
     <section className="corpus-triage-toolbar" data-train-section="corpus-triage-toolbar">
@@ -236,15 +323,128 @@ export function CorpusTriageToolbar({
         <span>{counts.gold} gold</span>
         <span>{counts.review} review</span>
         <span>{counts.quarantine} quarantine</span>
+        <span>{selectedRows.length} selected</span>
+      </div>
+      <div className="triage-filter-row" aria-label="Corpus triage filters">
+        {(["review", "gold", "quarantine", "all"] as const).map((key) => (
+          <button className="ghost-button compact-button" data-active={filter === key ? "true" : "false"} key={key} type="button" onClick={() => setFilter(key)}>
+            {key}
+          </button>
+        ))}
+      </div>
+      <div className="triage-select-list">
+        {visibleRows.slice(0, 5).map((row) => (
+          <label key={row.id}>
+            <input
+              checked={Boolean(selectedIds[row.id])}
+              type="checkbox"
+              onChange={(event) => setSelectedIds((current) => ({ ...current, [row.id]: event.target.checked }))}
+            />
+            <span>{row.title}</span>
+            <small>{row.score}% / {row.decision}</small>
+          </label>
+        ))}
       </div>
       {firstReview ? (
         <div className="button-row compact-row">
-          <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(firstReview, "gold", "Fast triage: promote first review row to gold.")}>Gold first</button>
-          <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(firstReview, "import", "Fast triage: import first review row.")}>Import first</button>
-          <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(firstReview, "quarantine", "Fast triage: keep this row out of prompt memory.")}>Quarantine first</button>
+          <button className="ghost-button compact-button" type="button" onClick={() => applyBulk("gold")}>Gold selected</button>
+          <button className="ghost-button compact-button" type="button" onClick={() => applyBulk("import")}>Import selected</button>
+          <button className="ghost-button compact-button" type="button" onClick={() => applyBulk("quarantine")}>Quarantine selected</button>
         </div>
       ) : null}
     </section>
+  );
+}
+
+export function BeginnerPromptPath({
+  onUseBriefPrompt,
+  score,
+}: {
+  onUseBriefPrompt: () => void;
+  score: number;
+}) {
+  return (
+    <section className="beginner-prompt-path" data-train-section="beginner-prompt-path">
+      <div>
+        <span><Sparkles size={14} /> Guided start</span>
+        <strong>Make me a website prompt</strong>
+        <p>Use the brief builder when you do not want to paste a perfect example first.</p>
+      </div>
+      <div className="beginner-step-row">
+        <article>
+          <strong>1</strong>
+          <span>Describe the site</span>
+        </article>
+        <article>
+          <strong>2</strong>
+          <span>Apply learned taste</span>
+        </article>
+        <article>
+          <strong>3</strong>
+          <span>Review proof gaps</span>
+        </article>
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onUseBriefPrompt}>
+        Start from brief
+        <ArrowRight size={14} />
+      </button>
+      <small>Current prompt strength: {score}/100</small>
+    </section>
+  );
+}
+
+export function LearnerActivityRail({ items }: { items: LearnerActivityItem[] }) {
+  return (
+    <section className="learner-activity-rail" data-train-section="learner-activity">
+      <div className="output-header">
+        <div>
+          <h3>Recent activity</h3>
+          <p>Exports, proof saves, corpus decisions, and section edits stay visible here.</p>
+        </div>
+        <Clock size={16} />
+      </div>
+      <div className="activity-list">
+        {items.length ? (
+          items.slice(0, 6).map((item) => (
+            <article data-tone={item.tone ?? "neutral"} key={item.id}>
+              <strong>{item.label}</strong>
+              <p>{item.detail}</p>
+              <span>{item.at}</span>
+            </article>
+          ))
+        ) : (
+          <p className="selected-meta">No actions yet. Apply edits, save proof, export, or triage corpus rows.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function LearnerMobileStepBar({
+  activeTab,
+  onOpenExport,
+  onSetTab,
+}: {
+  activeTab: LearnerWorkspaceTab;
+  onOpenExport: () => void;
+  onSetTab: (tab: LearnerWorkspaceTab) => void;
+}) {
+  const tabs: { id: LearnerWorkspaceTab; label: string }[] = [
+    { id: "compose", label: "Compose" },
+    { id: "review", label: "Review" },
+    { id: "export", label: "Export" },
+  ];
+  return (
+    <nav className="learner-mobile-step-bar" aria-label="Learner mobile steps">
+      {tabs.map((tab) => (
+        <button data-active={activeTab === tab.id ? "true" : "false"} key={tab.id} type="button" onClick={() => onSetTab(tab.id)}>
+          {tab.label}
+        </button>
+      ))}
+      <button className="export-step" type="button" onClick={onOpenExport}>
+        Center
+      </button>
+    </nav>
   );
 }
 
@@ -262,6 +462,13 @@ export function ProofDeployStatusPanel({ status }: { status: LearnerProofDeployS
         </a>
       </div>
       <div className="proof-status-grid">
+        {status.metadata.map((item) => (
+          <article data-ready={item.ready ? "true" : "false"} key={item.label}>
+            <MonitorCheck size={15} />
+            <strong>{item.label}</strong>
+            <p>{item.value}</p>
+          </article>
+        ))}
         {status.checks.map((check) => (
           <article data-ready={check.ready ? "true" : "false"} key={check.label}>
             <MonitorCheck size={15} />

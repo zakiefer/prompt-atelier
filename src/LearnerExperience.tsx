@@ -51,13 +51,18 @@ import {
   buildLearnedStyleGenerator,
 } from "./learnerViewModel";
 import {
+  BeginnerPromptPath,
   CorpusTriageToolbar,
   ExportPresetPreview,
   LearnedPromptSectionEditor,
+  LearnerActivityRail,
   LearnerCommandDeck,
+  LearnerMobileStepBar,
   ProofDeployStatusPanel,
   ProofIntakePanel,
+  type LearnerActivityItem,
 } from "./LearnerWorkflowPanels";
+import { BUILD_STATUS } from "./buildStatus";
 import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
@@ -416,6 +421,7 @@ export function LearnView({
   const [outcomeScreenshotNotes, setOutcomeScreenshotNotes] = useState("Desktop/mobile proof notes.");
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [selectedSessionId, setSelectedSessionId] = useState("");
+  const [learnerActivity, setLearnerActivity] = useState<LearnerActivityItem[]>([]);
   const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
   const diffCategories = learnerDiff?.categories.slice(0, 10) ?? [];
   const selectedSession = savedLearnerSessions.find((session) => session.id === selectedSessionId) || savedLearnerSessions[0];
@@ -451,6 +457,7 @@ export function LearnView({
   const exportTargetMatrix = useMemo(() => buildLearnerExportTargetMatrix({ pack: learnerExportPack, presets: targetExportPresets }), [learnerExportPack, targetExportPresets]);
   const proofDeployStatus = useMemo(
     () => buildLearnerProofDeployStatus({
+      buildStatus: BUILD_STATUS,
       corpusSafety,
       exportReadyCount: exportTargetMatrix.readyCount,
       proofAction: learnerProofAction,
@@ -508,6 +515,51 @@ export function LearnView({
     { label: "Session save", ready: savedLearnerSessions.length > 0, detail: savedLearnerSessions.length ? `${savedLearnerSessions.length} saved session(s).` : "Save this learner session." },
   ];
   const quarantineItems = batchAudit.items.filter((item) => item.decision === "quarantine").slice(0, 5);
+  function recordActivity(label: string, detail: string, tone: LearnerActivityItem["tone"] = "neutral") {
+    setLearnerActivity((items) => [
+      {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        label,
+        detail,
+        tone,
+        at: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      },
+      ...items,
+    ].slice(0, 8));
+  }
+  function handleUseBriefPrompt() {
+    onUseSamplePrompt(briefPrompt);
+    recordActivity("Brief prompt applied", `${activeLearningProfile.label} brief moved into the working prompt.`, "good");
+  }
+  function handleApplySectionEdits(value: string) {
+    setLearnerText(value);
+    onSaveReviewedDiff(value);
+    recordActivity("Section edits applied", "Generated section edits are now the working prompt.", "good");
+  }
+  function handleRecordOutcomeFeedback(rating: OutcomeRating, notes: string, screenshotUrl: string, screenshotNotes: string) {
+    onRecordOutcomeFeedback(rating, notes, screenshotUrl, screenshotNotes);
+    recordActivity("Proof saved", `${rating} result saved with ${screenshotUrl ? "visual proof" : "notes only"}.`, rating === "great" ? "good" : "watch");
+  }
+  function handleReviewCorpusCandidate(row: CorpusReviewRow, action: "import" | "gold" | "bad" | "quarantine" | "merge", notes: string) {
+    onReviewCorpusCandidate(row, action, notes);
+    recordActivity("Corpus decision", `${row.title}: ${action}.`, action === "quarantine" || action === "bad" ? "watch" : "good");
+  }
+  function handleExportLearnerPack() {
+    onExportLearnerPack();
+    recordActivity("Export pack downloaded", `${learnerExportPack.files.filter((file) => file.ready).length}/${learnerExportPack.files.length} files ready.`, "good");
+  }
+  function handleSaveReviewedPrompt() {
+    onSaveReviewedDiff(reviewedPrompt);
+    recordActivity("Reviewed prompt saved", `${acceptedDiffLabels.length} accepted / ${rejectedDiffLabels.length} rejected.`, "good");
+  }
+  function handleSaveLearnerSession() {
+    onSaveLearnerSession(reviewedPrompt, acceptedDiffLabels, rejectedDiffLabels);
+    recordActivity("Learner session saved", `${acceptedDiffLabels.length} accepted / ${rejectedDiffLabels.length} rejected.`, "good");
+  }
+  function handleSaveImproved() {
+    onSaveImproved();
+    recordActivity("Prompt revised", "Improved prompt saved from the compose step.", "good");
+  }
   return (
     <div className="learn-grid">
       <section className="panel public-learner-panel" data-train-section="public-learner">
@@ -536,6 +588,8 @@ export function LearnView({
             sessions: savedLearnerSessions.length,
           }}
         />
+
+        <BeginnerPromptPath onUseBriefPrompt={handleUseBriefPrompt} score={learnerEvaluation.score || dnaScore} />
 
         <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
           <div className="loop-summary">
@@ -746,14 +800,14 @@ export function LearnView({
             <div className="output-header">
               <h3>Prompt revision</h3>
               <div className="button-row">
-                <button className="primary-button compact-button" type="button" onClick={onSaveImproved}>
+                <button className="primary-button compact-button" type="button" onClick={handleSaveImproved}>
                   Revise prompt
                 </button>
                 <button className="ghost-button compact-button" type="button" onClick={onCopyImproved}>
                   {copied === "learner-improved" ? <Check size={15} /> : <Copy size={15} />}
                   Copy
                 </button>
-                <button className="ghost-button compact-button" type="button" onClick={onSaveImproved}>
+                <button className="ghost-button compact-button" type="button" onClick={handleSaveImproved}>
                   <Save size={15} />
                   Save
                 </button>
@@ -771,7 +825,7 @@ export function LearnView({
               <span className="selected-meta">Brief builder</span>
               <p>Generate a fresh implementation-ready prompt from structured choices instead of a blank textarea.</p>
             </div>
-            <button className="primary-button compact-button" type="button" onClick={() => onUseSamplePrompt(briefPrompt)}>
+            <button className="primary-button compact-button" type="button" onClick={handleUseBriefPrompt}>
               Use brief prompt
             </button>
           </div>
@@ -806,7 +860,10 @@ export function LearnView({
               <strong>{learnedStyleGenerator.headline}</strong>
               <p>{learnedStyleGenerator.detail}</p>
               <div className="button-row compact-row">
-                <button className="primary-button compact-button" type="button" onClick={() => onUseSamplePrompt(learnedStyleGenerator.prompt)}>
+                <button className="primary-button compact-button" type="button" onClick={() => {
+                  onUseSamplePrompt(learnedStyleGenerator.prompt);
+                  recordActivity("Style prompt applied", `${activeLearningProfile.label} generator moved into the working prompt.`, "good");
+                }}>
                   Use style prompt
                   <ArrowRight size={14} />
                 </button>
@@ -826,7 +883,7 @@ export function LearnView({
             </div>
           </div>
           <textarea className="generated-output mini-output learned-style-output" readOnly value={learnedStyleGenerator.prompt} />
-          <LearnedPromptSectionEditor copied={copied} onCopy={onCopy} sections={learnedPromptSections} />
+          <LearnedPromptSectionEditor copied={copied} onApplyPrompt={handleApplySectionEdits} onCopy={onCopy} sections={learnedPromptSections} />
           <textarea className="generated-output mini-output" readOnly value={briefPrompt} />
           <div className="button-row">
             <button className="ghost-button compact-button" type="button" onClick={() => onCopy(briefPrompt, "brief-builder")}>
@@ -890,9 +947,9 @@ export function LearnView({
         </div>
 
         <div className="self-serve-grid">
-          <article className="learner-mini-panel" data-train-section="dna-rewrite-plan">
+          <article className="learner-mini-panel" data-train-section="strength-rewrite-plan">
             <div className="output-header">
-              <h3>Why not 100</h3>
+              <h3>Strength gap plan</h3>
               <span className="selected-meta">Exact rewrite moves</span>
             </div>
             <div className="version-list compact-list">
@@ -952,11 +1009,11 @@ export function LearnView({
               {copied === "reviewed-diff" ? <Check size={15} /> : <Copy size={15} />}
               Copy reviewed
             </button>
-            <button className="primary-button compact-button" type="button" onClick={() => onSaveReviewedDiff(reviewedPrompt)}>
+            <button className="primary-button compact-button" type="button" onClick={handleSaveReviewedPrompt}>
               <Save size={15} />
               Save reviewed prompt
             </button>
-            <button className="primary-button compact-button" data-learner-action="save-session" type="button" onClick={() => onSaveLearnerSession(reviewedPrompt, acceptedDiffLabels, rejectedDiffLabels)}>
+            <button className="primary-button compact-button" data-learner-action="save-session" type="button" onClick={handleSaveLearnerSession}>
               <Save size={15} />
               Save learner session
             </button>
@@ -982,7 +1039,7 @@ export function LearnView({
           </div>
         </section>
 
-        <ProofIntakePanel onRecordOutcomeFeedback={onRecordOutcomeFeedback} />
+        <ProofIntakePanel onRecordOutcomeFeedback={handleRecordOutcomeFeedback} />
 
         <section className="learner-mini-panel ingestion-safety-panel" data-status={ingestionSummary.status} data-train-section="ingestion-safety">
           <div className="output-header">
@@ -1013,7 +1070,7 @@ export function LearnView({
             <button
               className="primary-button compact-button"
               type="button"
-              onClick={() => onRecordOutcomeFeedback(outcomeRating, outcomeNotes, outcomeScreenshotUrl, outcomeScreenshotNotes)}
+              onClick={() => handleRecordOutcomeFeedback(outcomeRating, outcomeNotes, outcomeScreenshotUrl, outcomeScreenshotNotes)}
             >
               Save feedback
             </button>
@@ -1211,7 +1268,7 @@ export function LearnView({
           <ExportPresetPreview
             copied={copied}
             onCopy={onCopy}
-            onExportLearnerPack={onExportLearnerPack}
+            onExportLearnerPack={handleExportLearnerPack}
             presets={targetExportPresets}
           />
         </div>
@@ -1234,7 +1291,7 @@ export function LearnView({
           <article className="learner-mini-panel" data-train-section="learner-export-pack" id="learner-export">
             <div className="output-header">
               <h3>Export pack</h3>
-              <button className="primary-button compact-button" type="button" onClick={onExportLearnerPack}>
+              <button className="primary-button compact-button" type="button" onClick={handleExportLearnerPack}>
                 <Download size={15} />
                 Export
               </button>
@@ -1256,7 +1313,7 @@ export function LearnView({
         </div>
 
         <div className="self-serve-grid">
-          <CorpusTriageToolbar rows={corpusReviewRows} onReviewCorpusCandidate={onReviewCorpusCandidate} />
+          <CorpusTriageToolbar rows={corpusReviewRows} onReviewCorpusCandidate={handleReviewCorpusCandidate} />
 
           <article className="learner-mini-panel" data-train-section="corpus-review-queue">
             <div className="output-header">
@@ -1285,11 +1342,11 @@ export function LearnView({
                     onChange={(event) => setReviewNotes((current) => ({ ...current, [row.id]: event.target.value }))}
                   />
                   <div className="button-row compact-row">
-                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "import", reviewNotes[row.id] || "")}>Import</button>
-                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "gold", reviewNotes[row.id] || "")}>Gold</button>
-                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "bad", reviewNotes[row.id] || "")}>Bad</button>
-                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "quarantine", reviewNotes[row.id] || "")}>Quarantine</button>
-                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "merge", reviewNotes[row.id] || "")}>Merge note</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => handleReviewCorpusCandidate(row, "import", reviewNotes[row.id] || "")}>Import</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => handleReviewCorpusCandidate(row, "gold", reviewNotes[row.id] || "")}>Gold</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => handleReviewCorpusCandidate(row, "bad", reviewNotes[row.id] || "")}>Bad</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => handleReviewCorpusCandidate(row, "quarantine", reviewNotes[row.id] || "")}>Quarantine</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => handleReviewCorpusCandidate(row, "merge", reviewNotes[row.id] || "")}>Merge note</button>
                   </div>
                 </article>
               ))}
@@ -1386,7 +1443,16 @@ export function LearnView({
             {learnerProofGallery.map((item) => (
               <article className="proof-card" key={item.id} data-kind={item.kind}>
                 <div className="proof-thumb" data-kind={item.kind}>
-                  {item.url ? <img src={item.url} alt="" /> : <span>{item.score}%</span>}
+                  {item.url ? (
+                    <img
+                      src={item.url}
+                      alt=""
+                      onError={(event) => {
+                        event.currentTarget.removeAttribute("src");
+                        event.currentTarget.hidden = true;
+                      }}
+                    />
+                  ) : <span>{item.score}%</span>}
                 </div>
                 <strong>{item.title}</strong>
                 <span>{item.kind} / {item.score}% / {item.meta}</span>
@@ -1400,10 +1466,13 @@ export function LearnView({
         </div>
         </div>
 
+        <LearnerActivityRail items={learnerActivity} />
+
         <button className="ghost-button wide-button" type="button" onClick={() => setAdvancedOpen((open) => !open)}>
           <SlidersHorizontal size={15} />
           {advancedOpen ? "Hide advanced corpus analysis" : "Show advanced corpus analysis"}
         </button>
+        <LearnerMobileStepBar activeTab={activeWorkspaceTab} onOpenExport={() => setExportModalOpen(true)} onSetTab={setActiveWorkspaceTab} />
       </section>
 
       {advancedOpen ? (

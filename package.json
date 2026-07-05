@@ -29,6 +29,7 @@
     "check:holdout": "node scripts/checkHoldoutRegression.mjs",
     "verify:hosted-api": "node scripts/verifyHostedApi.mjs",
     "smoke:hosted": "node scripts/smokeHostedApp.mjs",
+    "smoke:visual-regression": "node scripts/smokeVisualRegression.mjs",
     "test:engine": "tsx scripts/testEngine.ts",
     "test:api": "node scripts/testApiRoutes.mjs"
   },

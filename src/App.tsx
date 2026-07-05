@@ -14580,7 +14580,16 @@ function VisualProofGalleryPanel({
       <div className="result-gallery-grid">
         {resultGallery.length ? resultGallery.slice(0, 8).map((item) => (
           <article className="gallery-card" key={`proof-${item.id}`}>
-            {item.image && /^(https?:|data:|\/)/.test(item.image) ? <img src={item.image} alt={item.title} /> : <div className="empty-shot">No screenshot</div>}
+            {item.image && /^(https?:|data:|\/)/.test(item.image) ? (
+              <img
+                src={item.image}
+                alt={item.title}
+                onError={(event) => {
+                  event.currentTarget.removeAttribute("src");
+                  event.currentTarget.hidden = true;
+                }}
+              />
+            ) : <div className="empty-shot">No screenshot</div>}
             <strong>{item.title}</strong>
             <span>{item.status} / {item.score}</span>
             <p>{item.notes || item.resultUrl || "Attach a result URL or screenshot note."}</p>
@@ -17984,7 +17993,16 @@ function ResultGalleryPanel({ resultGallery }: { resultGallery: ResultGalleryIte
       <div className="result-gallery-grid">
         {resultGallery.length ? resultGallery.slice(0, 6).map((item) => (
           <article className="gallery-card" key={item.id}>
-            {item.image && /^(https?:|data:|\/)/.test(item.image) ? <img src={item.image} alt={item.title} /> : <div className="empty-shot">No screenshot</div>}
+            {item.image && /^(https?:|data:|\/)/.test(item.image) ? (
+              <img
+                src={item.image}
+                alt={item.title}
+                onError={(event) => {
+                  event.currentTarget.removeAttribute("src");
+                  event.currentTarget.hidden = true;
+                }}
+              />
+            ) : <div className="empty-shot">No screenshot</div>}
             <strong>{item.title}</strong>
             <span>{item.status} / {item.score}</span>
             <p>{item.notes || item.resultUrl || "No notes yet."}</p>
