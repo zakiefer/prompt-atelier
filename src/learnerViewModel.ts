@@ -1,9 +1,11 @@
-import { type DnaScoreExplanation, type Evaluation } from "./promptEngine";
+import { type DnaScoreExplanation, type Evaluation, type PromptBattle } from "./promptEngine";
 import {
   type CorpusNeighbor,
   type CorpusReviewRow,
   type LearnerExportPack,
   type LearnerProofItem,
+  type LearningProfile,
+  type TargetExportPreset,
 } from "./learnerProduct";
 import { type HoldoutBenchmarkReport } from "./productEvolution";
 
@@ -42,6 +44,56 @@ export type LearnerRegressionSummary = {
   score: number;
   detail: string;
   rows: string[];
+};
+
+export type LearnerProofAction = {
+  status: "ready" | "started" | "missing";
+  score: number;
+  title: string;
+  cta: string;
+  detail: string;
+  missing: string[];
+  ready: string[];
+};
+
+export type LearnerBattleSummary = {
+  status: "ready" | "thin";
+  winnerTitle: string;
+  winnerScore: number;
+  cta: string;
+  why: string[];
+  variants: { title: string; score: number; intent: string; trait: string }[];
+};
+
+export type LearnerIngestionSummary = {
+  status: "clean" | "review" | "blocked";
+  headline: string;
+  detail: string;
+  rows: { title: string; label: "Website prompt" | "Maybe useful" | "Quarantine"; score: number; reason: string }[];
+  actions: string[];
+};
+
+export type LearnerStyleProfileCard = {
+  id: string;
+  label: string;
+  active: boolean;
+  examples: number;
+  score: number;
+  emphasis: string;
+  exportVoice: string;
+  rules: string[];
+};
+
+export type LearnerExportTargetMatrix = {
+  readyCount: number;
+  rows: { target: string; useFor: string; include: string; avoid: string; ready: boolean }[];
+};
+
+export type TrainFocusSummary = {
+  score: number;
+  headline: string;
+  groups: { label: string; status: "ready" | "watch" | "blocked"; detail: string; target: string }[];
+  advancedCount: number;
 };
 
 export function buildLearnerDiagnosis({
@@ -116,6 +168,179 @@ export function buildLearnerProofPlan({
       { label: "Screenshot proof", ready: hasVisualProof, detail: hasVisualProof ? `${screenshotCount} screenshot proof item(s).` : "Attach or capture desktop/mobile screenshots." },
       { label: "Outcome feedback", ready: hasOutcomeProof, detail: hasOutcomeProof ? `${outcomeCount} outcome proof item(s).` : "Record whether the generated result was great, okay, or bad." },
     ],
+  };
+}
+
+export function buildLearnerProofAction({
+  improvedPrompt,
+  proofGallery,
+}: {
+  improvedPrompt: string;
+  proofGallery: LearnerProofItem[];
+}): LearnerProofAction {
+  const hasSession = proofGallery.some((item) => item.kind === "session");
+  const hasScreenshot = proofGallery.some((item) => item.kind === "screenshot");
+  const hasOutcome = proofGallery.some((item) => item.kind === "outcome");
+  const promptMentionsProof = /screenshot|desktop|mobile|verify|test|qa|proof|build/i.test(improvedPrompt);
+  const ready = [
+    hasSession ? "Saved learner session" : "",
+    hasScreenshot ? "Screenshot evidence" : "",
+    hasOutcome ? "Outcome feedback" : "",
+    promptMentionsProof ? "Prompt asks for verification" : "",
+  ].filter(Boolean);
+  const missing = [
+    hasSession ? "" : "Save a learner session",
+    hasScreenshot ? "" : "Attach desktop/mobile screenshots",
+    hasOutcome ? "" : "Record whether the build result was great, okay, or bad",
+  ].filter(Boolean);
+  const score = Math.min(100, ready.length * 24 + (promptMentionsProof ? 4 : 0));
+  const status = hasScreenshot && hasOutcome ? "ready" : ready.length ? "started" : "missing";
+  return {
+    status,
+    score,
+    title: status === "ready" ? "Proof is strong enough to learn from" : status === "started" ? "Proof run is started" : "Proof is the next move",
+    cta: status === "ready" ? "Use proof in export" : hasScreenshot ? "Add outcome feedback" : "Run proof now",
+    detail:
+      status === "ready"
+        ? "Screenshot evidence and result feedback are both connected to this prompt."
+        : status === "started"
+          ? "The learner has partial evidence. Finish the missing proof before promoting the prompt."
+          : "Static prompt strength is not enough. Add visual or outcome proof before trusting this as training signal.",
+    missing,
+    ready,
+  };
+}
+
+export function buildLearnerBattleSummary(battle: PromptBattle): LearnerBattleSummary {
+  const variants = battle.variants.slice(0, 4).map((variant) => ({
+    title: variant.title,
+    score: variant.score,
+    intent: variant.intent,
+    trait: /asset|video|image/i.test(variant.prompt)
+      ? "asset specificity"
+      : /responsive|mobile|desktop/i.test(variant.prompt)
+        ? "responsive rules"
+        : /verify|test|screenshot|qa/i.test(variant.prompt)
+          ? "proof instructions"
+          : "implementation clarity",
+  }));
+  const winner = battle.winner || battle.variants[0];
+  return {
+    status: variants.length >= 2 ? "ready" : "thin",
+    winnerTitle: winner?.title || "No battle winner yet",
+    winnerScore: winner?.score || 0,
+    cta: variants.length >= 2 ? "Save winning variant" : "Add more constraints first",
+    why: battle.explanation.length ? battle.explanation.slice(0, 4) : ["The battle needs at least two viable prompt variants."],
+    variants,
+  };
+}
+
+export function buildLearnerIngestionSummary(rows: CorpusReviewRow[]): LearnerIngestionSummary {
+  const visibleRows = rows.slice(0, 6).map((row) => ({
+    title: row.title,
+    label: row.decision === "quarantine" ? "Quarantine" as const : row.decision === "review" ? "Maybe useful" as const : "Website prompt" as const,
+    score: row.score,
+    reason: row.reasons[0] || row.duplicate || row.cluster,
+  }));
+  const quarantine = visibleRows.filter((row) => row.label === "Quarantine").length;
+  const maybe = visibleRows.filter((row) => row.label === "Maybe useful").length;
+  const website = visibleRows.filter((row) => row.label === "Website prompt").length;
+  const status = quarantine ? "blocked" : maybe ? "review" : "clean";
+  return {
+    status,
+    headline: status === "clean" ? "Corpus is safe to learn from" : status === "review" ? "Review maybe-useful prompts" : "Keep quarantined text out",
+    detail:
+      status === "clean"
+        ? `${website} visible website prompt candidate(s) can feed style learning.`
+        : status === "review"
+          ? `${maybe} visible row(s) need a gold, bad, or quarantine decision before export.`
+          : `${quarantine} visible row(s) look off-project or risky and should stay out of memory.`,
+    rows: visibleRows,
+    actions: [
+      website ? "Promote proven website prompts to gold." : "Add clean website prompts before training.",
+      maybe ? "Decide whether maybe-useful prompts are gold or bad." : "No maybe-useful rows are blocking the next export.",
+      quarantine ? "Leave quarantined project text out of prompt memory." : "Corpus guard is not showing visible quarantine blockers.",
+    ],
+  };
+}
+
+export function buildLearnerStyleProfileCards({
+  activeProfile,
+  profiles,
+}: {
+  activeProfile: LearningProfile;
+  profiles: LearningProfile[];
+}): LearnerStyleProfileCard[] {
+  return profiles.slice(0, 8).map((profile) => {
+    const strongestRule = profile.rules[0] || "Use exact implementation details.";
+    return {
+      id: profile.id,
+      label: profile.label,
+      active: profile.id === activeProfile.id,
+      examples: profile.examples,
+      score: profile.score,
+      emphasis: strongestRule,
+      exportVoice:
+        profile.score >= 80
+          ? "Confident and specific."
+          : profile.examples >= 10
+            ? "Useful, but ask for proof."
+            : "Treat as a starter profile.",
+      rules: profile.rules.slice(0, 4),
+    };
+  });
+}
+
+export function buildLearnerExportTargetMatrix({
+  pack,
+  presets,
+}: {
+  pack: LearnerExportPack;
+  presets: TargetExportPreset[];
+}): LearnerExportTargetMatrix {
+  const presetIds = new Set(presets.map((preset) => preset.id));
+  const proofReady = pack.files.some((file) => /proof/i.test(file.label) && file.ready);
+  const rows = [
+    { target: "Codex", useFor: "Implementation", include: "Exact files, stack, UI states, and verification ladder.", avoid: "Loose mood-board language.", ready: presetIds.has("codex") },
+    { target: "Claude", useFor: "Critique and rewrite", include: "Ambiguities, success criteria, edge cases, and rewrite reasons.", avoid: "Only final prompt text.", ready: presetIds.has("claude") },
+    { target: "v0", useFor: "Fast UI generation", include: "Concise layout, components, tokens, and responsive rules.", avoid: "Long training history.", ready: presetIds.has("v0") },
+    { target: "GPT", useFor: "Alternative rewrite", include: "Context, style rules, proof notes, and target output format.", avoid: "Hidden provider keys or private logs.", ready: presetIds.has("gpt") },
+    { target: "JSONL", useFor: "Training rows", include: "Source, improved prompt, scorecard, profile, and labels.", avoid: "Unreviewed quarantine rows.", ready: Boolean(pack.json) },
+    { target: "Memory", useFor: "Reusable project context", include: "Patterns, avoid rules, profile voice, and proof summary.", avoid: "One-off prompt clutter.", ready: pack.files.some((file) => /memory/i.test(file.label) && file.ready) || proofReady },
+  ];
+  return {
+    readyCount: rows.filter((row) => row.ready).length,
+    rows,
+  };
+}
+
+export function buildTrainFocusSummary({
+  advancedCount,
+  battleReady,
+  corpusSafety,
+  exportReady,
+  proofAction,
+  regressionSummary,
+}: {
+  advancedCount: number;
+  battleReady: boolean;
+  corpusSafety: LearnerCorpusSafety;
+  exportReady: number;
+  proofAction: LearnerProofAction;
+  regressionSummary: LearnerRegressionSummary;
+}): TrainFocusSummary {
+  const groups = [
+    { label: "Corpus", status: corpusSafety.label === "quarantine" ? "blocked" as const : corpusSafety.label === "review" ? "watch" as const : "ready" as const, detail: corpusSafety.detail, target: "dataset" },
+    { label: "Proof", status: proofAction.status === "ready" ? "ready" as const : proofAction.status === "started" ? "watch" as const : "blocked" as const, detail: proofAction.detail, target: "proof" },
+    { label: "Battle", status: battleReady ? "ready" as const : "watch" as const, detail: battleReady ? "Prompt variants are ready to compare." : "Add stronger constraints before trusting a winner.", target: "battle-autopilot" },
+    { label: "Regression", status: regressionSummary.label === "ready" ? "ready" as const : regressionSummary.label === "blocked" ? "blocked" as const : "watch" as const, detail: regressionSummary.detail, target: "holdout" },
+    { label: "Exports", status: exportReady >= 4 ? "ready" as const : "watch" as const, detail: `${exportReady} learner export file(s) are ready.`, target: "packs" },
+  ];
+  return {
+    score: Math.round((groups.filter((group) => group.status === "ready").length / groups.length) * 100),
+    headline: "Train is now a short operating cockpit.",
+    groups,
+    advancedCount,
   };
 }
 

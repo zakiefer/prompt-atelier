@@ -414,8 +414,17 @@ import {
   buildTargetExportPresets,
   createLearnerSession,
   type CorpusReviewRow,
+  type LearnerExportPack,
+  type LearnerProofItem,
   type LearnerSession,
 } from "./learnerProduct";
+import {
+  buildLearnerCorpusSafety,
+  buildLearnerProofAction,
+  buildLearnerRegressionSummary,
+  buildTrainFocusSummary,
+  type TrainFocusSummary,
+} from "./learnerViewModel";
 import { LearnView, PublicDemoRoute } from "./LearnerExperience";
 import {
   createCorpusCandidatePrompt,
@@ -7875,6 +7884,9 @@ export default function App() {
               learningMemoryV2={learningMemoryV2}
               resultReviewer={resultReviewer}
               holdoutBenchmark={holdoutBenchmark}
+              learnerCorpusReviewRows={learnerCorpusReviewRows}
+              learnerExportPack={learnerExportPack}
+              learnerProofGallery={learnerProofGallery}
               promptEditorStudio={promptEditorStudio}
               projectSpaces={projectSpaces}
               modularArchitecture={modularArchitecture}
@@ -8893,6 +8905,9 @@ function TrainView({
   learningMemoryV2,
   resultReviewer,
   holdoutBenchmark,
+  learnerCorpusReviewRows,
+  learnerExportPack,
+  learnerProofGallery,
   promptEditorStudio,
   projectSpaces,
   modularArchitecture,
@@ -9245,6 +9260,9 @@ function TrainView({
   learningMemoryV2: LearningMemoryV2Report;
   resultReviewer: ResultReviewerReport;
   holdoutBenchmark: HoldoutBenchmarkReport;
+  learnerCorpusReviewRows: CorpusReviewRow[];
+  learnerExportPack: LearnerExportPack;
+  learnerProofGallery: LearnerProofItem[];
   promptEditorStudio: PromptEditorStudioReport;
   projectSpaces: ProjectSpacesReport;
   modularArchitecture: ModularArchitectureReport;
@@ -9560,6 +9578,19 @@ function TrainView({
   function updateBrief<K extends keyof InterviewBrief>(key: K, value: InterviewBrief[K]) {
     setInterviewBrief((current) => ({ ...current, [key]: value }));
   }
+  const trainFocusSummary = useMemo(() => {
+    const corpusSafety = buildLearnerCorpusSafety(learnerCorpusReviewRows);
+    const proofAction = buildLearnerProofAction({ improvedPrompt, proofGallery: learnerProofGallery });
+    const regressionSummary = buildLearnerRegressionSummary(holdoutBenchmark);
+    return buildTrainFocusSummary({
+      advancedCount: Math.max(0, trainSections.length - 6),
+      battleReady: promptBattleAutopilot.score >= 50,
+      corpusSafety,
+      exportReady: learnerExportPack.files.filter((file) => file.ready).length,
+      proofAction,
+      regressionSummary,
+    });
+  }, [holdoutBenchmark, improvedPrompt, learnerCorpusReviewRows, learnerExportPack, learnerProofGallery, promptBattleAutopilot.score, trainSections.length]);
 
   return (
     <div className="train-grid">
@@ -9580,12 +9611,42 @@ function TrainView({
         </div>
       </section>
 
-      <TrainSectionNavigator
-        query={sectionQuery}
-        sections={trainSections}
-        setQuery={setSectionQuery}
-        onSelect={scrollToTrainSection}
-      />
+      <TrainFocusSummaryPanel report={trainFocusSummary} onSelect={scrollToTrainSection} />
+
+      <details className="train-jump-drawer">
+        <summary>
+          <span>Jump to Train section</span>
+          <strong>{trainSections.length} panels</strong>
+        </summary>
+        <TrainSectionNavigator
+          query={sectionQuery}
+          sections={trainSections}
+          setQuery={setSectionQuery}
+          onSelect={scrollToTrainSection}
+        />
+      </details>
+
+      <section className="train-columns train-core-grid">
+        <PromptLearnerModePanel report={promptLearnerMode} onSelect={scrollToTrainSection} />
+        <PromptToProofWorkflowPanel report={promptToProofWorkflow} onProveGeneratedPrompt={onProveGeneratedPrompt} onRunOneClickBuildProof={onRunOneClickBuildProof} />
+      </section>
+
+      <section className="train-columns train-core-grid">
+        <PromptBattleAutopilotPanel report={promptBattleAutopilot} onQueueBattle={onQueueBattle} onSelect={scrollToTrainSection} />
+        <HoldoutBenchmarkPanel report={holdoutBenchmark} />
+      </section>
+
+      <section className="train-columns train-core-grid">
+        <TrainingExportReadinessPanel report={trainingExportReadiness} onExportOneClickTrainingPack={onExportOneClickTrainingPack} />
+        <CorpusProvenanceFirewallPanel report={corpusProvenanceFirewall} />
+      </section>
+
+      <details className="train-advanced-drawer">
+        <summary>
+          <span>Advanced Train controls</span>
+          <strong>{trainFocusSummary.advancedCount} diagnostic panels</strong>
+        </summary>
+        <div className="train-advanced-stack">
 
       <PromptProductOsPanel report={productOs} onSelect={scrollToTrainSection} />
 
@@ -10697,7 +10758,33 @@ function TrainView({
         </div>
         <textarea className="generated-output style-guide-output" readOnly value={codexSkill} />
       </section>
+        </div>
+      </details>
     </div>
+  );
+}
+
+function TrainFocusSummaryPanel({ onSelect, report }: { onSelect: (id: string) => void; report: TrainFocusSummary }) {
+  return (
+    <section className="panel train-focus-summary" data-train-section="train-focus-summary">
+      <div className="output-header">
+        <div>
+          <p className="eyebrow">Train focus summary</p>
+          <h2>{report.headline}</h2>
+          <p>Default Train now shows only the operating path. Open Advanced when you need the full diagnostics.</p>
+        </div>
+        <ScoreRing score={report.score} label="focus" />
+      </div>
+      <div className="train-focus-grid">
+        {report.groups.map((group) => (
+          <button className="train-focus-card" data-status={group.status} key={group.label} type="button" onClick={() => onSelect(group.target)}>
+            <strong>{group.label}</strong>
+            <span>{group.status}</span>
+            <p>{group.detail}</p>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

@@ -30,6 +30,7 @@ if (shouldOpenDemo) {
   targetUrl.searchParams.set("mode", "demo");
 }
 const trainHeadings = [
+  "Train focus summary",
   "Product evolution roadmap",
   "Prompt Learner mode",
   "Learning Memory v2",
@@ -62,18 +63,23 @@ const trainHeadings = [
 ];
 const learnerHeadings = [
   "Paste, score, improve, prove, export.",
+  "Proof-first action",
   "Brief builder",
   "Prompt diagnosis",
   "One prompt run",
+  "Style profiles",
   "Try sample prompts",
   "Prompt revision",
+  "Prompt battle",
   "Proof learning plan",
+  "Ingestion safety",
   "Why not 100",
   "Learned from similar prompts",
   "Outcome feedback loop",
   "Prompt diff editor",
   "House-format compiler",
   "Target export differences",
+  "Export target matrix",
   "Corpus safety",
   "Regression guard",
   "Benchmark battle",
@@ -150,6 +156,7 @@ try {
         const requiredSections = new URL(globalThis.location.href).searchParams.get("tab") === "train"
           ? [
               "product-evolution",
+              "train-focus-summary",
               "learner-mode",
               "memory-v2",
               "result-reviewer",
@@ -163,13 +170,18 @@ try {
               "public-learner",
               "guided-first-run",
               "prompt-diagnosis",
+              "proof-first-action",
+              "style-profiles",
+              "prompt-battle-flow",
               "one-prompt-run",
               "brief-builder",
               "dna-rewrite-plan",
               "corpus-neighbors",
               "prompt-diff-editor",
               "proof-learning-plan",
+              "ingestion-safety",
               "outcome-feedback-loop",
+              "export-target-matrix",
               "export-target-differences",
               "corpus-safety",
               "learner-regression-guard",

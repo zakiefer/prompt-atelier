@@ -73,6 +73,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Learner workbench upgrades for saved learner sessions, nearest-neighbor corpus examples, why-not-100 rewrite moves, learned recipe cards, sample prompts, Codex/Claude/v0/GPT export presets, corpus quarantine review, hosted learner-session sync, and Pages CI smokes for learner, Train, and demo routes
 - Productized learner flow with sticky first-run navigation, structured brief builder, saved-session reopen/details, actionable corpus review queue, result feedback capture, visual proof gallery, stronger target-specific exports, and mobile single-column polish
 - Learner product hardening with a one-viewport workbench, prompt diagnosis, proof learning plan, explicit corpus safety, target-specific export differences, and a regression guard in the main learner workflow
+- Learner next-pass cockpit with proof-first action, first-class prompt battle, style profiles, ingestion safety labels, export target matrix, and a collapsed Advanced Train drawer
 
 ## Development
 

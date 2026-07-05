@@ -35,10 +35,15 @@ import {
 } from "./learnerProduct";
 import {
   buildExportDifferentiators,
+  buildLearnerBattleSummary,
   buildLearnerCorpusSafety,
   buildLearnerDiagnosis,
+  buildLearnerExportTargetMatrix,
+  buildLearnerIngestionSummary,
   buildLearnerProofPlan,
+  buildLearnerProofAction,
   buildLearnerRegressionSummary,
+  buildLearnerStyleProfileCards,
 } from "./learnerViewModel";
 import { type HoldoutBenchmarkReport } from "./productEvolution";
 
@@ -418,13 +423,18 @@ export function LearnView({
     ].join("\n");
   }, [diffCategories, diffDecisions, improvedPrompt]);
   const learnerProofPlan = useMemo(() => buildLearnerProofPlan({ proofGallery: learnerProofGallery }), [learnerProofGallery]);
+  const learnerProofAction = useMemo(() => buildLearnerProofAction({ improvedPrompt, proofGallery: learnerProofGallery }), [improvedPrompt, learnerProofGallery]);
+  const learnerBattleSummary = useMemo(() => buildLearnerBattleSummary(learnerBattle), [learnerBattle]);
   const learnerDiagnosis = useMemo(
     () => buildLearnerDiagnosis({ dnaExplanation, evaluation: learnerEvaluation, neighbors: corpusNeighbors, proofGallery: learnerProofGallery }),
     [corpusNeighbors, dnaExplanation, learnerEvaluation, learnerProofGallery],
   );
   const corpusSafety = useMemo(() => buildLearnerCorpusSafety(corpusReviewRows), [corpusReviewRows]);
+  const ingestionSummary = useMemo(() => buildLearnerIngestionSummary(corpusReviewRows), [corpusReviewRows]);
   const regressionSummary = useMemo(() => buildLearnerRegressionSummary(holdoutBenchmark), [holdoutBenchmark]);
   const exportDifferentiators = useMemo(() => buildExportDifferentiators(learnerExportPack), [learnerExportPack]);
+  const exportTargetMatrix = useMemo(() => buildLearnerExportTargetMatrix({ pack: learnerExportPack, presets: targetExportPresets }), [learnerExportPack, targetExportPresets]);
+  const styleProfileCards = useMemo(() => buildLearnerStyleProfileCards({ activeProfile: activeLearningProfile, profiles: learningProfiles }), [activeLearningProfile, learningProfiles]);
   const flowSteps = [
     { label: "Paste", ready: Boolean(learnerSource.trim()), detail: "Bring in one website prompt." },
     { label: "Score", ready: learnerEvaluation.score >= 20, detail: `${learnerEvaluation.score}/100 local score.` },
@@ -476,6 +486,26 @@ export function LearnView({
           </div>
         </section>
 
+        <section className="learner-proof-action" data-status={learnerProofAction.status} data-train-section="proof-first-action">
+          <div>
+            <span>Proof-first action</span>
+            <strong>{learnerProofAction.title}</strong>
+            <p>{learnerProofAction.detail}</p>
+          </div>
+          <ScoreRing score={learnerProofAction.score} label={learnerProofAction.status} />
+          <div className="proof-action-list">
+            <small>Ready: {learnerProofAction.ready.join(" / ") || "No proof signal yet"}</small>
+            <small>Next: {learnerProofAction.missing[0] || "Package this evidence into the export"}</small>
+          </div>
+          <button
+            className="primary-button compact-button"
+            type="button"
+            onClick={() => setActiveWorkspaceTab(learnerProofAction.status === "ready" ? "export" : "review")}
+          >
+            {learnerProofAction.cta}
+          </button>
+        </section>
+
         <section className="learner-diagnosis-strip" data-train-section="prompt-diagnosis">
           <article>
             <span>Diagnosis</span>
@@ -508,6 +538,26 @@ export function LearnView({
           ))}
         </div>
 
+        <section className="style-profile-board" data-train-section="style-profiles">
+          <div className="output-header">
+            <div>
+              <h3>Style profiles</h3>
+              <p>Choose the prompt taste the learner should emphasize before export.</p>
+            </div>
+            <span className="selected-meta">{activeLearningProfile.label}</span>
+          </div>
+          <div className="style-profile-grid">
+            {styleProfileCards.slice(0, 4).map((card) => (
+              <button className="style-profile-card" data-active={card.active ? "true" : "false"} key={card.id} type="button" onClick={() => setActiveLearningProfileId(card.id)}>
+                <strong>{card.label}</strong>
+                <span>{card.examples} examples / {card.score}%</span>
+                <p>{card.emphasis}</p>
+                <small>{card.exportVoice}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+
         <nav className="learner-jump-nav" aria-label="Guided learner sections" data-train-section="guided-first-run">
           {workspaceTabs.map((tab, index) => (
             <button
@@ -539,6 +589,28 @@ export function LearnView({
             onClick={() => activeWorkspaceTab === "export" ? setExportModalOpen(true) : setActiveWorkspaceTab(nextWorkspaceTab)}
           >
             {activeWorkspaceTab === "export" ? "Export center" : `Next: ${workspaceTabs[activeStepIndex + 1]?.label ?? "Export"}`}
+          </button>
+        </section>
+
+        <section className="learner-battle-strip" data-status={learnerBattleSummary.status} data-train-section="prompt-battle-flow">
+          <div>
+            <span>Prompt battle</span>
+            <strong>{learnerBattleSummary.winnerTitle}</strong>
+            <p>{learnerBattleSummary.why[0]}</p>
+          </div>
+          <ScoreRing score={learnerBattleSummary.winnerScore} label="winner" />
+          <div className="battle-variant-row">
+            {learnerBattleSummary.variants.slice(0, 3).map((variant) => (
+              <article key={variant.title}>
+                <strong>{variant.score}</strong>
+                <span>{variant.title}</span>
+                <small>{variant.trait}</small>
+              </article>
+            ))}
+          </div>
+          <button className="ghost-button compact-button" type="button" onClick={onSaveBattleWinner}>
+            <Trophy size={15} />
+            {learnerBattleSummary.cta}
           </button>
         </section>
 
@@ -772,6 +844,26 @@ export function LearnView({
           </div>
         </section>
 
+        <section className="learner-mini-panel ingestion-safety-panel" data-status={ingestionSummary.status} data-train-section="ingestion-safety">
+          <div className="output-header">
+            <div>
+              <h3>Ingestion safety</h3>
+              <p>{ingestionSummary.headline}: {ingestionSummary.detail}</p>
+            </div>
+            <span className="selected-meta">{ingestionSummary.status}</span>
+          </div>
+          <div className="ingestion-row-grid">
+            {ingestionSummary.rows.slice(0, 4).map((row) => (
+              <article key={row.title} data-label={row.label}>
+                <strong>{row.label}</strong>
+                <span>{row.title} / {row.score}%</span>
+                <p>{row.reason}</p>
+              </article>
+            ))}
+          </div>
+          <FeedbackList title="Import actions" items={ingestionSummary.actions} empty="No import actions." />
+        </section>
+
         <section className="learner-mini-panel" data-train-section="outcome-feedback-loop" id="learner-feedback">
           <div className="output-header">
             <div>
@@ -845,6 +937,25 @@ export function LearnView({
               <span>{regressionSummary.detail}</span>
               <small>{regressionSummary.score}/100 holdout score</small>
             </article>
+          </div>
+        </section>
+        <section className="learner-mini-panel export-target-matrix" data-train-section="export-target-matrix">
+          <div className="output-header">
+            <div>
+              <h3>Export target matrix</h3>
+              <p>Each target gets a different package, not a renamed copy.</p>
+            </div>
+            <span className="selected-meta">{exportTargetMatrix.readyCount}/{exportTargetMatrix.rows.length} ready</span>
+          </div>
+          <div className="export-target-grid">
+            {exportTargetMatrix.rows.map((row) => (
+              <article key={row.target} data-ready={row.ready ? "true" : "false"}>
+                <strong>{row.target}</strong>
+                <span>{row.useFor}</span>
+                <p>{row.include}</p>
+                <small>Avoid: {row.avoid}</small>
+              </article>
+            ))}
           </div>
         </section>
         <div className="modal-layer" hidden={!exportModalOpen}>
