@@ -105,6 +105,15 @@ export type LearnedStyleGenerator = {
   ingredients: { label: string; detail: string }[];
 };
 
+export type LearnedPromptSection = {
+  id: "stack" | "visual" | "assets" | "layout" | "motion" | "responsive" | "verification";
+  label: string;
+  status: "ready" | "thin";
+  detail: string;
+  rewriteHint: string;
+  content: string;
+};
+
 export type LearnerProjectSystem = {
   score: number;
   status: ProjectSpacesReport["status"];
@@ -112,6 +121,15 @@ export type LearnerProjectSystem = {
   detail: string;
   rows: { label: string; count: number; status: "clean" | "review" | "blocked"; detail: string }[];
   policy: string[];
+};
+
+export type LearnerProofDeployStatus = {
+  score: number;
+  headline: string;
+  detail: string;
+  liveUrl: string;
+  checks: { label: string; ready: boolean; detail: string }[];
+  commands: string[];
 };
 
 export type TrainFocusSummary = {
@@ -435,6 +453,95 @@ export function buildLearnedStyleGenerator({
   };
 }
 
+function linesWithTerms(text: string, terms: string[]) {
+  const lines = text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const matched = lines.filter((line) => {
+    const lower = line.toLowerCase();
+    return terms.some((term) => lower.includes(term));
+  });
+  return matched.slice(0, 5);
+}
+
+export function buildLearnedPromptSections({
+  prompt,
+  sourcePrompt,
+}: {
+  prompt: string;
+  sourcePrompt: string;
+}): LearnedPromptSection[] {
+  const source = prompt.trim() || sourcePrompt.trim();
+  const definitions: Omit<LearnedPromptSection, "status" | "detail" | "content">[] = [
+    {
+      id: "stack",
+      label: "Stack and dependency boundary",
+      rewriteHint: "Name the framework, language, styling system, icon/motion libraries, and libraries to avoid.",
+    },
+    {
+      id: "visual",
+      label: "Fonts and color system",
+      rewriteHint: "Add import URLs, weights, CSS variables or Tailwind tokens, and exact foreground/background values.",
+    },
+    {
+      id: "assets",
+      label: "Assets and media behavior",
+      rewriteHint: "Include exact media URLs, object-fit, focal positions, load behavior, fallbacks, and overlay rules.",
+    },
+    {
+      id: "layout",
+      label: "Layout and UI controls",
+      rewriteHint: "Specify layer order, nav, panels, forms, controls, z-index, spacing, and responsive container rules.",
+    },
+    {
+      id: "motion",
+      label: "Motion and state mechanics",
+      rewriteHint: "Describe timing, state locks, requestAnimationFrame loops, cleanup, hover/focus, and reduced motion.",
+    },
+    {
+      id: "responsive",
+      label: "Responsive constraints",
+      rewriteHint: "Set mobile/tablet/desktop behavior, wrapping rules, fixed-format dimensions, and overflow constraints.",
+    },
+    {
+      id: "verification",
+      label: "Verification and proof",
+      rewriteHint: "Require lint/build, console health, desktop/mobile screenshots, media nonblank checks, and no overflow.",
+    },
+  ];
+  const termMap: Record<LearnedPromptSection["id"], string[]> = {
+    stack: ["react", "typescript", "vite", "tailwind", "lucide", "framer", "motion", "dependencies", "stack"],
+    visual: ["font", "color", "palette", "hsl", "hex", "css variable", "foreground", "background", "typography"],
+    assets: ["asset", "video", "image", "url", "media", "object-fit", "object-position", "cloudfront", "src"],
+    layout: ["layout", "nav", "navbar", "section", "grid", "flex", "panel", "button", "input", "z-index", "spacing"],
+    motion: ["motion", "animation", "transition", "hover", "state", "requestanimationframe", "cleanup", "duration", "ease"],
+    responsive: ["responsive", "mobile", "tablet", "desktop", "breakpoint", "viewport", "overflow", "wrapping", "text fit"],
+    verification: ["verify", "verification", "qa", "screenshot", "lint", "build", "console", "playwright", "proof"],
+  };
+
+  const lower = source.toLowerCase();
+  return definitions.map((definition) => {
+    const terms = termMap[definition.id];
+    const hits = terms.filter((term) => lower.includes(term)).length;
+    const evidence = linesWithTerms(source, terms);
+    const status = hits >= Math.min(3, Math.ceil(terms.length / 3)) ? "ready" : "thin";
+    const content = evidence.length
+      ? evidence.join("\n")
+      : [
+          `## ${definition.label}`,
+          definition.rewriteHint,
+          "Replace this section with exact implementation-ready details before export.",
+        ].join("\n");
+    return {
+      ...definition,
+      status,
+      detail: `${hits}/${terms.length} signal(s) present.`,
+      content,
+    };
+  });
+}
+
 export function buildLearnerProjectSystem({
   activeProfile,
   projectSpaces,
@@ -457,6 +564,45 @@ export function buildLearnerProjectSystem({
     detail: `${activeProfile.label} is active with ${savedSessions.length} saved learner run(s). Keep imports, sessions, proof, and reusable memory in separate spaces.`,
     rows,
     policy: projectSpaces.activePolicy.slice(0, 3),
+  };
+}
+
+export function buildLearnerProofDeployStatus({
+  corpusSafety,
+  exportReadyCount,
+  proofAction,
+  regressionSummary,
+}: {
+  corpusSafety: LearnerCorpusSafety;
+  exportReadyCount: number;
+  proofAction: LearnerProofAction;
+  regressionSummary: LearnerRegressionSummary;
+}): LearnerProofDeployStatus {
+  const checks = [
+    { label: "Proof evidence", ready: proofAction.status === "ready", detail: proofAction.detail },
+    { label: "Export presets", ready: exportReadyCount >= 6, detail: `${exportReadyCount} target package(s) ready.` },
+    { label: "Corpus posture", ready: corpusSafety.label !== "quarantine", detail: corpusSafety.detail },
+    { label: "Regression guard", ready: regressionSummary.label !== "blocked", detail: regressionSummary.detail },
+  ];
+  const readyCount = checks.filter((check) => check.ready).length;
+  const score = Math.round((readyCount / checks.length) * 100);
+  return {
+    score,
+    headline: score >= 90 ? "Ready for durable handoff" : score >= 65 ? "Handoff is usable with caveats" : "Finish proof before handoff",
+    detail:
+      score >= 90
+        ? "The prompt, proof, corpus posture, and export presets are aligned."
+        : score >= 65
+          ? "You can export now, but the next proof or corpus item should be handled before promoting this as gold."
+          : "Keep this in review until proof, corpus, and regression checks are less speculative.",
+    liveUrl: "https://zakiefer.github.io/prompt-atelier/",
+    checks,
+    commands: [
+      "npm run build",
+      "npm run lint",
+      "npm run test:engine",
+      "npm run smoke:hosted -- --url http://127.0.0.1:4173",
+    ],
   };
 }
 

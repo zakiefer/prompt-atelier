@@ -35,6 +35,7 @@ import {
 } from "./learnerProduct";
 import {
   buildExportDifferentiators,
+  buildLearnedPromptSections,
   buildLearnerBattleSummary,
   buildLearnerCorpusSafety,
   buildLearnerDiagnosis,
@@ -43,11 +44,20 @@ import {
   buildLearnerOperatingLoop,
   buildLearnerProofPlan,
   buildLearnerProofAction,
+  buildLearnerProofDeployStatus,
   buildLearnerProjectSystem,
   buildLearnerRegressionSummary,
   buildLearnerStyleProfileCards,
   buildLearnedStyleGenerator,
 } from "./learnerViewModel";
+import {
+  CorpusTriageToolbar,
+  ExportPresetPreview,
+  LearnedPromptSectionEditor,
+  LearnerCommandDeck,
+  ProofDeployStatusPanel,
+  ProofIntakePanel,
+} from "./LearnerWorkflowPanels";
 import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
@@ -439,6 +449,15 @@ export function LearnView({
   const regressionSummary = useMemo(() => buildLearnerRegressionSummary(holdoutBenchmark), [holdoutBenchmark]);
   const exportDifferentiators = useMemo(() => buildExportDifferentiators(learnerExportPack), [learnerExportPack]);
   const exportTargetMatrix = useMemo(() => buildLearnerExportTargetMatrix({ pack: learnerExportPack, presets: targetExportPresets }), [learnerExportPack, targetExportPresets]);
+  const proofDeployStatus = useMemo(
+    () => buildLearnerProofDeployStatus({
+      corpusSafety,
+      exportReadyCount: exportTargetMatrix.readyCount,
+      proofAction: learnerProofAction,
+      regressionSummary,
+    }),
+    [corpusSafety, exportTargetMatrix.readyCount, learnerProofAction, regressionSummary],
+  );
   const styleProfileCards = useMemo(() => buildLearnerStyleProfileCards({ activeProfile: activeLearningProfile, profiles: learningProfiles }), [activeLearningProfile, learningProfiles]);
   const operatingLoop = useMemo(
     () => buildLearnerOperatingLoop({
@@ -461,6 +480,10 @@ export function LearnView({
       sourcePrompt: learnerSource,
     }),
     [activeLearningProfile, briefInput, improvedPrompt, learnerDiagnosis, learnerProofAction, learnerSource],
+  );
+  const learnedPromptSections = useMemo(
+    () => buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt || improvedPrompt, sourcePrompt: learnerSource }),
+    [improvedPrompt, learnedStyleGenerator.prompt, learnerSource],
   );
   const learnerProjectSystem = useMemo(
     () => buildLearnerProjectSystem({ activeProfile: activeLearningProfile, projectSpaces, savedSessions: savedLearnerSessions }),
@@ -497,22 +520,22 @@ export function LearnView({
           <ScoreRing score={learnerEvaluation.score || dnaScore} label="Strength" />
         </div>
 
-        <section className="learner-session-home" aria-label="Session home">
-          <div>
-            <strong>{savedLearnerSessions[0]?.title ?? "Start a fresh prompt run"}</strong>
-            <p>{savedLearnerSessions[0] ? `${savedLearnerSessions.length} saved run(s). Reopen the latest or make a new prompt from a brief.` : "Paste a prompt, choose a brief, then review and export from one compact path."}</p>
-          </div>
-          <div className="button-row compact-row">
-            {savedLearnerSessions[0] ? (
-              <button className="ghost-button compact-button" type="button" onClick={() => onOpenLearnerSession(savedLearnerSessions[0])}>
-                Reopen latest
-              </button>
-            ) : null}
-            <button className="primary-button compact-button" type="button" onClick={() => setActiveWorkspaceTab("compose")}>
-              New run
-            </button>
-          </div>
-        </section>
+        <LearnerCommandDeck
+          activeTab={activeWorkspaceTab}
+          currentAction={operatingLoop.currentAction}
+          latestSession={savedLearnerSessions[0]}
+          onOpenLatest={onOpenLearnerSession}
+          onSetTab={setActiveWorkspaceTab}
+          steps={operatingLoop.steps}
+          stats={{
+            exportReadyCount: exportTargetMatrix.readyCount,
+            presetCount: targetExportPresets.length,
+            proofItems: learnerProofGallery.length,
+            proofScore: learnerProofAction.score,
+            promptScore: learnerEvaluation.score || dnaScore,
+            sessions: savedLearnerSessions.length,
+          }}
+        />
 
         <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
           <div className="loop-summary">
@@ -803,6 +826,7 @@ export function LearnView({
             </div>
           </div>
           <textarea className="generated-output mini-output learned-style-output" readOnly value={learnedStyleGenerator.prompt} />
+          <LearnedPromptSectionEditor copied={copied} onCopy={onCopy} sections={learnedPromptSections} />
           <textarea className="generated-output mini-output" readOnly value={briefPrompt} />
           <div className="button-row">
             <button className="ghost-button compact-button" type="button" onClick={() => onCopy(briefPrompt, "brief-builder")}>
@@ -958,6 +982,8 @@ export function LearnView({
           </div>
         </section>
 
+        <ProofIntakePanel onRecordOutcomeFeedback={onRecordOutcomeFeedback} />
+
         <section className="learner-mini-panel ingestion-safety-panel" data-status={ingestionSummary.status} data-train-section="ingestion-safety">
           <div className="output-header">
             <div>
@@ -1053,6 +1079,7 @@ export function LearnView({
             </article>
           </div>
         </section>
+        <ProofDeployStatusPanel status={proofDeployStatus} />
         <section className="learner-mini-panel export-target-matrix" data-train-section="export-target-matrix">
           <div className="output-header">
             <div>
@@ -1181,21 +1208,12 @@ export function LearnView({
             </div>
           </article>
 
-          <article className="learner-mini-panel" data-train-section="target-export-presets">
-            <div className="output-header">
-              <h3>Target export presets</h3>
-              <span className="selected-meta">Codex / Claude / v0 / Lovable / Cursor / Bolt / JSON / Markdown</span>
-            </div>
-            <div className="preset-grid">
-              {targetExportPresets.map((preset) => (
-                <button className="preset-card" key={preset.id} type="button" onClick={() => onCopy(preset.content, `target-${preset.id}`)}>
-                  <strong>{preset.label}</strong>
-                  <span>{preset.filename}</span>
-                  <small>{preset.detail}</small>
-                </button>
-              ))}
-            </div>
-          </article>
+          <ExportPresetPreview
+            copied={copied}
+            onCopy={onCopy}
+            onExportLearnerPack={onExportLearnerPack}
+            presets={targetExportPresets}
+          />
         </div>
 
         <div className="self-serve-grid">
@@ -1238,6 +1256,8 @@ export function LearnView({
         </div>
 
         <div className="self-serve-grid">
+          <CorpusTriageToolbar rows={corpusReviewRows} onReviewCorpusCandidate={onReviewCorpusCandidate} />
+
           <article className="learner-mini-panel" data-train-section="corpus-review-queue">
             <div className="output-header">
               <h3>Corpus review queue</h3>

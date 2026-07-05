@@ -714,6 +714,111 @@ button:disabled {
   padding: 12px;
 }
 
+.learner-command-deck {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(260px, 1.15fr) minmax(220px, 0.85fr) minmax(280px, 1fr);
+  min-height: 170px;
+}
+
+.command-next-card,
+.command-session-card,
+.command-metric-grid {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(245, 248, 245, 0.9));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.command-next-card {
+  background:
+    radial-gradient(circle at 92% 8%, rgba(31, 122, 104, 0.18), transparent 32%),
+    #102017;
+  color: #fff;
+  display: grid;
+  gap: 10px;
+}
+
+.command-next-card span,
+.command-session-card span,
+.corpus-triage-toolbar span:first-child {
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-next-card strong {
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 4vw, 4.8rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 0.82;
+}
+
+.command-next-card p,
+.command-session-card p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.command-next-card p {
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 480px;
+}
+
+.command-next-card .ghost-button {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.command-session-card {
+  align-content: end;
+  display: grid;
+  gap: 8px;
+}
+
+.command-session-card strong {
+  font-size: 1.05rem;
+  line-height: 1.18;
+}
+
+.command-metric-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.command-metric-grid article {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.command-metric-grid strong {
+  color: var(--teal-dark);
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.command-metric-grid span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .learner-session-home strong,
 .learner-run-guide strong,
 .learner-proof-action strong,
@@ -1372,6 +1477,61 @@ button:disabled {
     #fff;
 }
 
+.section-editor-panel {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.section-editor-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.section-editor-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.section-editor-card[data-status="thin"] {
+  border-color: rgba(185, 130, 42, 0.34);
+}
+
+.section-editor-card strong {
+  display: block;
+  font-size: 0.86rem;
+}
+
+.section-editor-card span,
+.section-editor-card small {
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.32;
+}
+
+.section-editor-card textarea {
+  background: #101714;
+  border: 0;
+  border-radius: 9px;
+  color: #ecf2ee;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  min-height: 118px;
+  outline: none;
+  padding: 10px;
+  resize: vertical;
+}
+
 .quality-explainer,
 .proof-board {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1397,6 +1557,22 @@ button:disabled {
 
 .feedback-form-grid .field:nth-child(n + 3) {
   grid-column: 1 / -1;
+}
+
+.proof-intake-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 0.4fr) minmax(240px, 0.6fr);
+}
+
+.proof-intake-grid .field:nth-child(n + 3) {
+  grid-column: 1 / -1;
+}
+
+.proof-template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .compact-textarea {
@@ -1479,6 +1655,160 @@ button:disabled {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.proof-deploy-status {
+  background: linear-gradient(135deg, rgba(255,255,255,0.96), rgba(242,248,245,0.92));
+}
+
+.proof-status-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.proof-status-grid article {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 11px;
+}
+
+.proof-status-grid article[data-ready="true"] {
+  border-color: rgba(31, 122, 104, 0.28);
+}
+
+.proof-status-grid article[data-ready="false"] {
+  border-color: rgba(185, 130, 42, 0.32);
+}
+
+.proof-status-grid svg {
+  color: var(--accent);
+}
+
+.proof-status-grid strong {
+  font-size: 0.84rem;
+}
+
+.proof-status-grid p {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.34;
+  margin: 0;
+}
+
+.proof-command-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.proof-command-list code {
+  background: #101714;
+  border-radius: 999px;
+  color: #ecf2ee;
+  font-size: 0.72rem;
+  padding: 7px 10px;
+}
+
+.preset-preview-layout {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(190px, 260px) minmax(0, 1fr);
+}
+
+.preset-selector-list {
+  display: grid;
+  gap: 7px;
+  max-height: 340px;
+  overflow: auto;
+}
+
+.preset-selector-list button {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  text-align: left;
+}
+
+.preset-selector-list button[data-active="true"] {
+  background: var(--ink);
+  color: #fff;
+}
+
+.preset-selector-list strong {
+  font-size: 0.82rem;
+}
+
+.preset-selector-list span {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.preset-selector-list button[data-active="true"] span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.preset-preview-output {
+  margin-top: 0;
+  max-height: 360px;
+  min-height: 340px;
+}
+
+.export-preset-preview .selected-meta {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  margin: 0;
+}
+
+.corpus-triage-toolbar {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 12px;
+}
+
+.corpus-triage-toolbar strong {
+  display: block;
+  font-size: 0.92rem;
+  margin-top: 3px;
+}
+
+.corpus-triage-toolbar p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  margin: 4px 0 0;
+}
+
+.triage-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.triage-counts span {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 7px 9px;
 }
 
 .modal-layer[hidden] {
@@ -4803,6 +5133,7 @@ button.preset-card {
 	  .workspace,
 	  .compose-grid,
 	  .evaluate-grid,
+	  .learner-command-deck,
 	  .learner-flow-grid,
 	  .learner-operating-loop,
 	  .learner-diagnosis-strip,
@@ -4817,6 +5148,11 @@ button.preset-card {
 	  .generator-ingredients,
 	  .quality-explainer,
 	  .proof-board,
+	  .section-editor-grid,
+	  .proof-intake-grid,
+	  .proof-status-grid,
+	  .preset-preview-layout,
+	  .corpus-triage-toolbar,
 	  .style-profile-grid,
 	  .ingestion-row-grid,
 	  .export-target-grid,
@@ -4916,7 +5252,8 @@ button.preset-card {
   }
 
   .brief-builder-grid .field,
-  .feedback-form-grid .field {
+  .feedback-form-grid .field,
+  .proof-intake-grid .field {
     grid-column: auto;
   }
 
@@ -5057,6 +5394,7 @@ button.preset-card {
   }
 
 	  .public-learner-panel .output-header,
+	  .learner-command-deck,
 	  .learner-session-home,
 	  .learner-run-guide,
 	  .learner-proof-action,
@@ -5072,9 +5410,17 @@ button.preset-card {
 	  .project-system-grid,
 	  .generator-ingredients,
 	  .quality-explainer,
-	  .proof-board {
+	  .proof-board,
+	  .section-editor-grid,
+	  .proof-status-grid,
+	  .preset-preview-layout,
+	  .corpus-triage-toolbar {
 	    grid-template-columns: 1fr;
 	  }
+
+  .command-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .public-learner-panel .score-ring {
     height: 86px;

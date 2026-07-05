@@ -63,8 +63,10 @@ const trainHeadings = [
 ];
 const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
+  "Next best action",
   "Proof-first action",
   "Brief builder",
+  "Generated prompt section editor",
   "Prompt diagnosis",
   "One prompt run",
   "Style profiles",
@@ -78,7 +80,9 @@ const learnerHeadings = [
   "Outcome feedback loop",
   "Prompt diff editor",
   "House-format compiler",
+  "Screenshot proof intake",
   "Target export differences",
+  "Proof and deploy status",
   "Export target matrix",
   "Corpus safety",
   "Regression guard",
@@ -87,6 +91,7 @@ const learnerHeadings = [
   "Target export presets",
   "Batch training review",
   "Export pack",
+  "Fast corpus triage",
   "Corpus review queue",
   "Corpus quarantine queue",
   "Saved learner sessions",
@@ -168,9 +173,11 @@ try {
             ]
           : [
               "public-learner",
+              "learner-command-deck",
               "guided-first-run",
               "prompt-diagnosis",
               "proof-first-action",
+              "learner-section-editor",
               "style-profiles",
               "prompt-battle-flow",
               "one-prompt-run",
@@ -179,8 +186,10 @@ try {
               "corpus-neighbors",
               "prompt-diff-editor",
               "proof-learning-plan",
+              "proof-intake",
               "ingestion-safety",
               "outcome-feedback-loop",
+              "proof-deploy-status",
               "export-target-matrix",
               "export-target-differences",
               "corpus-safety",
@@ -191,6 +200,7 @@ try {
               "target-export-presets",
               "batch-training-review",
               "learner-export-pack",
+              "corpus-triage-toolbar",
               "corpus-review-queue",
               "corpus-quarantine",
               "learner-session-history",
@@ -274,6 +284,12 @@ async function runLearnerInteractions(page) {
     checked.push("brief prompt loaded");
   }
 
+  const sectionCopyButton = page.locator('[data-train-section="learner-section-editor"] button').filter({ hasText: /Copy all/ }).first();
+  if (await sectionCopyButton.count()) {
+    await sectionCopyButton.click();
+    checked.push("section editor copied");
+  }
+
   const profileButton = page.locator(".profile-chip").nth(1);
   if (await profileButton.count()) {
     await profileButton.click();
@@ -316,6 +332,12 @@ async function runLearnerInteractions(page) {
     checked.push("outcome feedback saved");
   }
 
+  const saveProofButton = page.locator('[data-train-section="proof-intake"] button').filter({ hasText: /Save proof/ }).first();
+  if (await saveProofButton.count()) {
+    await saveProofButton.click();
+    checked.push("proof intake saved");
+  }
+
   const saveSessionButton = page.locator('[data-learner-action="save-session"]').first();
   if (await saveSessionButton.count()) {
     await saveSessionButton.click();
@@ -335,7 +357,19 @@ async function runLearnerInteractions(page) {
     checked.push("export center opened");
   }
 
+  const presetCopyButton = page.locator('[data-learner-section="export-preset-preview"] button').filter({ hasText: /Copy preset/ }).first();
+  if (await presetCopyButton.count()) {
+    await presetCopyButton.click();
+    checked.push("target preset copied");
+  }
+
   await page.waitForFunction("document.body.textContent.includes('candidate') || document.body.textContent.includes('Corpus review queue')", null, { timeout: 5000 }).catch(() => undefined);
+  const fastGoldButton = page.locator('[data-train-section="corpus-triage-toolbar"] button').filter({ hasText: /Gold first/ }).first();
+  if (await fastGoldButton.count()) {
+    await fastGoldButton.click();
+    checked.push("fast triage marked gold");
+  }
+
   const goldButton = page.locator('[data-train-section="corpus-review-queue"] button').filter({ hasText: /^Gold$/ }).first();
   if (await goldButton.count()) {
     await goldButton.click();
@@ -378,7 +412,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("profile switched") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved")) {
+  if (!checked.includes("profile switched") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {

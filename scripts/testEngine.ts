@@ -178,10 +178,14 @@ import {
   createEmptyLearnerBriefInput,
 } from "../src/learnerProduct";
 import {
+  buildLearnedPromptSections,
+  buildLearnerCorpusSafety,
   buildLearnerDiagnosis,
   buildLearnerOperatingLoop,
   buildLearnerProofAction,
+  buildLearnerProofDeployStatus,
   buildLearnerProjectSystem,
+  buildLearnerRegressionSummary,
   buildLearnedStyleGenerator,
 } from "../src/learnerViewModel";
 
@@ -605,6 +609,10 @@ const learnedStyleGenerator = buildLearnedStyleGenerator({
 });
 assert.ok(learnedStyleGenerator.prompt.includes("Use the learned house style"), "Learned-style generator should emit house-style instructions.");
 assert.ok(learnedStyleGenerator.ingredients.length >= 4, "Learned-style generator should expose prompt ingredients.");
+const learnedPromptSections = buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt, sourcePrompt: exactPrompt });
+assert.equal(learnedPromptSections.length, 7, "Learned prompt editor should expose seven editable sections.");
+assert.ok(learnedPromptSections.some((section) => section.id === "verification" && section.content.toLowerCase().includes("screenshot")), "Learned prompt sections should preserve proof language.");
+assert.ok(learnedPromptSections.every((section) => section.rewriteHint.length > 30), "Learned prompt sections should include rewrite guidance.");
 
 const codexBuildPack = buildCodexBuildPack({
   prompt: examples[0],
@@ -1622,6 +1630,15 @@ assert.ok(projectSpaces.spaces.some((space) => space.id === "saved-saved-hero"),
 const learnerProjectSystem = buildLearnerProjectSystem({ activeProfile: learningProfiles[0], projectSpaces, savedSessions: [learnerSession] });
 assert.equal(learnerProjectSystem.rows.length, 4, "Learner project system should summarize the main project spaces.");
 assert.ok(learnerProjectSystem.detail.includes("saved learner run"), "Learner project system should connect spaces to learner sessions.");
+const learnerProofDeployStatus = buildLearnerProofDeployStatus({
+  corpusSafety: buildLearnerCorpusSafety(corpusReviewRows),
+  exportReadyCount: targetPresets.length,
+  proofAction: learnerProofAction,
+  regressionSummary: buildLearnerRegressionSummary(holdoutBenchmark),
+});
+assert.ok(learnerProofDeployStatus.liveUrl.includes("prompt-atelier"), "Proof/deploy status should expose the live prompt atelier URL.");
+assert.equal(learnerProofDeployStatus.checks.length, 4, "Proof/deploy status should summarize four handoff checks.");
+assert.ok(learnerProofDeployStatus.commands.some((command) => command.includes("smoke:hosted")), "Proof/deploy status should include hosted smoke verification.");
 
 const modularArchitecture = buildModularArchitectureReport({
   moduleNames: ["promptEngine", "productEvolution", "App panels", "engine tests", "README"],
