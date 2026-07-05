@@ -105,7 +105,7 @@ export type LearnerSamplePrompt = {
 };
 
 export type TargetExportPreset = {
-  id: "codex" | "claude" | "v0" | "gpt";
+  id: "codex" | "claude" | "v0" | "lovable" | "cursor" | "bolt" | "json" | "markdown" | "gpt";
   label: string;
   filename: string;
   detail: string;
@@ -430,6 +430,69 @@ Do not add provider-key handling, unrelated product claims, or generic AI-themed
 ${base}
 
 Keep the first screen as the usable product experience. Use exact copy, responsive behavior, accessible controls, real media/assets when listed, and no placeholder sections. Prefer familiar controls and keep the visual style restrained.`,
+    },
+    {
+      id: "lovable",
+      label: "Lovable",
+      filename: "lovable-app-prompt.md",
+      detail: "App-builder handoff with states, data, and responsive behavior.",
+      content: `Build this as a polished responsive web app.
+
+${base}
+
+Lovable execution notes:
+- Make the first screen the actual usable experience.
+- Include states for empty content, saved content, validation, loading, and success where the prompt implies data.
+- Keep copy, controls, navigation, and responsive behavior code-native.
+- Do not add unrelated marketing sections, provider-key inputs, or placeholder imagery.
+- Verify desktop and mobile layout, interaction state changes, and console health.`,
+    },
+    {
+      id: "cursor",
+      label: "Cursor",
+      filename: "cursor-implementation-ticket.md",
+      detail: "Repo-edit ticket with scoped files and verification.",
+      content: `Implement the following website prompt in the current repo.
+
+${base}
+
+Cursor constraints:
+- Inspect existing components, styling tokens, scripts, and package manager before editing.
+- Keep changes scoped to the smallest useful file set.
+- Preserve unrelated user changes.
+- Add or update focused tests only where behavior changes.
+- Verify with lint, build/typecheck, and desktop/mobile rendered screenshots.
+- Report exact files touched, commands run, and any intentional deviations.`,
+    },
+    {
+      id: "bolt",
+      label: "Bolt",
+      filename: "bolt-fast-scaffold-prompt.md",
+      detail: "Fast scaffold prompt with dependency and no-go rules.",
+      content: `Create a clean scaffold for this website prompt.
+
+${base}
+
+Bolt constraints:
+- Use only the dependencies named in the prompt unless a missing dependency is explicitly required.
+- Build the real first screen immediately; no landing-page wrapper around a future app.
+- Keep media assets real and visible, with object-fit/focal rules preserved.
+- Include mobile behavior, focus states, and hover/tap states.
+- No unrelated sections, decorative filler, fake provider keys, or placeholder assets.`,
+    },
+    {
+      id: "json",
+      label: "JSON",
+      filename: "learner-export.json",
+      detail: "Structured export for machines and import pipelines.",
+      content: learnerExportPack.json,
+    },
+    {
+      id: "markdown",
+      label: "Markdown",
+      filename: "learner-export.md",
+      detail: "Human-readable package with prompt, proof, and checklist.",
+      content: learnerExportPack.markdown,
     },
     {
       id: "gpt",

@@ -62,7 +62,7 @@ const trainHeadings = [
   "Credential boundary audit",
 ];
 const learnerHeadings = [
-  "Paste, score, improve, prove, export.",
+  "Paste, score, improve, battle, prove, export.",
   "Proof-first action",
   "Brief builder",
   "Prompt diagnosis",
@@ -319,6 +319,12 @@ async function runLearnerInteractions(page) {
   const saveSessionButton = page.locator('[data-learner-action="save-session"]').first();
   if (await saveSessionButton.count()) {
     await saveSessionButton.click();
+    const persisted = await waitForLearnerPersistence(page, { minHistory: 1, minSessions: 1, timeoutMs: 10_000 });
+    if (!persisted.ok) {
+      await page.waitForTimeout(500);
+      await saveSessionButton.click();
+      await waitForLearnerPersistence(page, { minHistory: 1, minSessions: 1, timeoutMs: 10_000 });
+    }
     checked.push("learner session saved");
   }
 
@@ -369,22 +375,8 @@ async function runLearnerInteractions(page) {
     if (download) checked.push(`export downloaded:${download.suggestedFilename()}`);
   }
 
-  await page.waitForFunction(() => {
-    const sessions = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-learner-sessions") || "[]");
-    const history = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-version-history") || "[]");
-    return Array.isArray(sessions) && sessions.length >= 1 && Array.isArray(history) && history.length >= 2;
-  }, null, { timeout: 5000 }).catch(() => undefined);
-
-  const state = await page.evaluate(() => {
-    const sessions = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-learner-sessions") || "[]");
-    const history = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-version-history") || "[]");
-    const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
-    return {
-      activeProfile,
-      historyCount: Array.isArray(history) ? history.length : 0,
-      sessionCount: Array.isArray(sessions) ? sessions.length : 0,
-    };
-  });
+  const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
+  const state = finalPersistence.state;
 
   if (!checked.includes("profile switched") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
@@ -396,6 +388,40 @@ async function runLearnerInteractions(page) {
     throw new Error("Learner interaction smoke did not persist saved prompt history.");
   }
   return { ...state, checked };
+}
+
+async function waitForLearnerPersistence(page, { minHistory, minSessions, timeoutMs }) {
+  const startedAt = Date.now();
+  let state = await readLearnerPersistenceState(page);
+  while (Date.now() - startedAt < timeoutMs) {
+    if (state.sessionCount >= minSessions && state.historyCount >= minHistory) {
+      return { ok: true, state };
+    }
+    await page.waitForTimeout(250);
+    state = await readLearnerPersistenceState(page);
+  }
+  return { ok: false, state };
+}
+
+async function readLearnerPersistenceState(page) {
+  return page.evaluate(() => {
+    const safeParse = (key) => {
+      try {
+        const value = JSON.parse(globalThis.localStorage.getItem(key) || "[]");
+        return Array.isArray(value) ? value : [];
+      } catch {
+        return [];
+      }
+    };
+    const sessions = safeParse("prompt-atelier-learner-sessions");
+    const history = safeParse("prompt-atelier-version-history");
+    const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
+    return {
+      activeProfile,
+      historyCount: history.length,
+      sessionCount: sessions.length,
+    };
+  });
 }
 
 async function openLearnerTab(page, label) {

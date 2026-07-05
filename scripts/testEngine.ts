@@ -177,6 +177,13 @@ import {
   createLearnerSession,
   createEmptyLearnerBriefInput,
 } from "../src/learnerProduct";
+import {
+  buildLearnerDiagnosis,
+  buildLearnerOperatingLoop,
+  buildLearnerProofAction,
+  buildLearnerProjectSystem,
+  buildLearnedStyleGenerator,
+} from "../src/learnerViewModel";
 
 function readCuratedSeedPrompts() {
   return readdirSync("src/prompts")
@@ -533,11 +540,17 @@ const targetPresets = buildTargetExportPresets({
   improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt,
   learnerExportPack: learnerPack,
 });
-assert.deepEqual(targetPresets.map((preset) => preset.id), ["codex", "claude", "v0", "gpt"], "Target export presets should cover Codex, Claude, v0, and GPT.");
+assert.deepEqual(
+  targetPresets.map((preset) => preset.id),
+  ["codex", "claude", "v0", "lovable", "cursor", "bolt", "json", "markdown", "gpt"],
+  "Target export presets should cover Codex, Claude, v0, Lovable, Cursor, Bolt, JSON, Markdown, and GPT.",
+);
 assert.ok(targetPresets.every((preset) => preset.content.includes("prompt") || preset.content.includes("PROMPT")), "Target presets should include prompt content.");
 assert.ok(targetPresets.find((preset) => preset.id === "codex")?.content.includes("Codex Execution Contract"), "Codex preset should have a distinct execution contract.");
 assert.ok(targetPresets.find((preset) => preset.id === "claude")?.content.includes("senior product designer"), "Claude preset should use design-review framing.");
 assert.ok(targetPresets.find((preset) => preset.id === "v0")?.content.includes("responsive React interface"), "v0 preset should use UI-generation framing.");
+assert.ok(targetPresets.find((preset) => preset.id === "cursor")?.content.includes("current repo"), "Cursor preset should use repo-edit framing.");
+assert.ok(targetPresets.find((preset) => preset.id === "json")?.content.includes("sourcePrompt"), "JSON preset should expose structured learner export content.");
 const briefInput = createEmptyLearnerBriefInput(learningProfiles[0]);
 const briefPrompt = buildLearnerBriefPrompt({ ...briefInput, brandName: "ProofLab", visualSignature: "split-screen product proof with exact media" }, learningProfiles[0], profile);
 assert.ok(briefPrompt.includes("ProofLab"), "Brief builder should preserve the chosen brand.");
@@ -570,6 +583,28 @@ assert.equal(learnerSession.acceptedDiffs.length, 2, "Learner session should pre
 const learnerProofGallery = buildLearnerProofGallery({ outcomes, screenshots, sessions: [learnerSession] });
 assert.ok(learnerProofGallery.length >= 3, "Learner proof gallery should blend sessions, screenshots, and outcomes.");
 assert.ok(learnerProofGallery.some((item) => item.kind === "session"), "Learner proof gallery should include saved session proof.");
+const learnerDiagnosis = buildLearnerDiagnosis({ dnaExplanation, evaluation: evaluatePrompt(exactPrompt), neighbors: corpusNeighbors, proofGallery: learnerProofGallery });
+const learnerProofAction = buildLearnerProofAction({ improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt, proofGallery: learnerProofGallery });
+const learnerOperatingLoop = buildLearnerOperatingLoop({
+  battleReady: true,
+  evaluation: evaluatePrompt(exactPrompt),
+  exportReadyCount: targetPresets.length,
+  improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt,
+  proofAction: learnerProofAction,
+  source: exactPrompt,
+});
+assert.deepEqual(learnerOperatingLoop.steps.map((step) => step.label), ["Paste", "Score", "Improve", "Battle", "Prove", "Export"], "Learner operating loop should expose the full workflow.");
+assert.equal(learnerOperatingLoop.steps.at(-1)?.status, "ready", "Learner operating loop should mark export ready when all presets exist.");
+const learnedStyleGenerator = buildLearnedStyleGenerator({
+  activeProfile: learningProfiles[0],
+  briefInput,
+  diagnosis: learnerDiagnosis,
+  improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt,
+  proofAction: learnerProofAction,
+  sourcePrompt: exactPrompt,
+});
+assert.ok(learnedStyleGenerator.prompt.includes("Use the learned house style"), "Learned-style generator should emit house-style instructions.");
+assert.ok(learnedStyleGenerator.ingredients.length >= 4, "Learned-style generator should expose prompt ingredients.");
 
 const codexBuildPack = buildCodexBuildPack({
   prompt: examples[0],
@@ -1584,6 +1619,9 @@ const projectSpaces = buildProjectSpacesReport({
 assert.ok(projectSpaces.spaces.some((space) => space.id === "seed"), "Project spaces should isolate the seed corpus.");
 assert.ok(projectSpaces.activePolicy.some((item) => /unrelated repo/i.test(item)), "Project spaces should protect against unrelated repo contamination.");
 assert.ok(projectSpaces.spaces.some((space) => space.id === "saved-saved-hero"), "Project spaces should include persisted custom spaces.");
+const learnerProjectSystem = buildLearnerProjectSystem({ activeProfile: learningProfiles[0], projectSpaces, savedSessions: [learnerSession] });
+assert.equal(learnerProjectSystem.rows.length, 4, "Learner project system should summarize the main project spaces.");
+assert.ok(learnerProjectSystem.detail.includes("saved learner run"), "Learner project system should connect spaces to learner sessions.");
 
 const modularArchitecture = buildModularArchitectureReport({
   moduleNames: ["promptEngine", "productEvolution", "App panels", "engine tests", "README"],

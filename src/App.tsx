@@ -423,9 +423,9 @@ import {
   buildLearnerProofAction,
   buildLearnerRegressionSummary,
   buildTrainFocusSummary,
-  type TrainFocusSummary,
 } from "./learnerViewModel";
 import { LearnView, PublicDemoRoute } from "./LearnerExperience";
+import { TrainFocusSummaryPanel, TrainSectionNavigator } from "./TrainCommandCenter";
 import {
   createCorpusCandidatePrompt,
   createCorpusReviewLineageNode,
@@ -7690,6 +7690,7 @@ export default function App() {
               learnerText={improveText}
               learningProfiles={learningProfiles}
               holdoutBenchmark={holdoutBenchmark}
+              projectSpaces={projectSpaces}
               samplePrompts={learnerSamples}
               savedLearnerSessions={learnerSessions}
               targetExportPresets={learnerTargetExportPresets}
@@ -10763,58 +10764,6 @@ function TrainView({
         </div>
       </details>
     </div>
-  );
-}
-
-function TrainFocusSummaryPanel({ onSelect, report }: { onSelect: (id: string) => void; report: TrainFocusSummary }) {
-  return (
-    <section className="panel train-focus-summary" data-train-section="train-focus-summary">
-      <div className="output-header">
-        <div>
-          <p className="eyebrow">Train focus summary</p>
-          <h2>{report.headline}</h2>
-          <p>Training is organized around the operating path, with the full diagnostic wall tucked into Advanced when you need it.</p>
-        </div>
-        <ScoreRing score={report.score} label="focus" />
-      </div>
-      <div className="train-focus-grid">
-        {report.groups.map((group) => (
-          <button className="train-focus-card" data-status={group.status} key={group.label} type="button" onClick={() => onSelect(group.target)}>
-            <strong>{group.label}</strong>
-            <span>{group.status}</span>
-            <p>{group.detail}</p>
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function TrainSectionNavigator({
-  onSelect,
-  query,
-  sections,
-  setQuery,
-}: {
-  onSelect: (id: string) => void;
-  query: string;
-  sections: { id: string; label: string }[];
-  setQuery: (value: string) => void;
-}) {
-  return (
-    <section className="panel train-section-nav" aria-label="Train section navigator">
-      <label className="search-field">
-        <Search size={15} />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Jump to workflow, API, screenshots..." />
-      </label>
-      <div className="train-section-buttons">
-        {sections.map((section) => (
-          <button key={section.id} type="button" onClick={() => onSelect(section.id)}>
-            {section.label}
-          </button>
-        ))}
-      </div>
-    </section>
   );
 }
 

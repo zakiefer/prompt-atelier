@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BarChart3, Check, Copy, Download, Save, SlidersHorizontal, Tags, Trophy } from "lucide-react";
+import { ArrowRight, BarChart3, Check, Copy, Download, Layers, Save, SlidersHorizontal, Sparkles, Tags, Trophy } from "lucide-react";
 import {
   categoryLabels,
   countWords,
@@ -40,12 +40,15 @@ import {
   buildLearnerDiagnosis,
   buildLearnerExportTargetMatrix,
   buildLearnerIngestionSummary,
+  buildLearnerOperatingLoop,
   buildLearnerProofPlan,
   buildLearnerProofAction,
+  buildLearnerProjectSystem,
   buildLearnerRegressionSummary,
   buildLearnerStyleProfileCards,
+  buildLearnedStyleGenerator,
 } from "./learnerViewModel";
-import { type HoldoutBenchmarkReport } from "./productEvolution";
+import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -326,6 +329,7 @@ export function LearnView({
   learnerText,
   learningProfiles,
   holdoutBenchmark,
+  projectSpaces,
   corpusReviewRows,
   samplePrompts,
   savedLearnerSessions,
@@ -368,6 +372,7 @@ export function LearnView({
   learnerText: string;
   learningProfiles: LearningProfile[];
   holdoutBenchmark: HoldoutBenchmarkReport;
+  projectSpaces: ProjectSpacesReport;
   corpusReviewRows: CorpusReviewRow[];
   samplePrompts: LearnerSamplePrompt[];
   savedLearnerSessions: LearnerSession[];
@@ -435,14 +440,37 @@ export function LearnView({
   const exportDifferentiators = useMemo(() => buildExportDifferentiators(learnerExportPack), [learnerExportPack]);
   const exportTargetMatrix = useMemo(() => buildLearnerExportTargetMatrix({ pack: learnerExportPack, presets: targetExportPresets }), [learnerExportPack, targetExportPresets]);
   const styleProfileCards = useMemo(() => buildLearnerStyleProfileCards({ activeProfile: activeLearningProfile, profiles: learningProfiles }), [activeLearningProfile, learningProfiles]);
-  const flowSteps = [
-    { label: "Paste", ready: Boolean(learnerSource.trim()), detail: "Bring in one website prompt." },
-    { label: "Score", ready: learnerEvaluation.score >= 20, detail: `${learnerEvaluation.score}/100 local score.` },
-    { label: "Improve", ready: improvedPrompt.length > learnerSource.length, detail: "One-click stronger prompt is ready." },
-    { label: "Battle", ready: learnerEvaluation.categoryScores.constraints >= 40, detail: "Constraints are strong enough to compare variants." },
-    { label: "Prove", ready: learnerProofPlan.status !== "missing" || /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: learnerProofPlan.nextAction },
-    { label: "Export", ready: Boolean(improvedPrompt.trim()), detail: "Copy or save the improved prompt." },
-  ];
+  const operatingLoop = useMemo(
+    () => buildLearnerOperatingLoop({
+      battleReady: learnerBattleSummary.status === "ready",
+      evaluation: learnerEvaluation,
+      exportReadyCount: exportTargetMatrix.readyCount,
+      improvedPrompt,
+      proofAction: learnerProofAction,
+      source: learnerSource,
+    }),
+    [exportTargetMatrix.readyCount, improvedPrompt, learnerBattleSummary.status, learnerEvaluation, learnerProofAction, learnerSource],
+  );
+  const learnedStyleGenerator = useMemo(
+    () => buildLearnedStyleGenerator({
+      activeProfile: activeLearningProfile,
+      briefInput,
+      diagnosis: learnerDiagnosis,
+      improvedPrompt,
+      proofAction: learnerProofAction,
+      sourcePrompt: learnerSource,
+    }),
+    [activeLearningProfile, briefInput, improvedPrompt, learnerDiagnosis, learnerProofAction, learnerSource],
+  );
+  const learnerProjectSystem = useMemo(
+    () => buildLearnerProjectSystem({ activeProfile: activeLearningProfile, projectSpaces, savedSessions: savedLearnerSessions }),
+    [activeLearningProfile, projectSpaces, savedLearnerSessions],
+  );
+  const flowSteps = operatingLoop.steps.map((step) => ({
+    label: step.label,
+    ready: step.status === "ready",
+    detail: step.detail,
+  }));
   const workspaceTabs: { id: "compose" | "review" | "export"; label: string; detail: string }[] = [
     { id: "compose", label: "Compose", detail: "Paste, score, brief, revise" },
     { id: "review", label: "Review", detail: "Diff, feedback, decisions" },
@@ -463,7 +491,7 @@ export function LearnView({
         <div className="output-header">
           <div>
             <p className="eyebrow">Prompt workspace</p>
-            <h2>Paste, score, improve, prove, export.</h2>
+            <h2>Paste, score, improve, battle, prove, export.</h2>
             <p>Start with one excellent website prompt and turn the learned patterns into a stronger build prompt without opening the lab.</p>
           </div>
           <ScoreRing score={learnerEvaluation.score || dnaScore} label="Strength" />
@@ -483,6 +511,31 @@ export function LearnView({
             <button className="primary-button compact-button" type="button" onClick={() => setActiveWorkspaceTab("compose")}>
               New run
             </button>
+          </div>
+        </section>
+
+        <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
+          <div className="loop-summary">
+            <div>
+              <span>Operating loop</span>
+              <strong>Paste, score, improve, battle, prove, export</strong>
+              <p>{operatingLoop.currentAction}</p>
+            </div>
+            <ScoreRing score={operatingLoop.score} label="loop" />
+          </div>
+          <div className="loop-step-grid">
+            {operatingLoop.steps.map((step) => (
+              <button
+                data-status={step.status}
+                key={step.id}
+                type="button"
+                onClick={() => setActiveWorkspaceTab(step.target)}
+              >
+                <span>{step.label}</span>
+                <strong>{step.status === "ready" ? "Ready" : step.status === "active" ? "Do next" : "Later"}</strong>
+                <p>{step.detail}</p>
+              </button>
+            ))}
           </div>
         </section>
 
@@ -522,6 +575,24 @@ export function LearnView({
             <strong>{learnerDiagnosis.closestGold[0] ?? "Add gold examples"}</strong>
             <p>{learnerDiagnosis.closestGold.slice(1, 3).join(" / ") || "Closest examples appear here after import."}</p>
           </article>
+        </section>
+
+        <section className="learner-project-system" data-status={learnerProjectSystem.status} data-train-section="project-system">
+          <div className="project-system-copy">
+            <span>Project memory</span>
+            <strong>{learnerProjectSystem.headline}</strong>
+            <p>{learnerProjectSystem.detail}</p>
+          </div>
+          <div className="project-system-grid">
+            {learnerProjectSystem.rows.map((row) => (
+              <article data-status={row.status} key={row.label}>
+                <strong>{row.count}</strong>
+                <span>{row.label}</span>
+                <p>{row.detail}</p>
+              </article>
+            ))}
+          </div>
+          <FeedbackList title="Policy" items={learnerProjectSystem.policy} empty="No project policy." />
         </section>
 
         <div className="profile-strip" aria-label="Learning profiles">
@@ -706,6 +777,32 @@ export function LearnView({
               </Field>
             ))}
           </div>
+          <div className="learned-style-generator" data-ready={learnedStyleGenerator.ready ? "true" : "false"} data-train-section="learned-style-generator">
+            <div className="generator-copy">
+              <span><Sparkles size={14} /> Generate from learned style</span>
+              <strong>{learnedStyleGenerator.headline}</strong>
+              <p>{learnedStyleGenerator.detail}</p>
+              <div className="button-row compact-row">
+                <button className="primary-button compact-button" type="button" onClick={() => onUseSamplePrompt(learnedStyleGenerator.prompt)}>
+                  Use style prompt
+                  <ArrowRight size={14} />
+                </button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onCopy(learnedStyleGenerator.prompt, "learned-style-generator")}>
+                  {copied === "learned-style-generator" ? <Check size={15} /> : <Copy size={15} />}
+                  Copy
+                </button>
+              </div>
+            </div>
+            <div className="generator-ingredients">
+              {learnedStyleGenerator.ingredients.map((ingredient) => (
+                <article key={ingredient.label}>
+                  <span>{ingredient.label}</span>
+                  <p>{ingredient.detail}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+          <textarea className="generated-output mini-output learned-style-output" readOnly value={learnedStyleGenerator.prompt} />
           <textarea className="generated-output mini-output" readOnly value={briefPrompt} />
           <div className="button-row">
             <button className="ghost-button compact-button" type="button" onClick={() => onCopy(briefPrompt, "brief-builder")}>
@@ -730,6 +827,23 @@ export function LearnView({
             <FeedbackList title="Strengths" items={learnerDiagnosis.strengths} empty="No strengths detected yet." />
             <FeedbackList title="Missing ingredients" items={learnerDiagnosis.gaps} empty="No major gaps detected." />
             <FeedbackList title="Rewrite moves" items={learnerDiagnosis.rewriteMoves} empty="No rewrite moves available." />
+            <div className="quality-explainer" data-train-section="quality-explanation">
+              <div>
+                <span>Text score</span>
+                <strong>{learnerEvaluation.score}</strong>
+                <p>Prompt structure, specificity, constraints, and implementation clarity.</p>
+              </div>
+              <div>
+                <span>Proof score</span>
+                <strong>{learnerProofAction.score}</strong>
+                <p>{learnerProofAction.ready.length ? learnerProofAction.ready.join(" / ") : learnerProofAction.missing[0]}</p>
+              </div>
+              <div>
+                <span>Confidence</span>
+                <strong>{learnerDiagnosis.confidence.score}</strong>
+                <p>{learnerDiagnosis.confidence.detail}</p>
+              </div>
+            </div>
             <div className="mini-stat-row">
               {dnaExplanation.dimensions.slice(0, 4).map((dimension) => (
                 <span key={dimension.key}>{dimension.label}: {dimension.score}</span>
@@ -1070,7 +1184,7 @@ export function LearnView({
           <article className="learner-mini-panel" data-train-section="target-export-presets">
             <div className="output-header">
               <h3>Target export presets</h3>
-              <span className="selected-meta">Codex / Claude / v0 / GPT</span>
+              <span className="selected-meta">Codex / Claude / v0 / Lovable / Cursor / Bolt / JSON / Markdown</span>
             </div>
             <div className="preset-grid">
               {targetExportPresets.map((preset) => (
@@ -1230,6 +1344,23 @@ export function LearnView({
               <p>Before/after evidence from saved sessions, screenshot notes, and outcome records.</p>
             </div>
             <span className="selected-meta">{learnerProofGallery.length} proof item(s)</span>
+          </div>
+          <div className="proof-board">
+            <article data-ready={learnerProofPlan.status !== "missing" ? "true" : "false"}>
+              <Layers size={16} />
+              <strong>{learnerProofPlan.headline}</strong>
+              <p>{learnerProofPlan.nextAction}</p>
+            </article>
+            <article data-ready={learnerProofAction.status === "ready" ? "true" : "false"}>
+              <Trophy size={16} />
+              <strong>{learnerProofAction.title}</strong>
+              <p>{learnerProofAction.missing[0] || "Evidence is ready for export."}</p>
+            </article>
+            <article data-ready={exportTargetMatrix.readyCount >= 6 ? "true" : "false"}>
+              <Download size={16} />
+              <strong>{exportTargetMatrix.readyCount} export targets</strong>
+              <p>Proof, prompt text, and handoff presets stay connected.</p>
+            </article>
           </div>
           <div className="proof-gallery-grid">
             {learnerProofGallery.map((item) => (

@@ -2,12 +2,14 @@ import { type DnaScoreExplanation, type Evaluation, type PromptBattle } from "./
 import {
   type CorpusNeighbor,
   type CorpusReviewRow,
+  type LearnerBriefInput,
   type LearnerExportPack,
   type LearnerProofItem,
+  type LearnerSession,
   type LearningProfile,
   type TargetExportPreset,
 } from "./learnerProduct";
-import { type HoldoutBenchmarkReport } from "./productEvolution";
+import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
 
 export type LearnerDiagnosis = {
   strengths: string[];
@@ -87,6 +89,29 @@ export type LearnerStyleProfileCard = {
 export type LearnerExportTargetMatrix = {
   readyCount: number;
   rows: { target: string; useFor: string; include: string; avoid: string; ready: boolean }[];
+};
+
+export type LearnerOperatingLoop = {
+  score: number;
+  currentAction: string;
+  steps: { id: "paste" | "score" | "improve" | "battle" | "prove" | "export"; label: string; status: "ready" | "active" | "next"; detail: string; target: "compose" | "review" | "export" }[];
+};
+
+export type LearnedStyleGenerator = {
+  ready: boolean;
+  headline: string;
+  detail: string;
+  prompt: string;
+  ingredients: { label: string; detail: string }[];
+};
+
+export type LearnerProjectSystem = {
+  score: number;
+  status: ProjectSpacesReport["status"];
+  headline: string;
+  detail: string;
+  rows: { label: string; count: number; status: "clean" | "review" | "blocked"; detail: string }[];
+  policy: string[];
 };
 
 export type TrainFocusSummary = {
@@ -304,13 +329,134 @@ export function buildLearnerExportTargetMatrix({
     { target: "Codex", useFor: "Implementation", include: "Exact files, stack, UI states, and verification ladder.", avoid: "Loose mood-board language.", ready: presetIds.has("codex") },
     { target: "Claude", useFor: "Critique and rewrite", include: "Ambiguities, success criteria, edge cases, and rewrite reasons.", avoid: "Only final prompt text.", ready: presetIds.has("claude") },
     { target: "v0", useFor: "Fast UI generation", include: "Concise layout, components, tokens, and responsive rules.", avoid: "Long training history.", ready: presetIds.has("v0") },
-    { target: "GPT", useFor: "Alternative rewrite", include: "Context, style rules, proof notes, and target output format.", avoid: "Hidden provider keys or private logs.", ready: presetIds.has("gpt") },
-    { target: "JSONL", useFor: "Training rows", include: "Source, improved prompt, scorecard, profile, and labels.", avoid: "Unreviewed quarantine rows.", ready: Boolean(pack.json) },
+    { target: "Lovable", useFor: "App-builder handoff", include: "Screen behavior, data assumptions, empty states, and responsive acceptance checks.", avoid: "Long model critique preambles.", ready: presetIds.has("lovable") },
+    { target: "Cursor", useFor: "Repo edits", include: "Files to touch, invariants, tests, and scoped refactor notes.", avoid: "Visual direction without code boundaries.", ready: presetIds.has("cursor") },
+    { target: "Bolt", useFor: "Fast scaffold", include: "Dependency boundaries, first screen, asset handling, and no-go rules.", avoid: "Multi-app architecture unless requested.", ready: presetIds.has("bolt") },
+    { target: "JSON", useFor: "Structured import", include: "Profile, scorecard, proof status, target files, and labels.", avoid: "Unreviewed quarantine rows.", ready: presetIds.has("json") || Boolean(pack.json) },
+    { target: "Markdown", useFor: "Human handoff", include: "Final prompt, rationale, proof, and verification checklist.", avoid: "Private logs or provider keys.", ready: presetIds.has("markdown") || Boolean(pack.markdown) },
     { target: "Memory", useFor: "Reusable project context", include: "Patterns, avoid rules, profile voice, and proof summary.", avoid: "One-off prompt clutter.", ready: pack.files.some((file) => /memory/i.test(file.label) && file.ready) || proofReady },
   ];
   return {
     readyCount: rows.filter((row) => row.ready).length,
     rows,
+  };
+}
+
+export function buildLearnerOperatingLoop({
+  battleReady,
+  evaluation,
+  exportReadyCount,
+  improvedPrompt,
+  proofAction,
+  source,
+}: {
+  battleReady: boolean;
+  evaluation: Evaluation;
+  exportReadyCount: number;
+  improvedPrompt: string;
+  proofAction: LearnerProofAction;
+  source: string;
+}): LearnerOperatingLoop {
+  const rawSteps = [
+    { id: "paste" as const, label: "Paste", ready: Boolean(source.trim()), detail: "Start with one excellent website prompt or a generated brief.", target: "compose" as const },
+    { id: "score" as const, label: "Score", ready: evaluation.score >= 20, detail: `${evaluation.score}/100 prompt strength with category gaps.`, target: "compose" as const },
+    { id: "improve" as const, label: "Improve", ready: improvedPrompt.trim().length > Math.max(40, source.trim().length), detail: "Create a stronger prompt from learned patterns.", target: "compose" as const },
+    { id: "battle" as const, label: "Battle", ready: battleReady, detail: battleReady ? "A winner is ready to save." : "Compare variants after the prompt has enough constraints.", target: "review" as const },
+    { id: "prove" as const, label: "Prove", ready: proofAction.status === "ready", detail: proofAction.detail, target: "review" as const },
+    { id: "export" as const, label: "Export", ready: exportReadyCount >= 6, detail: `${exportReadyCount} target package(s) are ready.`, target: "export" as const },
+  ];
+  const firstOpenIndex = rawSteps.findIndex((step) => !step.ready);
+  const steps = rawSteps.map((step, index) => ({
+    ...step,
+    status: step.ready ? "ready" as const : index === firstOpenIndex ? "active" as const : "next" as const,
+  }));
+  return {
+    score: Math.round((rawSteps.filter((step) => step.ready).length / rawSteps.length) * 100),
+    currentAction: steps.find((step) => step.status === "active")?.detail || "Export this prompt and proof package.",
+    steps,
+  };
+}
+
+export function buildLearnedStyleGenerator({
+  activeProfile,
+  briefInput,
+  diagnosis,
+  improvedPrompt,
+  proofAction,
+  sourcePrompt,
+}: {
+  activeProfile: LearningProfile;
+  briefInput: LearnerBriefInput;
+  diagnosis: LearnerDiagnosis;
+  improvedPrompt: string;
+  proofAction: LearnerProofAction;
+  sourcePrompt: string;
+}): LearnedStyleGenerator {
+  const source = sourcePrompt.trim() || improvedPrompt.trim();
+  const primaryRule = activeProfile.rules[0] || "Use exact implementation-ready website instructions.";
+  const strongestSignal = diagnosis.strengths[0] || "Specific stack, media, layout, motion, responsive behavior, and QA.";
+  const missingSignal = diagnosis.gaps[0] || "No major missing ingredient detected.";
+  const proofLine = proofAction.status === "ready"
+    ? "Include proof capture, result feedback, and export packaging as required verification."
+    : "Require desktop/mobile screenshots, console check, interaction proof, lint, and build before signoff.";
+  const prompt = [
+    `Build a high-fidelity ${briefInput.siteType.trim() || activeProfile.label} for ${briefInput.brandName.trim() || "the brand"} using ${briefInput.stack.trim() || "React + TypeScript + Vite + Tailwind CSS"}.`,
+    "",
+    "Use the learned house style:",
+    `- Profile: ${activeProfile.label} (${activeProfile.score}/100, ${activeProfile.examples} examples).`,
+    `- Core rule: ${primaryRule}`,
+    `- Strongest signal to preserve: ${strongestSignal}`,
+    `- Gap to fix before export: ${missingSignal}`,
+    "",
+    "Implementation requirements:",
+    `- Audience: ${briefInput.audience.trim() || "design-conscious builders"}.`,
+    `- Visual signature: ${briefInput.visualSignature.trim() || activeProfile.description}.`,
+    `- Assets/media: ${briefInput.assets.trim() || "Use exact asset URLs, focal positions, object-fit, and fallbacks."}`,
+    `- Motion/state: ${briefInput.motion.trim() || "Describe timing, cleanup, reduced-motion behavior, and interaction state."}`,
+    `- Constraints: ${briefInput.constraints.trim() || "No placeholder assets, decorative filler, unrelated sections, or provider keys."}`,
+    `- QA: ${briefInput.qa.trim() || proofLine}`,
+    "",
+    "Reference tone from the current prompt:",
+    source ? source.slice(0, 1200) : "No source prompt pasted yet; use the active learning profile only.",
+    "",
+    "Return one implementation-ready prompt with headings for stack, fonts, colors, media, layout, navigation, content, motion, responsive behavior, constraints, and verification.",
+  ].join("\n");
+  return {
+    ready: Boolean(source || activeProfile.examples),
+    headline: `${activeProfile.label} generator`,
+    detail: "Creates a fresh prompt from the active profile, current brief, known gaps, and proof expectations.",
+    prompt,
+    ingredients: [
+      { label: "Profile", detail: `${activeProfile.examples} examples / ${activeProfile.score}%` },
+      { label: "Preserve", detail: strongestSignal },
+      { label: "Fix", detail: missingSignal },
+      { label: "Proof", detail: proofAction.missing[0] || "Proof package is ready." },
+    ],
+  };
+}
+
+export function buildLearnerProjectSystem({
+  activeProfile,
+  projectSpaces,
+  savedSessions,
+}: {
+  activeProfile: LearningProfile;
+  projectSpaces: ProjectSpacesReport;
+  savedSessions: LearnerSession[];
+}): LearnerProjectSystem {
+  const rows = projectSpaces.spaces.slice(0, 4).map((space) => ({
+    label: space.label,
+    count: space.count,
+    status: space.isolation,
+    detail: space.detail,
+  }));
+  return {
+    score: projectSpaces.score,
+    status: projectSpaces.status,
+    headline: projectSpaces.status === "ready" ? "Project memory is separated" : projectSpaces.status === "blocked" ? "Project memory needs cleanup" : "Project memory needs review",
+    detail: `${activeProfile.label} is active with ${savedSessions.length} saved learner run(s). Keep imports, sessions, proof, and reusable memory in separate spaces.`,
+    rows,
+    policy: projectSpaces.activePolicy.slice(0, 3),
   };
 }
 
