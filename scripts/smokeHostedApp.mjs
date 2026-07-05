@@ -64,8 +64,11 @@ const trainHeadings = [
 const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
   "Current project",
+  "Start guided run",
+  "Workbench map",
   "Workflow OS",
   "Mobile operator mode",
+  "Mobile command console",
   "Generate great prompt",
   "Backend project sync",
   "Corpus health controls",
@@ -74,10 +77,15 @@ const learnerHeadings = [
   "Product intelligence",
   "Result gallery",
   "Visual repair loop",
+  "Proof repair studio",
+  "Project bundle",
+  "Regression trends",
+  "Accessibility QA",
   "Coverage intelligence",
   "Export studio",
   "Project timeline",
   "Taste profile versions",
+  "Empty states",
   "CI proof status",
   "Next best action",
   "Automatic proof runner",
@@ -206,17 +214,25 @@ try {
           : [
               "public-learner",
               "project-cockpit",
+              "first-run-start",
+              "learner-surface-nav",
               "workflow-os",
               "mobile-operator",
+              "mobile-command-console",
               "production-command-center",
               "eval-history",
               "product-intelligence",
               "result-gallery",
               "visual-repair-loop",
+              "proof-repair-studio",
+              "project-bundle",
+              "regression-trends",
+              "accessibility-qa",
               "coverage-intelligence",
               "export-studio",
               "project-timeline",
               "taste-profile-versions",
+              "empty-state-shelf",
               "ci-proof-status",
               "learner-command-deck",
               "proof-runner-checklist",
@@ -340,6 +356,19 @@ async function runLearnerInteractions(page) {
     checked.push("sample prompt loaded");
   }
 
+  const firstRunButton = page.locator('[data-train-section="first-run-start"] button').filter({ hasText: /Start guided run/ }).first();
+  if (await firstRunButton.count()) {
+    await firstRunButton.click();
+    checked.push("first-run guided start clicked");
+  }
+
+  const surfaceProveButton = page.locator('[data-train-section="learner-surface-nav"] button').filter({ hasText: /Prove/ }).first();
+  if (await surfaceProveButton.count()) {
+    await surfaceProveButton.click();
+    checked.push("surface nav prove clicked");
+    await openLearnerTab(page, "Compose");
+  }
+
   const saveProjectButton = page.locator('[data-train-section="project-cockpit"] button').filter({ hasText: /Save project/ }).first();
   if (await saveProjectButton.count()) {
     await saveProjectButton.click();
@@ -391,6 +420,58 @@ async function runLearnerInteractions(page) {
   if (await useRepairButton.count()) {
     await useRepairButton.click();
     checked.push("visual repair prompt used");
+  }
+
+  const galleryFilterButton = page.locator('[data-train-section="result-gallery"] [role="tab"]').filter({ hasText: /Gold/ }).first();
+  if (await galleryFilterButton.count()) {
+    await galleryFilterButton.click();
+    checked.push("result gallery filtered");
+  }
+
+  const proofRepairButton = page.locator('[data-train-section="proof-repair-studio"] button').filter({ hasText: /Build repair/ }).first();
+  if (await proofRepairButton.count()) {
+    await proofRepairButton.click();
+    await page.waitForFunction(() => Boolean(globalThis.localStorage.getItem("prompt-atelier-visual-repair-prompt-v1")), null, { timeout: 5000 });
+    checked.push("proof repair draft built");
+  }
+
+  const useProofRepairButton = page.locator('[data-train-section="proof-repair-studio"] button').filter({ hasText: /Use repair/ }).first();
+  if (await useProofRepairButton.count()) {
+    await useProofRepairButton.click();
+    checked.push("proof repair draft used");
+  }
+
+  const accessibilityButton = page.locator('[data-train-section="accessibility-qa"] button').filter({ hasText: /Run QA score/ }).first();
+  if (await accessibilityButton.count()) {
+    await accessibilityButton.click();
+    await page.waitForFunction(() => Boolean(globalThis.localStorage.getItem("prompt-atelier-accessibility-qa-run-v1")), null, { timeout: 5000 });
+    checked.push("accessibility qa scored");
+  }
+
+  const accessibilityPatchButton = page.locator('[data-train-section="accessibility-qa"] button').filter({ hasText: /Apply missing gates/ }).first();
+  if (await accessibilityPatchButton.count()) {
+    const disabled = await accessibilityPatchButton.isDisabled();
+    if (!disabled) {
+      await accessibilityPatchButton.click();
+      checked.push("accessibility gates applied");
+    }
+  }
+
+  const projectBundleExportButton = page.locator('[data-train-section="project-bundle"] button').filter({ hasText: /Export bundle/ }).first();
+  if (await projectBundleExportButton.count()) {
+    const download = await Promise.all([
+      page.waitForEvent("download", { timeout: 5000 }).catch(() => undefined),
+      projectBundleExportButton.click(),
+    ]).then(([downloadResult]) => downloadResult);
+    await page.waitForFunction(() => {
+      const raw = globalThis.localStorage.getItem("prompt-atelier-project-bundles-v1") || "[]";
+      try {
+        return JSON.parse(raw).length > 0;
+      } catch {
+        return false;
+      }
+    }, null, { timeout: 5000 });
+    checked.push(download ? `project bundle exported:${download.suggestedFilename()}` : "project bundle exported");
   }
 
   const saveTasteButton = page.locator('[data-train-section="taste-profile-versions"] button').filter({ hasText: /Save taste version/ }).first();
@@ -592,7 +673,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("visual repair prompt built") || !checked.includes("taste version saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
+  if (!checked.includes("first-run guided start clicked") || !checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("visual repair prompt built") || !checked.includes("proof repair draft built") || !checked.includes("result gallery filtered") || !checked.includes("accessibility qa scored") || !checked.some((item) => item.startsWith("project bundle exported")) || !checked.includes("taste version saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {
@@ -604,7 +685,7 @@ async function runLearnerInteractions(page) {
   if (state.projectHistoryCount < 1) {
     throw new Error("Learner interaction smoke did not persist project history.");
   }
-  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2 || state.tasteVersionCount < 1 || !state.repairPromptReady) {
+  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2 || state.tasteVersionCount < 1 || state.projectBundleCount < 1 || !state.accessibilityQaReady || !state.repairPromptReady) {
     throw new Error("Learner interaction smoke did not persist production project records.");
   }
   return { ...state, checked };
@@ -640,13 +721,17 @@ async function readLearnerPersistenceState(page) {
     const projectProofRuns = safeParse("prompt-atelier-project-proof-runs-v1");
     const evalHistory = safeParse("prompt-atelier-eval-history-v1");
     const tasteVersions = safeParse("prompt-atelier-taste-profile-versions-v1");
+    const projectBundles = safeParse("prompt-atelier-project-bundles-v1");
     const repairPrompt = globalThis.localStorage.getItem("prompt-atelier-visual-repair-prompt-v1") || "";
+    const accessibilityQaRun = globalThis.localStorage.getItem("prompt-atelier-accessibility-qa-run-v1") || "";
     const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
     return {
       activeProfile,
+      accessibilityQaReady: accessibilityQaRun.length > 0,
       evalHistoryCount: evalHistory.length,
       generatedPromptCount: generatedPrompts.length,
       historyCount: history.length,
+      projectBundleCount: projectBundles.length,
       projectHistoryCount: projectHistory.length,
       projectProofRunCount: projectProofRuns.length,
       repairPromptReady: repairPrompt.length > 200,

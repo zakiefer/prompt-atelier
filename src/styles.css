@@ -2043,6 +2043,212 @@ button:disabled {
   min-width: 0;
 }
 
+.first-run-start-panel,
+.learner-surface-nav-panel {
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.first-run-start-panel {
+  grid-template-columns: minmax(0, 0.9fr) auto minmax(0, 1.4fr);
+}
+
+.first-run-copy,
+.surface-nav-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.first-run-copy > span,
+.surface-nav-copy > span,
+.project-bundle-layout span,
+.proof-repair-layout span {
+  color: var(--teal-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.first-run-copy h3 {
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 4vw, 3.8rem);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+  margin: 0;
+}
+
+.first-run-copy p,
+.surface-nav-copy p {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  margin: 0;
+  max-width: 520px;
+}
+
+.first-run-score {
+  align-items: center;
+  align-self: center;
+  aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 0%, rgba(31, 122, 104, 0.13), rgba(255, 255, 255, 0.88));
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: grid;
+  height: 112px;
+  justify-items: center;
+  padding: 14px;
+}
+
+.first-run-score strong {
+  color: var(--teal-dark);
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.first-run-score span {
+  color: var(--ink);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.first-run-step-grid,
+.surface-nav-card-row,
+.mobile-console-grid,
+.proof-repair-layout,
+.project-bundle-layout,
+.trend-row-list,
+.accessibility-check-grid,
+.empty-state-grid {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.first-run-step-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.first-run-step-grid article,
+.surface-nav-card-row button,
+.mobile-console-grid button,
+.proof-repair-layout article,
+.project-bundle-layout article,
+.trend-row-list article,
+.accessibility-check-grid article,
+.empty-state-grid button {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink);
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  text-align: left;
+}
+
+.first-run-step-grid article[data-status="ready"],
+.surface-nav-card-row button[data-status="ready"],
+.mobile-console-grid button[data-ready="true"],
+.accessibility-check-grid article[data-ready="true"],
+.empty-state-grid button[data-ready="true"],
+.proof-repair-studio-panel[data-ready="true"] {
+  border-color: rgba(31, 122, 104, 0.3);
+}
+
+.first-run-step-grid article[data-status="active"],
+.surface-nav-card-row button[data-status="active"],
+.trend-row-list article[data-status="flat"] {
+  border-color: rgba(185, 130, 42, 0.28);
+}
+
+.first-run-step-grid article[data-status="watch"],
+.surface-nav-card-row button[data-status="watch"],
+.mobile-console-grid button[data-ready="false"],
+.accessibility-check-grid article[data-ready="false"],
+.empty-state-grid button[data-ready="false"],
+.trend-row-list article[data-status="down"] {
+  border-color: rgba(164, 72, 63, 0.24);
+}
+
+.first-run-step-grid span,
+.surface-nav-card-row span,
+.mobile-console-grid span,
+.trend-row-list span,
+.empty-state-grid span,
+.empty-state-grid small {
+  color: var(--teal-dark);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.first-run-step-grid strong,
+.surface-nav-copy strong,
+.surface-nav-card-row strong,
+.mobile-console-grid strong,
+.proof-repair-layout strong,
+.project-bundle-layout strong,
+.trend-row-list strong,
+.accessibility-check-grid strong,
+.empty-state-grid strong {
+  display: block;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.first-run-step-grid p,
+.surface-nav-card-row p,
+.project-bundle-layout p,
+.proof-repair-layout li,
+.trend-row-list p,
+.accessibility-check-grid p,
+.empty-state-grid p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.learner-surface-nav-panel {
+  align-items: center;
+  grid-template-columns: minmax(220px, 0.5fr) minmax(0, 1fr) auto;
+}
+
+.surface-nav-card-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.surface-nav-card-row button,
+.mobile-console-grid button,
+.empty-state-grid button {
+  cursor: pointer;
+}
+
+.surface-nav-card-row button:hover,
+.mobile-console-grid button:hover,
+.empty-state-grid button:hover {
+  background: #fff;
+  border-color: rgba(31, 122, 104, 0.34);
+  transform: translateY(-1px);
+}
+
 .learner-tools-drawer {
   background: rgba(255, 255, 255, 0.74);
   border: 1px solid var(--line);
@@ -2509,8 +2715,14 @@ button:disabled {
 
 .workflow-os-panel,
 .mobile-operator-panel,
+.mobile-command-console-panel,
 .result-gallery-panel,
 .visual-repair-panel,
+.proof-repair-studio-panel,
+.project-bundle-panel,
+.regression-trend-panel,
+.accessibility-qa-panel,
+.empty-state-shelf-panel,
 .coverage-intelligence-panel,
 .export-studio-panel,
 .project-timeline-panel,
@@ -2526,6 +2738,7 @@ button:disabled {
 .workflow-step-line,
 .mobile-operator-grid,
 .result-gallery-grid,
+.result-filter-row,
 .coverage-gap-grid,
 .export-studio-grid,
 .project-timeline-list,
@@ -2544,6 +2757,7 @@ button:disabled {
 .workflow-step-line button,
 .mobile-operator-grid button,
 .result-gallery-grid article,
+.result-filter-row button,
 .coverage-gap-grid article,
 .export-studio-grid article,
 .project-timeline-list button,
@@ -2564,6 +2778,7 @@ button:disabled {
 
 .workflow-step-line button,
 .mobile-operator-grid button,
+.result-filter-row button,
 .project-timeline-list button,
 .export-preset-row button {
   cursor: pointer;
@@ -2571,6 +2786,7 @@ button:disabled {
 
 .workflow-step-line button:hover,
 .mobile-operator-grid button:hover,
+.result-filter-row button:hover,
 .project-timeline-list button:hover,
 .export-preset-row button:hover {
   background: #fff;
@@ -2580,6 +2796,7 @@ button:disabled {
 
 .workflow-step-line span,
 .result-card-topline span,
+.result-filter-row button,
 .coverage-gap-grid span,
 .project-timeline-list span,
 .ci-proof-grid span,
@@ -2621,6 +2838,7 @@ button:disabled {
 .workflow-step-line p,
 .mobile-operator-grid span,
 .result-gallery-grid p,
+.result-filter-row span,
 .coverage-gap-grid p,
 .coverage-gap-grid small,
 .export-studio-grid p,
@@ -2661,6 +2879,42 @@ button:disabled {
   display: none;
 }
 
+.mobile-command-console-panel {
+  display: none;
+}
+
+.result-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.result-filter-row button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 7px;
+  justify-content: center;
+  padding: 7px 10px;
+}
+
+.result-filter-row button[data-active="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+
+.result-filter-row span {
+  background: rgba(31, 122, 104, 0.1);
+  border-radius: 999px;
+  color: inherit;
+  padding: 2px 6px;
+}
+
 .result-gallery-grid {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
@@ -2693,6 +2947,89 @@ button:disabled {
 
 .repair-grid textarea {
   min-height: 180px;
+}
+
+.proof-repair-layout,
+.project-bundle-layout {
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  margin-top: 12px;
+}
+
+.proof-repair-layout ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.proof-repair-layout textarea,
+.project-bundle-layout textarea {
+  max-height: 220px;
+  min-height: 150px;
+}
+
+.bundle-list {
+  display: grid;
+  gap: 7px;
+}
+
+.bundle-list button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  display: flex;
+  font-size: 0.76rem;
+  font-weight: 850;
+  gap: 7px;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.bundle-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trend-row-list {
+  margin-top: 12px;
+}
+
+.trend-row-list article {
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.trend-row-list article[data-status="up"] {
+  border-color: rgba(31, 122, 104, 0.3);
+}
+
+.trend-row-list em {
+  background: rgba(31, 122, 104, 0.1);
+  border-radius: 999px;
+  color: var(--teal-dark);
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 900;
+  padding: 6px 8px;
+}
+
+.accessibility-check-grid,
+.empty-state-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin-top: 12px;
+}
+
+.accessibility-check-grid article {
+  align-content: start;
+}
+
+.accessibility-check-grid svg {
+  color: var(--teal-dark);
 }
 
 .coverage-gap-grid,
@@ -3685,6 +4022,13 @@ button:disabled {
 
 select {
   color-scheme: light;
+  background-color: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  color: var(--ink);
+  min-height: 40px;
+  padding: 9px 44px 9px 11px;
 }
 
 .field select {
@@ -3716,10 +4060,16 @@ select {
 
 .field select option,
 .version-card select option {
-  background: var(--panel);
+  background: #fff;
   color: var(--ink);
   font: inherit;
   padding: 10px;
+}
+
+.field select option:checked,
+.version-card select option:checked {
+  background: var(--teal-dark);
+  color: #fff;
 }
 
 .field textarea {
@@ -6799,6 +7149,10 @@ button.preset-card {
 	  .train-focus-grid,
 	  .screenshot-dropzone,
 	  .project-cockpit-panel,
+	  .first-run-start-panel,
+	  .first-run-step-grid,
+	  .learner-surface-nav-panel,
+	  .surface-nav-card-row,
 	  .project-stage-grid,
 	  .project-score-stack,
 	  .guided-product-grid,
@@ -6812,7 +7166,13 @@ button.preset-card {
 	  .taste-version-grid,
 	  .ci-proof-grid,
 	  .repair-grid,
+	  .proof-repair-layout,
+	  .project-bundle-layout,
+	  .trend-row-list article,
+	  .accessibility-check-grid,
+	  .empty-state-grid,
 	  .mobile-operator-grid,
+	  .mobile-console-grid,
 	  .proof-checklist-grid,
 	  .quality-report-grid,
 	  .training-signal-list,
@@ -6825,6 +7185,10 @@ button.preset-card {
 	  }
 
   .mobile-operator-panel {
+    display: grid;
+  }
+
+  .mobile-command-console-panel {
     display: grid;
   }
 
@@ -7160,6 +7524,43 @@ button.preset-card {
     padding: 6px;
     position: static;
     z-index: 20;
+  }
+
+  .project-cockpit-panel,
+  .workflow-os-panel,
+  .production-path-grid,
+  .learner-command-deck,
+  .proof-runner-checklist,
+  .one-click-proof-rail,
+  .prompt-quality-report,
+  .beginner-prompt-path,
+  .training-impact-panel,
+  .learner-run-guide,
+  .learner-battle-strip {
+    display: none;
+  }
+
+  .first-run-start-panel,
+  .learner-surface-nav-panel,
+  .mobile-command-console-panel {
+    border-radius: 16px;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .first-run-score {
+    height: 86px;
+    justify-self: start;
+  }
+
+  .first-run-score strong {
+    font-size: 2.25rem;
+  }
+
+  .first-run-step-grid article,
+  .surface-nav-card-row button,
+  .mobile-console-grid button {
+    padding: 10px;
   }
 
   .learner-mobile-step-bar button {
