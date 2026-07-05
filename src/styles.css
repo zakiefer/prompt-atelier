@@ -66,6 +66,15 @@ button:disabled {
   opacity: 0.55;
 }
 
+.visually-hidden {
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;
@@ -1858,7 +1867,12 @@ button:disabled {
 .workspace-search-panel,
 .prompt-lint-panel,
 .proof-artifact-vault,
-.product-changelog-panel {
+.product-changelog-panel,
+.one-click-proof-rail,
+.import-front-door-panel,
+.project-persistence-panel,
+.proof-quality-leaderboard,
+.production-hardening-panel {
   background: rgba(255, 255, 255, 0.84);
 }
 
@@ -1940,6 +1954,174 @@ button:disabled {
 
 .proof-vault-grid {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.one-click-proof-layout {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.one-click-proof-score {
+  align-items: center;
+  background: rgba(31, 122, 104, 0.09);
+  border: 1px solid rgba(31, 122, 104, 0.18);
+  border-radius: 999px;
+  color: var(--teal-dark);
+  display: flex;
+  flex-direction: column;
+  height: 92px;
+  justify-content: center;
+  width: 92px;
+}
+
+.one-click-proof-score strong {
+  font-family: var(--font-display);
+  font-size: 2.35rem;
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.one-click-proof-score span {
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.one-click-proof-steps,
+.import-front-door-list,
+.proof-leaderboard-list,
+.production-hardening-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.one-click-proof-steps {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.one-click-proof-steps article,
+.import-front-door-list article,
+.project-persistence-card,
+.production-hardening-grid article {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.one-click-proof-steps article[data-status="ready"],
+.production-hardening-grid article[data-ready="true"],
+.import-front-door-list article[data-status="ready"] {
+  border-color: rgba(31, 122, 104, 0.3);
+}
+
+.one-click-proof-steps article[data-status="active"],
+.import-front-door-list article[data-status="review"] {
+  border-color: rgba(185, 130, 42, 0.3);
+}
+
+.one-click-proof-steps article[data-status="blocked"],
+.production-hardening-grid article[data-ready="false"],
+.import-front-door-list article[data-status="blocked"] {
+  border-color: rgba(164, 72, 63, 0.28);
+}
+
+.one-click-proof-steps strong,
+.project-persistence-card strong,
+.production-hardening-grid strong {
+  font-size: 0.86rem;
+}
+
+.one-click-proof-steps p,
+.project-persistence-card p,
+.production-hardening-grid p,
+.import-front-door-list p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.38;
+  margin: 0;
+}
+
+.import-dropzone {
+  margin: 0;
+  min-height: 116px;
+}
+
+.import-front-door-list {
+  margin-top: 8px;
+}
+
+.import-front-door-list span,
+.project-persistence-card span {
+  color: var(--teal-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.import-front-door-list strong {
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.proof-leaderboard-list button {
+  align-items: center;
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 10px;
+  text-align: left;
+}
+
+.proof-leaderboard-list button:hover {
+  background: #fff;
+  border-color: rgba(31, 122, 104, 0.3);
+  transform: translateY(-1px);
+}
+
+.proof-leaderboard-list em {
+  align-items: center;
+  background: rgba(31, 122, 104, 0.1);
+  border-radius: 999px;
+  color: var(--teal-dark);
+  display: inline-flex;
+  font-style: normal;
+  font-weight: 900;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.proof-leaderboard-list strong {
+  display: block;
+  font-size: 0.86rem;
+  line-height: 1.18;
+}
+
+.proof-leaderboard-list p {
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.35;
+  margin: 3px 0 0;
+}
+
+.proof-leaderboard-list span {
+  color: var(--teal-dark);
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  line-height: 1;
 }
 
 .corpus-triage-toolbar {
@@ -5821,9 +6003,12 @@ button.preset-card {
   .lab-columns,
   .train-command-suite,
   .train-columns,
-  .train-section-nav,
+	  .train-section-nav,
 	  .train-focus-grid,
-	  .screenshot-dropzone {
+	  .screenshot-dropzone,
+	  .one-click-proof-layout,
+	  .one-click-proof-steps,
+	  .production-hardening-grid {
 	    grid-template-columns: 1fr;
 	  }
 

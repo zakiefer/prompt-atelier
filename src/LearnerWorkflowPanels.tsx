@@ -51,6 +51,41 @@ export type ProductChangelogItem = {
   meta: string;
 };
 
+export type OneClickProofStep = {
+  id: string;
+  label: string;
+  detail: string;
+  status: "ready" | "active" | "blocked";
+};
+
+export type ProjectSnapshot = {
+  id: string;
+  label: string;
+  savedAt: string;
+  profileId: string;
+  sourcePrompt: string;
+  proofArtifacts: LearnerProofVaultItem[];
+};
+
+export type ImportFrontDoorItem = {
+  id: string;
+  filename: string;
+  kind: "txt" | "markdown" | "jsonl" | "json" | "unknown";
+  text: string;
+  words: number;
+  status: "ready" | "review" | "blocked";
+  reason: string;
+};
+
+export type ProofLeaderboardRow = {
+  id: string;
+  title: string;
+  score: number;
+  proof: number;
+  kind: string;
+  detail: string;
+};
+
 export function LearnerCommandDeck({
   activeTab,
   currentAction,
@@ -123,6 +158,250 @@ export function LearnerCommandDeck({
           <span>proof items</span>
         </article>
       </div>
+    </section>
+  );
+}
+
+export function OneClickProofRail({
+  onRun,
+  score,
+  steps,
+}: {
+  onRun: () => void;
+  score: number;
+  steps: OneClickProofStep[];
+}) {
+  const readyCount = steps.filter((step) => step.status === "ready").length;
+  const blocked = steps.some((step) => step.status === "blocked");
+  return (
+    <section className="learner-mini-panel one-click-proof-rail" data-train-section="one-click-proof-rail">
+      <div className="output-header">
+        <div>
+          <h3>One-click prompt path</h3>
+          <p>Run the useful path as one guided action: patch, revise, save proof, save session, and open export.</p>
+        </div>
+        <span className="selected-meta">{readyCount}/{steps.length} ready</span>
+      </div>
+      <div className="one-click-proof-layout">
+        <div className="one-click-proof-score">
+          <strong>{score}</strong>
+          <span>path score</span>
+        </div>
+        <div className="one-click-proof-steps">
+          {steps.map((step) => (
+            <article data-status={step.status} key={step.id}>
+              <strong>{step.label}</strong>
+              <p>{step.detail}</p>
+            </article>
+          ))}
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onRun} disabled={blocked && readyCount === 0}>
+          Run guided path
+          <ArrowRight size={15} />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function ImportFrontDoorPanel({
+  items,
+  onFiles,
+  onUseItem,
+}: {
+  items: ImportFrontDoorItem[];
+  onFiles: (files: FileList | File[]) => void;
+  onUseItem: (item: ImportFrontDoorItem) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const counts = items.reduce(
+    (map, item) => ({ ...map, [item.status]: (map[item.status] ?? 0) + 1 }),
+    { ready: 0, review: 0, blocked: 0 },
+  );
+  return (
+    <section className="learner-mini-panel import-front-door-panel" data-train-section="import-front-door">
+      <div className="output-header">
+        <div>
+          <h3>Import front door</h3>
+          <p>Drop text, Markdown, JSON, or JSONL prompts into a review lane before they touch memory.</p>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => inputRef.current?.click()}>
+          <Upload size={15} />
+          Add files
+        </button>
+      </div>
+      <input
+        ref={inputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".txt,.md,.json,.jsonl,text/plain,application/json"
+        multiple
+        onChange={(event) => {
+          if (event.target.files) onFiles(event.target.files);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div
+        className="proof-dropzone import-dropzone"
+        data-dragging={dragging ? "true" : "false"}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(event) => {
+          event.preventDefault();
+          setDragging(false);
+          onFiles(event.dataTransfer.files);
+        }}
+      >
+        <Upload size={32} />
+        <div>
+          <strong>Drop prompts here</strong>
+          <p>Secret-shaped text is blocked, near-empty files go to review, and safe prompts can become the working prompt.</p>
+        </div>
+      </div>
+      <div className="mini-stat-row">
+        <span>{counts.ready} ready</span>
+        <span>{counts.review} review</span>
+        <span>{counts.blocked} blocked</span>
+      </div>
+      <div className="import-front-door-list">
+        {items.slice(0, 6).map((item) => (
+          <article data-status={item.status} key={item.id}>
+            <span>{item.kind} / {item.words} words</span>
+            <strong>{item.filename}</strong>
+            <p>{item.reason}</p>
+            <button className="ghost-button compact-button" type="button" onClick={() => onUseItem(item)} disabled={item.status === "blocked"}>
+              Use as prompt
+            </button>
+          </article>
+        ))}
+        {!items.length ? <p className="selected-meta">No imported files yet.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+export function ProjectPersistencePanel({
+  activeSnapshot,
+  copied,
+  onCopy,
+  onRestore,
+  onSave,
+}: {
+  activeSnapshot?: ProjectSnapshot;
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onRestore: (snapshot: ProjectSnapshot) => void;
+  onSave: () => ProjectSnapshot;
+}) {
+  const [snapshot, setSnapshot] = useState<ProjectSnapshot | undefined>(activeSnapshot);
+  useEffect(() => setSnapshot(activeSnapshot), [activeSnapshot]);
+  const payload = snapshot ? JSON.stringify(snapshot, null, 2) : "";
+  return (
+    <section className="learner-mini-panel project-persistence-panel" data-train-section="project-persistence">
+      <div className="output-header">
+        <div>
+          <h3>Project persistence</h3>
+          <p>Save the current prompt, profile, and proof vault into one restorable browser snapshot.</p>
+        </div>
+        <button
+          className="primary-button compact-button"
+          type="button"
+          onClick={() => {
+            const next = onSave();
+            setSnapshot(next);
+          }}
+        >
+          <Save size={15} />
+          Save snapshot
+        </button>
+      </div>
+      <div className="project-persistence-card">
+        <strong>{snapshot?.label ?? "No snapshot saved yet"}</strong>
+        <span>{snapshot ? new Date(snapshot.savedAt).toLocaleString() : "local browser snapshot"}</span>
+        <p>{snapshot ? `${snapshot.proofArtifacts.length} proof artifact(s), profile ${snapshot.profileId}.` : "Save once before large imports, proof runs, or export changes."}</p>
+        <div className="button-row compact-row">
+          <button className="ghost-button compact-button" type="button" onClick={() => snapshot && onRestore(snapshot)} disabled={!snapshot}>
+            Restore
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => payload && onCopy(payload, "project-snapshot-json")} disabled={!payload}>
+            {copied === "project-snapshot-json" ? <Check size={15} /> : <Copy size={15} />}
+            Copy JSON
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function ProofQualityLeaderboardPanel({
+  onSelectRow,
+  rows,
+}: {
+  onSelectRow: (row: ProofLeaderboardRow) => void;
+  rows: ProofLeaderboardRow[];
+}) {
+  return (
+    <section className="learner-mini-panel proof-quality-leaderboard" data-train-section="proof-quality-leaderboard">
+      <div className="output-header">
+        <div>
+          <h3>Proof quality leaderboard</h3>
+          <p>Rank prompts by buildability plus actual proof instead of text strength alone.</p>
+        </div>
+        <span className="selected-meta">{rows.length} ranked</span>
+      </div>
+      <div className="proof-leaderboard-list">
+        {rows.slice(0, 8).map((row, index) => (
+          <button key={row.id} type="button" onClick={() => onSelectRow(row)}>
+            <em>{index + 1}</em>
+            <div>
+              <strong>{row.title}</strong>
+              <p>{row.detail}</p>
+            </div>
+            <span>{row.score}</span>
+          </button>
+        ))}
+        {!rows.length ? <p className="selected-meta">Save proof or learner sessions to populate the leaderboard.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+export function ProductionHardeningPanel({
+  checks,
+  copied,
+  onCopy,
+}: {
+  checks: { label: string; ready: boolean; detail: string }[];
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+}) {
+  const ready = checks.filter((check) => check.ready).length;
+  const payload = checks.map((check) => `- ${check.ready ? "Ready" : "Watch"}: ${check.label} - ${check.detail}`).join("\n");
+  return (
+    <section className="learner-mini-panel production-hardening-panel" data-train-section="production-hardening">
+      <div className="output-header">
+        <div>
+          <h3>Production hardening</h3>
+          <p>Deployability, CI artifacts, secret boundary, and smoke proof in one readiness view.</p>
+        </div>
+        <span className="selected-meta">{ready}/{checks.length} ready</span>
+      </div>
+      <div className="production-hardening-grid">
+        {checks.map((check) => (
+          <article data-ready={check.ready ? "true" : "false"} key={check.label}>
+            <strong>{check.label}</strong>
+            <p>{check.detail}</p>
+          </article>
+        ))}
+      </div>
+      <button className="ghost-button compact-button" type="button" onClick={() => onCopy(payload, "production-hardening-checks")}>
+        {copied === "production-hardening-checks" ? <Check size={15} /> : <Copy size={15} />}
+        Copy readiness notes
+      </button>
     </section>
   );
 }
@@ -597,6 +876,18 @@ function describeTargetPreset(preset: TargetExportPreset) {
   }
   if (label.includes("v0")) {
     return ["Compresses the prompt into UI-first implementation details.", "Highlights exact visual constraints while removing repo-operation noise."];
+  }
+  if (label.includes("lovable")) {
+    return ["Frames the prompt as an app-builder task with states and validation.", "Keeps first-screen usefulness, data states, and responsive behavior explicit."];
+  }
+  if (label.includes("bolt")) {
+    return ["Optimizes for fast scaffold generation without extra dependencies.", "Keeps media, focus states, and no-go rules visible in the build brief."];
+  }
+  if (label.includes("raw") || label.includes("implementation-spec")) {
+    return ["Removes tool-specific phrasing so any builder can consume the spec.", "Keeps acceptance gates and non-goals explicit for neutral implementation."];
+  }
+  if (label.includes("jsonl") || label.includes("finetune")) {
+    return ["Packages one supervised training row with prompt, response, metadata, and scorecard.", "Keeps proof requirements machine-readable for future model tuning."];
   }
   if (label.includes("json")) {
     return ["Normalizes the prompt into model-training rows.", "Keeps quality metadata and proof expectations machine-readable."];

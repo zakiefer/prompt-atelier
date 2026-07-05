@@ -105,7 +105,7 @@ export type LearnerSamplePrompt = {
 };
 
 export type TargetExportPreset = {
-  id: "codex" | "claude" | "v0" | "lovable" | "cursor" | "bolt" | "json" | "markdown" | "gpt";
+  id: "codex" | "claude" | "v0" | "lovable" | "cursor" | "bolt" | "raw" | "jsonl" | "json" | "markdown" | "gpt";
   label: string;
   filename: string;
   detail: string;
@@ -479,6 +479,53 @@ Bolt constraints:
 - Keep media assets real and visible, with object-fit/focal rules preserved.
 - Include mobile behavior, focus states, and hover/tap states.
 - No unrelated sections, decorative filler, fake provider keys, or placeholder assets.`,
+    },
+    {
+      id: "raw",
+      label: "Raw Spec",
+      filename: "implementation-spec.md",
+      detail: "Neutral implementation spec without tool-specific phrasing.",
+      content: `# Raw Website Implementation Spec
+
+## Source
+${base}
+
+## Required Output
+- Build the exact website/interface described above.
+- Preserve the requested stack, assets, fonts, colors, layout, responsive behavior, interaction states, motion, and constraints.
+- Include accessibility labels, keyboard focus states, loading/empty states where relevant, and reduced-motion handling for animation.
+- Verify desktop and mobile screenshots, no horizontal overflow, no text overlap, no console errors, and successful build/lint/typecheck.
+
+## Non-goals
+- Do not add unrelated sections, provider-key inputs, fake claims, placeholder assets, decorative filler, or unrequested libraries.`,
+    },
+    {
+      id: "jsonl",
+      label: "JSONL",
+      filename: "website-prompt-finetune.jsonl",
+      detail: "One supervised fine-tune row with source, target, quality, and proof metadata.",
+      content: `${JSON.stringify({
+        messages: [
+          {
+            role: "system",
+            content: "Rewrite website prompts into precise, implementation-ready frontend build specs with stack, fonts, assets, layout, motion, responsive rules, constraints, and QA gates.",
+          },
+          {
+            role: "user",
+            content: learnerExportPack.markdown.slice(0, 4000),
+          },
+          {
+            role: "assistant",
+            content: base,
+          },
+        ],
+        metadata: {
+          profile: activeProfile.label,
+          exportedAt: new Date().toISOString(),
+          scorecard: learnerExportPack.scorecard,
+          proofRequired: true,
+        },
+      })}\n`,
     },
     {
       id: "json",

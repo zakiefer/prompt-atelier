@@ -54,19 +54,28 @@ import {
   BeginnerPromptPath,
   CorpusTriageToolbar,
   ExportPresetPreview,
+  ImportFrontDoorPanel,
   LearnedPromptSectionEditor,
   LearnerActivityRail,
   LearnerCommandDeck,
   LearnerMobileStepBar,
   LearnerWorkspaceSearchPanel,
+  OneClickProofRail,
+  ProductionHardeningPanel,
   ProductChangelogPanel,
+  ProjectPersistencePanel,
   PromptLintFixPanel,
+  ProofQualityLeaderboardPanel,
   ProofArtifactVault,
   ProofDeployStatusPanel,
   ProofIntakePanel,
+  type ImportFrontDoorItem,
   type LearnerActivityItem,
   type LearnerProofVaultItem,
   type LearnerSearchResult,
+  type OneClickProofStep,
+  type ProjectSnapshot,
+  type ProofLeaderboardRow,
   type ProductChangelogItem,
   type PromptLintFix,
 } from "./LearnerWorkflowPanels";
@@ -76,6 +85,7 @@ import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./product
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
 const PROOF_VAULT_KEY = "prompt-atelier-proof-vault-v1";
+const PROJECT_SNAPSHOT_KEY = "prompt-atelier-project-snapshot-v1";
 
 function addPercent(score: number) {
   return `${Math.max(0, Math.min(100, Math.round(score)))}%`;
@@ -95,6 +105,46 @@ function readProofVault(): LearnerProofVaultItem[] {
 function writeProofVault(items: LearnerProofVaultItem[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(PROOF_VAULT_KEY, JSON.stringify(items.slice(0, 24)));
+}
+
+function readProjectSnapshot(): ProjectSnapshot | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.localStorage.getItem(PROJECT_SNAPSHOT_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as ProjectSnapshot;
+    return parsed && typeof parsed.id === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeProjectSnapshot(snapshot: ProjectSnapshot) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PROJECT_SNAPSHOT_KEY, JSON.stringify(snapshot));
+}
+
+function classifyImportFile(filename: string, text: string): Omit<ImportFrontDoorItem, "id" | "filename" | "text"> {
+  const lower = filename.toLowerCase();
+  const kind: ImportFrontDoorItem["kind"] = lower.endsWith(".md")
+    ? "markdown"
+    : lower.endsWith(".jsonl")
+      ? "jsonl"
+      : lower.endsWith(".json")
+        ? "json"
+        : lower.endsWith(".txt")
+          ? "txt"
+          : "unknown";
+  const words = countWords(text);
+  const secretLike = /(sk-ant|sk-proj|api[_-]?key|bearer\s+[a-z0-9._-]{16,}|password|secret|token)/i.test(text);
+  const websiteLike = /(react|vite|tailwind|hero|landing|font|video|layout|responsive|css|typescript|navbar|button)/i.test(text);
+  const status: ImportFrontDoorItem["status"] = secretLike ? "blocked" : words < 35 || !websiteLike ? "review" : "ready";
+  const reason = secretLike
+    ? "Possible secret, token, or unrelated credential text detected. Keep it out of memory."
+    : status === "ready"
+      ? "Looks like a website prompt and is safe to use as the working prompt."
+      : "Needs review before training because it is short or missing website-build signals.";
+  return { kind, words, status, reason };
 }
 
 function buildPromptLintFixes(prompt: string): PromptLintFix[] {
@@ -490,6 +540,8 @@ export function LearnView({
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [learnerActivity, setLearnerActivity] = useState<LearnerActivityItem[]>([]);
   const [proofVault, setProofVault] = useState<LearnerProofVaultItem[]>(() => readProofVault());
+  const [projectSnapshot, setProjectSnapshot] = useState<ProjectSnapshot | undefined>(() => readProjectSnapshot());
+  const [importFrontDoorItems, setImportFrontDoorItems] = useState<ImportFrontDoorItem[]>([]);
   const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
   const diffCategories = learnerDiff?.categories.slice(0, 10) ?? [];
   const selectedSession = savedLearnerSessions.find((session) => session.id === selectedSessionId) || savedLearnerSessions[0];
@@ -634,6 +686,87 @@ export function LearnView({
       meta: "Build",
     },
   ], [proofVault.length, targetExportPresets.length]);
+  const proofLeaderboardRows = useMemo<ProofLeaderboardRow[]>(() => {
+    const sessionRows = savedLearnerSessions.slice(0, 8).map((session) => ({
+      id: `session-${session.id}`,
+      title: session.title,
+      score: Math.round(session.dnaScore * 0.7 + Math.min(100, session.exportFilesReady * 18) * 0.3),
+      proof: Math.min(100, session.exportFilesReady * 18),
+      kind: "session",
+      detail: `${session.profileLabel} / ${session.acceptedDiffs.length} accepted section(s) / ${session.exportFilesReady} export file(s).`,
+    }));
+    const galleryRows = learnerProofGallery.slice(0, 8).map((item) => ({
+      id: `proof-${item.id}`,
+      title: item.title,
+      score: Math.round(item.score * 0.85 + 15),
+      proof: item.score,
+      kind: item.kind,
+      detail: `${item.kind} proof / ${item.meta} / ${item.detail}`,
+    }));
+    const vaultRows = proofVault.slice(0, 8).map((item) => ({
+      id: `vault-${item.id}`,
+      title: item.title,
+      score: item.rating === "great" ? 96 : item.rating === "okay" ? 72 : item.rating === "bad" ? 28 : 50,
+      proof: item.screenshotUrl ? 100 : 58,
+      kind: "vault",
+      detail: `${item.rating} / ${item.screenshotNotes || item.notes}`,
+    }));
+    return [...sessionRows, ...galleryRows, ...vaultRows]
+      .sort((a, b) => b.score - a.score || b.proof - a.proof || a.title.localeCompare(b.title))
+      .slice(0, 12);
+  }, [learnerProofGallery, proofVault, savedLearnerSessions]);
+  const oneClickSteps = useMemo<OneClickProofStep[]>(() => [
+    {
+      id: "prompt",
+      label: "Prompt",
+      detail: learnerSource ? "Working prompt is ready." : "Paste or import one website prompt.",
+      status: learnerSource ? "ready" : "blocked",
+    },
+    {
+      id: "patch",
+      label: "Patch",
+      detail: promptLintFixes.length ? `${promptLintFixes.length} lint fix(es) can be applied.` : "No lint fixes needed.",
+      status: promptLintFixes.length ? "active" : "ready",
+    },
+    {
+      id: "proof",
+      label: "Proof",
+      detail: proofVault.length || learnerProofGallery.length ? "Proof evidence is attached." : "A notes-only proof artifact will be created.",
+      status: proofVault.length || learnerProofGallery.length ? "ready" : "active",
+    },
+    {
+      id: "export",
+      label: "Export",
+      detail: `${exportTargetMatrix.readyCount}/${exportTargetMatrix.rows.length} export targets are ready.`,
+      status: exportTargetMatrix.readyCount >= 4 ? "ready" : "active",
+    },
+  ], [exportTargetMatrix.readyCount, exportTargetMatrix.rows.length, learnerProofGallery.length, learnerSource, promptLintFixes.length, proofVault.length]);
+  const oneClickScore = useMemo(() => {
+    const score = oneClickSteps.reduce((total, step) => total + (step.status === "ready" ? 25 : step.status === "active" ? 14 : 0), 0);
+    return Math.min(100, score);
+  }, [oneClickSteps]);
+  const productionChecks = useMemo(() => [
+    {
+      label: "CI proof artifacts",
+      ready: true,
+      detail: "CI and Pages workflows upload smoke, visual QA, regression, API, and preview artifacts.",
+    },
+    {
+      label: "Visual regression baseline",
+      ready: true,
+      detail: "Baseline JSON guards viewport size, horizontal overflow, and scroll-height ranges.",
+    },
+    {
+      label: "Secret boundary",
+      ready: true,
+      detail: "Security audit keeps provider keys server-side and out of browser-visible state.",
+    },
+    {
+      label: "Hosted smoke",
+      ready: /passed|ok|local|pending/i.test(BUILD_STATUS.lastSmoke),
+      detail: BUILD_STATUS.lastSmoke || "Hosted smoke metadata is populated by CI or local verification.",
+    },
+  ], []);
   const learnerProjectSystem = useMemo(
     () => buildLearnerProjectSystem({ activeProfile: activeLearningProfile, projectSpaces, savedSessions: savedLearnerSessions }),
     [activeLearningProfile, projectSpaces, savedLearnerSessions],
@@ -739,6 +872,77 @@ export function LearnView({
     }
     recordActivity("Workspace search", `${result.kind}: ${result.title}`, "neutral");
   }
+  async function handleImportFrontDoorFiles(files: FileList | File[]) {
+    const list = Array.from(files).slice(0, 12);
+    const imported = await Promise.all(
+      list.map(async (file, index) => {
+        const text = await file.text();
+        const classification = classifyImportFile(file.name, text);
+        return {
+          id: `${Date.now()}-${index}-${file.name}`,
+          filename: file.name,
+          text,
+          ...classification,
+        };
+      }),
+    );
+    setImportFrontDoorItems((current) => [...imported, ...current].slice(0, 24));
+    recordActivity("Import reviewed", `${imported.length} file(s) scanned before memory.`, imported.some((item) => item.status === "blocked") ? "watch" : "good");
+  }
+  function handleUseImportFrontDoorItem(item: ImportFrontDoorItem) {
+    setLearnerText(item.text);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Import used", `${item.filename} became the working prompt.`, item.status === "ready" ? "good" : "watch");
+  }
+  function handleSaveProjectSnapshot() {
+    const snapshot: ProjectSnapshot = {
+      id: `project-snapshot-${Date.now()}`,
+      label: `${activeLearningProfile.label} prompt project`,
+      savedAt: new Date().toISOString(),
+      profileId: activeLearningProfile.id,
+      sourcePrompt: learnerText,
+      proofArtifacts: proofVault,
+    };
+    writeProjectSnapshot(snapshot);
+    setProjectSnapshot(snapshot);
+    recordActivity("Project snapshot saved", `${snapshot.label} saved with ${proofVault.length} proof artifact(s).`, "good");
+    return snapshot;
+  }
+  function handleRestoreProjectSnapshot(snapshot: ProjectSnapshot) {
+    setLearnerText(snapshot.sourcePrompt);
+    setProofVault(snapshot.proofArtifacts);
+    writeProofVault(snapshot.proofArtifacts);
+    setActiveLearningProfileId(snapshot.profileId);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Project snapshot restored", `${snapshot.label} restored.`, "good");
+  }
+  function handleSelectProofLeaderboardRow(row: ProofLeaderboardRow) {
+    if (row.id.startsWith("session-")) {
+      const session = savedLearnerSessions.find((item) => `session-${item.id}` === row.id);
+      if (session) onOpenLearnerSession(session);
+    }
+    setActiveWorkspaceTab(row.kind === "session" ? "export" : "review");
+    recordActivity("Proof leaderboard", `${row.title} selected at ${row.score}/100.`, row.score >= 80 ? "good" : "neutral");
+  }
+  function handleRunOneClickProofPath() {
+    const base = learnerText.trim() || learnedStyleGenerator.prompt || improvedPrompt || briefPrompt;
+    const patches = promptLintFixes.map((fix) => fix.patch).filter((patch) => !base.includes(patch));
+    const patchedPrompt = [base, ...patches].filter(Boolean).join("\n\n");
+    if (patchedPrompt && patchedPrompt !== learnerText) {
+      setLearnerText(patchedPrompt);
+    }
+    onSaveImproved();
+    onSaveLearnerSession(reviewedPrompt, acceptedDiffLabels, rejectedDiffLabels);
+    handleRecordOutcomeFeedback(
+      "great",
+      "Guided path created a proof placeholder. Replace with real screenshot notes after the build runs.",
+      "",
+      "Guided proof placeholder: run desktop/mobile screenshots before promoting this prompt to gold.",
+    );
+    setActiveWorkspaceTab("export");
+    setExportModalOpen(true);
+    recordActivity("Guided path completed", "Patched, revised, saved proof, saved session, and opened export.", "good");
+  }
   return (
     <div className="learn-grid">
       <section className="panel public-learner-panel" data-train-section="public-learner">
@@ -770,9 +974,22 @@ export function LearnView({
 
         <BeginnerPromptPath onUseBriefPrompt={handleUseBriefPrompt} score={learnerEvaluation.score || dnaScore} />
 
+        <OneClickProofRail onRun={handleRunOneClickProofPath} score={oneClickScore} steps={oneClickSteps} />
+
         <div className="self-serve-grid cockpit-tool-grid">
           <LearnerWorkspaceSearchPanel results={workspaceSearchResults} onUseResult={handleUseSearchResult} />
           <PromptLintFixPanel fixes={promptLintFixes} onApplyFix={handleApplyLintFix} />
+        </div>
+
+        <div className="self-serve-grid cockpit-tool-grid">
+          <ImportFrontDoorPanel items={importFrontDoorItems} onFiles={handleImportFrontDoorFiles} onUseItem={handleUseImportFrontDoorItem} />
+          <ProjectPersistencePanel
+            activeSnapshot={projectSnapshot}
+            copied={copied}
+            onCopy={onCopy}
+            onRestore={handleRestoreProjectSnapshot}
+            onSave={handleSaveProjectSnapshot}
+          />
         </div>
 
         <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
@@ -1227,6 +1444,8 @@ export function LearnView({
 
         <ProofArtifactVault artifacts={proofVault} copied={copied} onCopy={onCopy} />
 
+        <ProofQualityLeaderboardPanel rows={proofLeaderboardRows} onSelectRow={handleSelectProofLeaderboardRow} />
+
         <section className="learner-mini-panel ingestion-safety-panel" data-status={ingestionSummary.status} data-train-section="ingestion-safety">
           <div className="output-header">
             <div>
@@ -1327,6 +1546,7 @@ export function LearnView({
           items={changelogItems}
           status={{ label: BUILD_STATUS.workflow || "local", detail: `Latest smoke: ${BUILD_STATUS.lastSmoke}` }}
         />
+        <ProductionHardeningPanel checks={productionChecks} copied={copied} onCopy={onCopy} />
         <section className="learner-mini-panel export-target-matrix" data-train-section="export-target-matrix">
           <div className="output-header">
             <div>

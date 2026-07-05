@@ -546,14 +546,16 @@ const targetPresets = buildTargetExportPresets({
 });
 assert.deepEqual(
   targetPresets.map((preset) => preset.id),
-  ["codex", "claude", "v0", "lovable", "cursor", "bolt", "json", "markdown", "gpt"],
-  "Target export presets should cover Codex, Claude, v0, Lovable, Cursor, Bolt, JSON, Markdown, and GPT.",
+  ["codex", "claude", "v0", "lovable", "cursor", "bolt", "raw", "jsonl", "json", "markdown", "gpt"],
+  "Target export presets should cover Codex, Claude, v0, Lovable, Cursor, Bolt, Raw Spec, JSONL, JSON, Markdown, and GPT.",
 );
 assert.ok(targetPresets.every((preset) => preset.content.includes("prompt") || preset.content.includes("PROMPT")), "Target presets should include prompt content.");
 assert.ok(targetPresets.find((preset) => preset.id === "codex")?.content.includes("Codex Execution Contract"), "Codex preset should have a distinct execution contract.");
 assert.ok(targetPresets.find((preset) => preset.id === "claude")?.content.includes("senior product designer"), "Claude preset should use design-review framing.");
 assert.ok(targetPresets.find((preset) => preset.id === "v0")?.content.includes("responsive React interface"), "v0 preset should use UI-generation framing.");
 assert.ok(targetPresets.find((preset) => preset.id === "cursor")?.content.includes("current repo"), "Cursor preset should use repo-edit framing.");
+assert.ok(targetPresets.find((preset) => preset.id === "raw")?.content.includes("Implementation Spec"), "Raw spec preset should expose a neutral implementation contract.");
+assert.ok(targetPresets.find((preset) => preset.id === "jsonl")?.content.includes("\"messages\""), "JSONL preset should expose fine-tune message rows.");
 assert.ok(targetPresets.find((preset) => preset.id === "json")?.content.includes("sourcePrompt"), "JSON preset should expose structured learner export content.");
 const briefInput = createEmptyLearnerBriefInput(learningProfiles[0]);
 const briefPrompt = buildLearnerBriefPrompt({ ...briefInput, brandName: "ProofLab", visualSignature: "split-screen product proof with exact media" }, learningProfiles[0], profile);
