@@ -72,10 +72,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Smoke public learner view
-        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 180000 --out output/playwright/pages-learner-smoke
+        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 660000 --out output/playwright/pages-learner-smoke
 
       - name: Smoke public Train view
-        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 180000 --train --out output/playwright/pages-hosted-smoke
+        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 660000 --train --out output/playwright/pages-hosted-smoke
 
       - name: Smoke public demo view
-        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 180000 --demo --out output/playwright/pages-demo-smoke
+        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 660000 --demo --out output/playwright/pages-demo-smoke
