@@ -9,6 +9,7 @@ import {
   type OutcomeRecord,
   type PromptDiff,
   type PromptExample,
+  type PromptImportAudit,
   type PromptProfile,
   type ProjectExportPack,
   type RecipeOptions,
@@ -109,6 +110,39 @@ export type TargetExportPreset = {
   filename: string;
   detail: string;
   content: string;
+};
+
+export type LearnerBriefInput = {
+  brandName: string;
+  siteType: string;
+  audience: string;
+  stack: string;
+  visualSignature: string;
+  assets: string;
+  motion: string;
+  constraints: string;
+  qa: string;
+};
+
+export type CorpusReviewRow = {
+  id: string;
+  title: string;
+  decision: "gold" | "learn" | "review" | "quarantine";
+  score: number;
+  cluster: string;
+  duplicate: string;
+  reasons: string[];
+  text: string;
+};
+
+export type LearnerProofItem = {
+  id: string;
+  title: string;
+  kind: "session" | "screenshot" | "outcome";
+  score: number;
+  detail: string;
+  meta: string;
+  url?: string;
 };
 
 export type LearnerInteractionChecklist = {
@@ -354,30 +388,171 @@ export function buildTargetExportPresets({
       label: "Codex",
       filename: "codex-build-prompt.md",
       detail: "Implementation-first prompt with constraints and verification ladder.",
-      content: `${compiledPrompt}\n\nCODEX EXECUTION NOTES\n- Build exactly from the prompt above.\n- Verify desktop and mobile screenshots.\n- Run lint/build and report any caveats.\n- Do not introduce provider keys or unrelated project material.`,
+      content: `# Codex Build Prompt
+
+Build the site exactly from this implementation prompt.
+
+${compiledPrompt}
+
+## Codex Execution Contract
+- Make the real usable first screen, not a marketing placeholder.
+- Use the existing stack requested by the prompt unless the prompt explicitly says otherwise.
+- Verify desktop and mobile screenshots, text wrapping, media loading, no console errors, lint, and build.
+- Report exact commands and caveats.
+- Do not introduce provider keys, unrelated project material, decorative filler, or extra libraries.`,
     },
     {
       id: "claude",
       label: "Claude",
       filename: "claude-design-prompt.md",
       detail: "Design-review framing with explicit success criteria.",
-      content: `You are reviewing and improving a website build prompt for the "${activeProfile.label}" learning profile.\n\n${base}\n\nReturn only a tightened implementation prompt, then a short checklist of changed requirements.`,
+      content: `You are a senior product designer reviewing a website build prompt for the "${activeProfile.label}" learning profile.
+
+Review for taste, completeness, implementation ambiguity, mobile behavior, interaction states, and visual QA.
+
+Prompt:
+${base}
+
+Return:
+1. A tightened implementation prompt.
+2. A short list of requirements you changed.
+3. A short list of risks still worth checking in screenshots.
+
+Do not add provider-key handling, unrelated product claims, or generic AI-themed copy.`,
     },
     {
       id: "v0",
       label: "v0",
       filename: "v0-website-prompt.md",
       detail: "Concise but exact UI-generation prompt.",
-      content: `${base}\n\nKeep the first screen as the usable product experience. Use exact copy, responsive behavior, accessible controls, and no placeholder assets.`,
+      content: `Create a polished, responsive React interface from this prompt.
+
+${base}
+
+Keep the first screen as the usable product experience. Use exact copy, responsive behavior, accessible controls, real media/assets when listed, and no placeholder sections. Prefer familiar controls and keep the visual style restrained.`,
     },
     {
       id: "gpt",
       label: "GPT",
       filename: "gpt-prompt-rewrite.md",
       detail: "General assistant format with learned patterns and export context.",
-      content: `${base}\n\nUse this export context when helpful:\n${learnerExportPack.markdown.slice(0, 1800)}`,
+      content: `Rewrite the following website prompt into a clear, implementation-ready spec.
+
+Source prompt:
+${base}
+
+Use this learner context when helpful:
+${learnerExportPack.markdown.slice(0, 1800)}
+
+Return a single final prompt with headings for stack, fonts, colors, assets, layout, controls, motion, responsive behavior, constraints, and QA. Do not include analysis before the prompt.`,
     },
   ];
+}
+
+export function createEmptyLearnerBriefInput(activeProfile?: LearningProfile): LearnerBriefInput {
+  return {
+    brandName: "Atelier",
+    siteType: activeProfile?.label || "cinematic website hero",
+    audience: "design-conscious founders and builders",
+    stack: "React + TypeScript + Vite + Tailwind CSS",
+    visualSignature: activeProfile?.description || "fullscreen media-led first screen with restrained navigation and precise typography",
+    assets: "Use exact image/video/logo URLs when provided; otherwise specify real asset requirements and fallback behavior.",
+    motion: "Subtle reveal, hover, and menu state changes with reduced-motion fallback.",
+    constraints: "No decorative blobs, no placeholder assets, no unrelated sections, no provider keys, no text overlap.",
+    qa: "Verify desktop and mobile screenshots, media rendering, keyboard focus states, no horizontal overflow, lint, and build.",
+  };
+}
+
+export function buildLearnerBriefPrompt(input: LearnerBriefInput, activeProfile: LearningProfile, profile: PromptProfile): string {
+  const options: RecipeOptions = {
+    brandName: input.brandName.trim() || "Website Brand",
+    industry: input.siteType.trim() || activeProfile.label,
+    stack: input.stack.trim() || "React + TypeScript + Vite + Tailwind CSS",
+    audience: input.audience.trim() || "website visitors",
+    layout: input.visualSignature.trim() || "single-page website experience with a clear visual signature",
+    nav: "Responsive navigation with desktop links, primary CTA, mobile menu behavior, labels, aria states, hover/focus states, and active states.",
+    motion: input.motion.trim() || "Subtle reveal and interaction states with reduced-motion fallback.",
+    assets: input.assets.trim() || "State exact media, object-fit, focal points, preload/lazy behavior, and fallbacks.",
+    strictness: 9,
+  };
+  return [
+    buildRecipePrompt(profile, options),
+    "",
+    "## TARGET AUDIENCE",
+    input.audience,
+    "",
+    "## VISUAL SIGNATURE",
+    input.visualSignature,
+    "",
+    "## REQUIRED ASSETS",
+    input.assets,
+    "",
+    "## MOTION AND STATE",
+    input.motion,
+    "",
+    "## CONSTRAINTS",
+    input.constraints,
+    "",
+    "## QA CHECKS",
+    input.qa,
+  ].join("\n");
+}
+
+export function buildCorpusReviewQueue(audit: PromptImportAudit): CorpusReviewRow[] {
+  return audit.items.slice(0, 12).map((item) => ({
+    id: item.candidate.id,
+    title: item.candidate.title,
+    decision: item.decision,
+    score: item.candidate.score,
+    cluster: item.cluster,
+    duplicate:
+      item.duplicate.kind === "exact"
+        ? `Exact duplicate: ${item.duplicate.match?.title ?? "existing prompt"}`
+        : item.duplicate.kind === "near"
+          ? `Near duplicate: ${item.duplicate.match?.title ?? "existing prompt"}`
+          : "Distinct candidate",
+    reasons: item.reasons,
+    text: item.candidate.text,
+  }));
+}
+
+export function buildLearnerProofGallery({
+  outcomes,
+  screenshots,
+  sessions,
+}: {
+  outcomes: OutcomeRecord[];
+  screenshots: ScreenshotRecord[];
+  sessions: LearnerSession[];
+}): LearnerProofItem[] {
+  const sessionItems = sessions.slice(0, 4).map((session) => ({
+    id: session.id,
+    title: session.title,
+    kind: "session" as const,
+    score: session.dnaScore,
+    detail: `${session.acceptedDiffs.length} accepted diff(s), ${session.exportFilesReady} export file(s) ready.`,
+    meta: `${session.profileLabel} / ${new Date(session.createdAt).toLocaleDateString()}`,
+  }));
+  const screenshotItems = screenshots.slice(0, 4).map((screenshot) => ({
+    id: screenshot.id,
+    title: screenshot.title,
+    kind: "screenshot" as const,
+    score: screenshot.rating === "great" ? 92 : screenshot.rating === "okay" ? 68 : screenshot.rating === "bad" ? 28 : 50,
+    detail: screenshot.notes || "Screenshot proof saved.",
+    meta: screenshot.rating,
+    url: screenshot.url,
+  }));
+  const outcomeItems = outcomes.slice(0, 4).map((outcome) => ({
+    id: `${outcome.promptId}-${outcome.updatedAt}`,
+    title: outcome.title,
+    kind: "outcome" as const,
+    score: outcome.status === "gold" ? 94 : outcome.status === "good" ? 78 : outcome.status === "avoid" ? 24 : 52,
+    detail: outcome.notes || "Outcome feedback saved.",
+    meta: `${outcome.rating} / ${outcome.status}`,
+  }));
+  return [...sessionItems, ...screenshotItems, ...outcomeItems]
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .slice(0, 10);
 }
 
 export function buildLearnerInteractionChecklist({

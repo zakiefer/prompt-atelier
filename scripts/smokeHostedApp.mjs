@@ -61,10 +61,12 @@ const trainHeadings = [
 ];
 const learnerHeadings = [
   "Paste, score, improve, prove, export.",
+  "Brief builder",
   "Try sample prompts",
   "Prompt revision",
   "Why not 100",
   "Learned from similar prompts",
+  "Outcome feedback loop",
   "Prompt diff editor",
   "House-format compiler",
   "Benchmark battle",
@@ -72,8 +74,10 @@ const learnerHeadings = [
   "Target export presets",
   "Batch training review",
   "Export pack",
+  "Corpus review queue",
   "Corpus quarantine queue",
   "Saved learner sessions",
+  "Visual proof gallery",
 ];
 const demoHeadings = [
   "Website prompt learner",
@@ -144,17 +148,22 @@ try {
             ]
           : [
               "public-learner",
+              "guided-first-run",
+              "brief-builder",
               "dna-rewrite-plan",
               "corpus-neighbors",
               "prompt-diff-editor",
+              "outcome-feedback-loop",
               "house-compiler",
               "benchmark-battle",
               "recipe-builder",
               "target-export-presets",
               "batch-training-review",
               "learner-export-pack",
+              "corpus-review-queue",
               "corpus-quarantine",
               "learner-session-history",
+              "visual-proof-gallery",
             ];
         return {
           missingSections: requiredSections.filter((section) => !pageDocument.querySelector(`[data-train-section="${section}"]`)),
@@ -206,6 +215,12 @@ async function runLearnerInteractions(page) {
     checked.push("sample prompt loaded");
   }
 
+  const briefButton = page.locator('[data-train-section="brief-builder"] button').filter({ hasText: /Use brief prompt/ }).first();
+  if (await briefButton.count()) {
+    await briefButton.click();
+    checked.push("brief prompt loaded");
+  }
+
   const profileButton = page.locator(".profile-chip").nth(1);
   if (await profileButton.count()) {
     await profileButton.click();
@@ -224,6 +239,21 @@ async function runLearnerInteractions(page) {
     checked.push("diff rejected");
   }
 
+  const corpusTextarea = page.locator(".import-box textarea").first();
+  if (await corpusTextarea.count()) {
+    await corpusTextarea.fill([
+      "Build a React + TypeScript + Vite + Tailwind CSS fullscreen video hero for a design studio with exact fonts, colors, CTA states, mobile menu, and desktop/mobile QA.",
+      "",
+      "Build a product dashboard hero with exact charts, empty/loading states, responsive grid, keyboard focus, no placeholder assets, and screenshot verification.",
+    ].join("\\n"));
+    await page.waitForFunction("document.body.textContent.includes('candidate') || document.body.textContent.includes('Corpus review queue')", null, { timeout: 5000 }).catch(() => undefined);
+    const goldButton = page.locator('[data-train-section="corpus-review-queue"] button').filter({ hasText: /^Gold$/ }).first();
+    if (await goldButton.count()) {
+      await goldButton.click();
+      checked.push("corpus candidate marked gold");
+    }
+  }
+
   const saveCompiledButton = page.locator('[data-train-section="house-compiler"] button').filter({ hasText: /^Save$/ }).first();
   if (await saveCompiledButton.count()) {
     await saveCompiledButton.click();
@@ -236,10 +266,28 @@ async function runLearnerInteractions(page) {
     checked.push("benchmark winner saved");
   }
 
+  const saveFeedbackButton = page.locator('[data-train-section="outcome-feedback-loop"] button').filter({ hasText: /Save feedback/ }).first();
+  if (await saveFeedbackButton.count()) {
+    await saveFeedbackButton.click();
+    checked.push("outcome feedback saved");
+  }
+
   const saveSessionButton = page.locator('[data-learner-action="save-session"]').first();
   if (await saveSessionButton.count()) {
     await saveSessionButton.click();
     checked.push("learner session saved");
+  }
+
+  const detailsButton = page.locator('[data-train-section="learner-session-history"] button').filter({ hasText: /^Details$/ }).first();
+  if (await detailsButton.count()) {
+    await detailsButton.click();
+    checked.push("learner session details opened");
+  }
+
+  const reopenButton = page.locator('[data-train-section="learner-session-history"] button').filter({ hasText: /^Reopen$/ }).first();
+  if (await reopenButton.count()) {
+    await reopenButton.click();
+    checked.push("learner session reopened");
   }
 
   const exportButton = page.locator('[data-train-section="learner-export-pack"] button').filter({ hasText: /^Export$/ }).first();
@@ -268,7 +316,7 @@ async function runLearnerInteractions(page) {
     };
   });
 
-  if (!checked.includes("profile switched") || !checked.includes("diff accepted") || !checked.includes("learner session saved")) {
+  if (!checked.includes("profile switched") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {

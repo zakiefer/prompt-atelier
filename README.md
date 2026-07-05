@@ -71,6 +71,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Actionable learner controls for pinning/rejecting memory rules, promoting/repairing/excluding result reviews, saving editor-section patches, persisting project spaces, and running holdout regression from the CLI
 - Self-serve learner experience with saved learning profiles, prompt diff review, house-format compiler output, benchmark battles, batch review, public demo routing, learner export packs, and split learner/app chrome chunks that keep the main bundle under the Vite warning line
 - Learner workbench upgrades for saved learner sessions, nearest-neighbor corpus examples, why-not-100 rewrite moves, learned recipe cards, sample prompts, Codex/Claude/v0/GPT export presets, corpus quarantine review, hosted learner-session sync, and Pages CI smokes for learner, Train, and demo routes
+- Productized learner flow with sticky first-run navigation, structured brief builder, saved-session reopen/details, actionable corpus review queue, result feedback capture, visual proof gallery, stronger target-specific exports, and mobile single-column polish
 
 ## Development
 
@@ -197,6 +198,7 @@ The Train tab now starts with:
 33. Actionable product controls: memory rules can be accepted, pinned, or rejected; result reviews can promote, repair, or exclude examples; editor sections can be saved as scoped patches; project spaces persist across browser/API snapshots; and `check:holdout` guards memory/template changes.
 34. A self-serve learner front door that lets someone paste a website prompt, pick a saved learning profile, see an explainable quality score, accept/reject exact prompt diffs, compile the result into the house format, run benchmark battles, review batch training readiness, open a public demo route, and export a complete training pack without changing Claude or provider keys.
 35. A learner proof layer that saves prompt sessions, shows the closest corpus examples, explains why a prompt is not 100 with exact rewrite moves, builds learned archetype recipes, offers sample prompts, exports target-specific prompt packs, surfaces quarantine candidates, and exercises the learner/demo/Train routes in CI.
+36. A productized learner workflow that gives first-time users a guided rail, structured prompt brief builder, clickable saved-session details, import/gold/bad/quarantine corpus decisions, outcome feedback with screenshot notes, a visual proof gallery, and differentiated Codex/Claude/v0/GPT exports.
 
 The tightest improvement cycle is:
 

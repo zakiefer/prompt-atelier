@@ -10,6 +10,7 @@ import {
   type DnaScoreExplanation,
   type Evaluation,
   type Feature,
+  type OutcomeRating,
   type PromptAnalysis,
   type PromptBattle,
   type PromptDiff,
@@ -18,9 +19,14 @@ import {
   type PromptProfile,
 } from "./promptEngine";
 import {
+  buildLearnerBriefPrompt,
+  createEmptyLearnerBriefInput,
   type CorpusNeighbor,
+  type CorpusReviewRow,
   type DnaRewrite,
+  type LearnerBriefInput,
   type LearnerExportPack,
+  type LearnerProofItem,
   type LearnerRecipe,
   type LearnerSamplePrompt,
   type LearnerSession,
@@ -303,8 +309,10 @@ export function LearnView({
   learnerEvaluation,
   learnerExportPack,
   learnerRecipes,
+  learnerProofGallery,
   learnerText,
   learningProfiles,
+  corpusReviewRows,
   samplePrompts,
   savedLearnerSessions,
   targetExportPresets,
@@ -316,6 +324,9 @@ export function LearnView({
   onSaveImproved,
   onSaveLearnerSession,
   onSaveReviewedDiff,
+  onOpenLearnerSession,
+  onRecordOutcomeFeedback,
+  onReviewCorpusCandidate,
   onUseSamplePrompt,
   profile,
   selectedAnalysis,
@@ -339,8 +350,10 @@ export function LearnView({
   learnerEvaluation: Evaluation;
   learnerExportPack: LearnerExportPack;
   learnerRecipes: LearnerRecipe[];
+  learnerProofGallery: LearnerProofItem[];
   learnerText: string;
   learningProfiles: LearningProfile[];
+  corpusReviewRows: CorpusReviewRow[];
   samplePrompts: LearnerSamplePrompt[];
   savedLearnerSessions: LearnerSession[];
   targetExportPresets: TargetExportPreset[];
@@ -352,6 +365,9 @@ export function LearnView({
   onSaveImproved: () => void;
   onSaveLearnerSession: (reviewedPrompt: string, acceptedDiffs: string[], rejectedDiffs: string[]) => void;
   onSaveReviewedDiff: (text: string) => void;
+  onOpenLearnerSession: (session: LearnerSession) => void;
+  onRecordOutcomeFeedback: (rating: OutcomeRating, notes: string, screenshotUrl: string, screenshotNotes: string) => void;
+  onReviewCorpusCandidate: (row: CorpusReviewRow, action: "import" | "gold" | "bad" | "quarantine" | "merge", notes: string) => void;
   onUseSamplePrompt: (text: string) => void;
   profile: PromptProfile;
   selectedAnalysis?: PromptAnalysis;
@@ -361,8 +377,17 @@ export function LearnView({
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [diffDecisions, setDiffDecisions] = useState<Record<string, "accepted" | "rejected">>({});
+  const [briefInput, setBriefInput] = useState<LearnerBriefInput>(() => createEmptyLearnerBriefInput(activeLearningProfile));
+  const [outcomeRating, setOutcomeRating] = useState<OutcomeRating>("great");
+  const [outcomeNotes, setOutcomeNotes] = useState("Built result matched the intended hierarchy, media treatment, and mobile layout.");
+  const [outcomeScreenshotUrl, setOutcomeScreenshotUrl] = useState("");
+  const [outcomeScreenshotNotes, setOutcomeScreenshotNotes] = useState("Desktop/mobile proof notes.");
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [selectedSessionId, setSelectedSessionId] = useState("");
   const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
   const diffCategories = learnerDiff?.categories.slice(0, 10) ?? [];
+  const selectedSession = savedLearnerSessions.find((session) => session.id === selectedSessionId) || savedLearnerSessions[0];
+  const briefPrompt = useMemo(() => buildLearnerBriefPrompt(briefInput, activeLearningProfile, profile), [activeLearningProfile, briefInput, profile]);
   const acceptedDiffLabels = diffCategories.filter((category) => diffDecisions[String(category.key)] === "accepted").map((category) => category.label);
   const rejectedDiffLabels = diffCategories.filter((category) => diffDecisions[String(category.key)] === "rejected").map((category) => category.label);
   const reviewedPrompt = useMemo(() => {
@@ -387,6 +412,14 @@ export function LearnView({
     { label: "Battle", ready: learnerEvaluation.categoryScores.constraints >= 40, detail: "Constraints are strong enough to compare variants." },
     { label: "Prove", ready: /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: "Proof checklist is present." },
     { label: "Export", ready: Boolean(improvedPrompt.trim()), detail: "Copy or save the improved prompt." },
+  ];
+  const guidedSections = [
+    "Paste",
+    "Score",
+    "Revise",
+    "Compare",
+    "Feedback",
+    "Export",
   ];
   const interactionChecks = [
     { label: "Profile switching", ready: Boolean(activeLearningProfile.id), detail: `${activeLearningProfile.label} is active.` },
@@ -421,7 +454,16 @@ export function LearnView({
           ))}
         </div>
 
-        <div className="learner-flow-grid">
+        <nav className="learner-jump-nav" aria-label="Guided learner sections" data-train-section="guided-first-run">
+          {guidedSections.map((section, index) => (
+            <a href={`#learner-${section.toLowerCase()}`} key={section}>
+              <span>{index + 1}</span>
+              {section}
+            </a>
+          ))}
+        </nav>
+
+        <div className="learner-flow-grid" id="learner-paste">
           <div className="learner-input-card">
             <Field label="Prompt to learn from">
               <textarea
@@ -454,7 +496,7 @@ export function LearnView({
             </div>
           </div>
 
-          <div className="learner-output-card">
+          <div className="learner-output-card" id="learner-revise">
             <div className="output-header">
               <h3>Prompt revision</h3>
               <div className="button-row">
@@ -475,6 +517,53 @@ export function LearnView({
             <FeedbackList title="Top 3 fixes" items={learnerEvaluation.upgrades.slice(0, 3)} empty="No major gaps detected." />
           </div>
         </div>
+
+        <section className="learner-mini-panel" data-train-section="brief-builder" id="learner-score">
+          <div className="output-header">
+            <div>
+              <h3>Brief builder</h3>
+              <p>Generate a fresh implementation-ready prompt from structured choices instead of a blank textarea.</p>
+            </div>
+            <button className="primary-button compact-button" type="button" onClick={() => onUseSamplePrompt(briefPrompt)}>
+              Use brief prompt
+            </button>
+          </div>
+          <div className="brief-builder-grid">
+            {([
+              ["brandName", "Brand"],
+              ["siteType", "Site type"],
+              ["audience", "Audience"],
+              ["stack", "Stack"],
+              ["visualSignature", "Visual signature"],
+              ["assets", "Assets"],
+              ["motion", "Motion"],
+              ["constraints", "Constraints"],
+              ["qa", "QA"],
+            ] as const).map(([key, label]) => (
+              <Field label={label} key={key}>
+                {key === "visualSignature" || key === "assets" || key === "motion" || key === "constraints" || key === "qa" ? (
+                  <textarea
+                    className="compact-textarea"
+                    value={briefInput[key]}
+                    onChange={(event) => setBriefInput((current) => ({ ...current, [key]: event.target.value }))}
+                  />
+                ) : (
+                  <input value={briefInput[key]} onChange={(event) => setBriefInput((current) => ({ ...current, [key]: event.target.value }))} />
+                )}
+              </Field>
+            ))}
+          </div>
+          <textarea className="generated-output mini-output" readOnly value={briefPrompt} />
+          <div className="button-row">
+            <button className="ghost-button compact-button" type="button" onClick={() => onCopy(briefPrompt, "brief-builder")}>
+              {copied === "brief-builder" ? <Check size={15} /> : <Copy size={15} />}
+              Copy brief
+            </button>
+            <button className="ghost-button compact-button" type="button" onClick={() => setBriefInput(createEmptyLearnerBriefInput(activeLearningProfile))}>
+              Reset fields
+            </button>
+          </div>
+        </section>
 
         <div className="self-serve-grid">
           <article className="learner-mini-panel">
@@ -539,7 +628,7 @@ export function LearnView({
           </article>
         </div>
 
-        <section className="learner-mini-panel" data-train-section="prompt-diff-editor">
+        <section className="learner-mini-panel" data-train-section="prompt-diff-editor" id="learner-compare">
           <div className="output-header">
             <div>
               <h3>Prompt diff editor</h3>
@@ -573,6 +662,41 @@ export function LearnView({
               <Save size={15} />
               Save learner session
             </button>
+          </div>
+        </section>
+
+        <section className="learner-mini-panel" data-train-section="outcome-feedback-loop" id="learner-feedback">
+          <div className="output-header">
+            <div>
+              <h3>Outcome feedback loop</h3>
+              <p>Record how the built result performed so prompt quality learns from actual output, not only static text.</p>
+            </div>
+            <button
+              className="primary-button compact-button"
+              type="button"
+              onClick={() => onRecordOutcomeFeedback(outcomeRating, outcomeNotes, outcomeScreenshotUrl, outcomeScreenshotNotes)}
+            >
+              Save feedback
+            </button>
+          </div>
+          <div className="feedback-form-grid">
+            <Field label="Result rating">
+              <select value={outcomeRating} onChange={(event) => setOutcomeRating(event.target.value as OutcomeRating)}>
+                <option value="great">Great</option>
+                <option value="okay">Okay</option>
+                <option value="bad">Bad</option>
+                <option value="unrated">Unrated</option>
+              </select>
+            </Field>
+            <Field label="Screenshot URL">
+              <input value={outcomeScreenshotUrl} onChange={(event) => setOutcomeScreenshotUrl(event.target.value)} placeholder="https://..." />
+            </Field>
+            <Field label="Result notes">
+              <textarea className="compact-textarea" value={outcomeNotes} onChange={(event) => setOutcomeNotes(event.target.value)} />
+            </Field>
+            <Field label="Screenshot notes">
+              <textarea className="compact-textarea" value={outcomeScreenshotNotes} onChange={(event) => setOutcomeScreenshotNotes(event.target.value)} />
+            </Field>
           </div>
         </section>
 
@@ -675,7 +799,7 @@ export function LearnView({
             <FeedbackList title="Batch recommendations" items={batchAudit.recommendations.slice(0, 4)} empty="No batch recommendations yet." />
           </article>
 
-          <article className="learner-mini-panel" data-train-section="learner-export-pack">
+          <article className="learner-mini-panel" data-train-section="learner-export-pack" id="learner-export">
             <div className="output-header">
               <h3>Export pack</h3>
               <button className="primary-button compact-button" type="button" onClick={onExportLearnerPack}>
@@ -700,6 +824,36 @@ export function LearnView({
         </div>
 
         <div className="self-serve-grid">
+          <article className="learner-mini-panel" data-train-section="corpus-review-queue">
+            <div className="output-header">
+              <h3>Corpus review queue</h3>
+              <span className="selected-meta">{corpusReviewRows.length} candidate(s)</span>
+            </div>
+            <div className="version-list compact-list">
+              {corpusReviewRows.slice(0, 5).map((row) => (
+                <article className="version-card review-card" key={row.id} data-decision={row.decision}>
+                  <strong>{row.title}</strong>
+                  <span>{row.decision} / {row.score}% / {row.cluster}</span>
+                  <p>{row.duplicate}</p>
+                  <small>{row.reasons.slice(0, 3).join(" / ")}</small>
+                  <textarea
+                    className="compact-textarea"
+                    value={reviewNotes[row.id] || ""}
+                    placeholder="Review note..."
+                    onChange={(event) => setReviewNotes((current) => ({ ...current, [row.id]: event.target.value }))}
+                  />
+                  <div className="button-row compact-row">
+                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "import", reviewNotes[row.id] || "")}>Import</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "gold", reviewNotes[row.id] || "")}>Gold</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "bad", reviewNotes[row.id] || "")}>Bad</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "quarantine", reviewNotes[row.id] || "")}>Quarantine</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => onReviewCorpusCandidate(row, "merge", reviewNotes[row.id] || "")}>Merge note</button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </article>
+
           <article className="learner-mini-panel" data-train-section="corpus-quarantine">
             <div className="output-header">
               <h3>Corpus quarantine queue</h3>
@@ -739,11 +893,47 @@ export function LearnView({
                   <strong>{session.title}</strong>
                   <span>{session.profileLabel} / Quality {session.dnaScore}</span>
                   <p>{session.benchmarkWinner.title} won at {session.benchmarkWinner.score}/100.</p>
+                  <div className="button-row compact-row">
+                    <button className="ghost-button compact-button" type="button" onClick={() => setSelectedSessionId(session.id)}>Details</button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => onOpenLearnerSession(session)}>Reopen</button>
+                  </div>
                 </article>
               ))}
             </div>
+            {selectedSession ? (
+              <article className="session-detail-card">
+                <strong>{selectedSession.title}</strong>
+                <span>{selectedSession.profileLabel} / prompt {selectedSession.promptScore} / quality {selectedSession.dnaScore}</span>
+                <p>Accepted: {selectedSession.acceptedDiffs.join(", ") || "none"}.</p>
+                <p>Rejected: {selectedSession.rejectedDiffs.join(", ") || "none"}.</p>
+                <div className="button-row compact-row">
+                  <button className="ghost-button compact-button" type="button" onClick={() => onCopy(selectedSession.reviewedPrompt, `session-reviewed-${selectedSession.id}`)}>Copy reviewed</button>
+                  <button className="ghost-button compact-button" type="button" onClick={() => onUseSamplePrompt(selectedSession.benchmarkWinner.prompt)}>Use winner</button>
+                </div>
+              </article>
+            ) : null}
           </article>
         </div>
+
+        <section className="learner-mini-panel" data-train-section="visual-proof-gallery">
+          <div className="output-header">
+            <div>
+              <h3>Visual proof gallery</h3>
+              <p>Before/after evidence from saved sessions, screenshot notes, and outcome records.</p>
+            </div>
+            <span className="selected-meta">{learnerProofGallery.length} proof item(s)</span>
+          </div>
+          <div className="proof-gallery-grid">
+            {learnerProofGallery.map((item) => (
+              <article className="proof-card" key={item.id} data-kind={item.kind}>
+                <strong>{item.title}</strong>
+                <span>{item.kind} / {item.score}% / {item.meta}</span>
+                <p>{item.detail}</p>
+                {item.url ? <a className="ghost-button compact-button" href={item.url} target="_blank" rel="noreferrer">Open proof</a> : null}
+              </article>
+            ))}
+          </div>
+        </section>
 
         <button className="ghost-button wide-button" type="button" onClick={() => setAdvancedOpen((open) => !open)}>
           <SlidersHorizontal size={15} />

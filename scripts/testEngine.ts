@@ -163,15 +163,19 @@ import {
   buildResultReviewerReport,
 } from "../src/productEvolution";
 import {
+  buildCorpusReviewQueue,
   buildCompilerHouseFormatText,
   buildCorpusNeighbors,
   buildDnaRewritePlan,
+  buildLearnerBriefPrompt,
   buildLearnerExportPack,
+  buildLearnerProofGallery,
   buildLearnerRecipes,
   buildLearningProfiles,
   buildSamplePromptGallery,
   buildTargetExportPresets,
   createLearnerSession,
+  createEmptyLearnerBriefInput,
 } from "../src/learnerProduct";
 
 function readCuratedSeedPrompts() {
@@ -531,6 +535,24 @@ const targetPresets = buildTargetExportPresets({
 });
 assert.deepEqual(targetPresets.map((preset) => preset.id), ["codex", "claude", "v0", "gpt"], "Target export presets should cover Codex, Claude, v0, and GPT.");
 assert.ok(targetPresets.every((preset) => preset.content.includes("prompt") || preset.content.includes("PROMPT")), "Target presets should include prompt content.");
+assert.ok(targetPresets.find((preset) => preset.id === "codex")?.content.includes("Codex Execution Contract"), "Codex preset should have a distinct execution contract.");
+assert.ok(targetPresets.find((preset) => preset.id === "claude")?.content.includes("senior product designer"), "Claude preset should use design-review framing.");
+assert.ok(targetPresets.find((preset) => preset.id === "v0")?.content.includes("responsive React interface"), "v0 preset should use UI-generation framing.");
+const briefInput = createEmptyLearnerBriefInput(learningProfiles[0]);
+const briefPrompt = buildLearnerBriefPrompt({ ...briefInput, brandName: "ProofLab", visualSignature: "split-screen product proof with exact media" }, learningProfiles[0], profile);
+assert.ok(briefPrompt.includes("ProofLab"), "Brief builder should preserve the chosen brand.");
+assert.ok(briefPrompt.includes("split-screen product proof"), "Brief builder should include the visual signature.");
+const corpusReviewRows = buildCorpusReviewQueue(
+  auditPromptImportBatch(
+    parsePromptBatch(
+      `${exactPrompt}\n\nBuild a React + TypeScript + Vite dashboard hero with exact charts, empty/loading states, responsive grid, and screenshot QA.`,
+      "review-test",
+    ),
+    examples,
+  ),
+);
+assert.ok(corpusReviewRows.length >= 1, "Corpus review queue should expose audit candidates.");
+assert.ok(corpusReviewRows.every((row) => row.duplicate && row.text), "Corpus review rows should carry duplicate posture and prompt text.");
 const learnerSession = createLearnerSession({
   acceptedDiffs: ["Assets", "QA"],
   activeProfile: learningProfiles[0],
@@ -545,6 +567,9 @@ const learnerSession = createLearnerSession({
 });
 assert.equal(learnerSession.profileId, learningProfiles[0].id, "Learner session should preserve the active profile.");
 assert.equal(learnerSession.acceptedDiffs.length, 2, "Learner session should preserve accepted diff decisions.");
+const learnerProofGallery = buildLearnerProofGallery({ outcomes, screenshots, sessions: [learnerSession] });
+assert.ok(learnerProofGallery.length >= 3, "Learner proof gallery should blend sessions, screenshots, and outcomes.");
+assert.ok(learnerProofGallery.some((item) => item.kind === "session"), "Learner proof gallery should include saved session proof.");
 
 const codexBuildPack = buildCodexBuildPack({
   prompt: examples[0],
@@ -1637,4 +1662,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 335, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 344, score: score.score, snapshot: snapshot.label }, null, 2));

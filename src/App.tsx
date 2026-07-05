@@ -402,17 +402,28 @@ import {
 } from "./productEvolution";
 import {
   buildCorpusNeighbors,
+  buildCorpusReviewQueue,
   buildCompilerHouseFormatText,
   buildDnaRewritePlan,
   buildLearnerExportPack,
+  buildLearnerProofGallery,
   buildLearningProfiles,
   buildLearnerRecipes,
   buildSamplePromptGallery,
   buildTargetExportPresets,
   createLearnerSession,
+  type CorpusReviewRow,
   type LearnerSession,
 } from "./learnerProduct";
 import { LearnView, PublicDemoRoute } from "./LearnerExperience";
+import {
+  createCorpusCandidatePrompt,
+  createCorpusReviewLineageNode,
+  createLearnerFeedbackPrompt,
+  createLearnerFeedbackScreenshot,
+  outcomeStatusForRating,
+  type CorpusCandidateReviewAction,
+} from "./learnerAppActions";
 import { BatchIngestionPreview, DraftIngestionPreflight, Field, Metric, SliderField, SmartIngestion, TabButton, Toggle } from "./AppChrome";
 import {
   analyzeScreenshots,
@@ -445,6 +456,7 @@ import {
 } from "./promptApi";
 import { readAllCollections, writeCollection } from "./promptDb";
 import { seedPrompts } from "./seedPrompts";
+import { benchmarkBriefs } from "./appStatic";
 
 const STORAGE_KEY = "prompt-atelier-user-prompts";
 const HISTORY_KEY = "prompt-atelier-version-history";
@@ -1019,19 +1031,6 @@ type ClosedLoopRun = {
   recommendations: string[];
 };
 
-type BenchmarkBrief = {
-  id: string;
-  title: string;
-  brandName: string;
-  siteType: string;
-  audience: string;
-  goal: string;
-  visualDirection: string;
-  stack: string;
-  assets: string;
-  constraints: string;
-};
-
 type BenchmarkRun = {
   id: string;
   createdAt: string;
@@ -1152,129 +1151,6 @@ type MutationTournamentRun = {
   }[];
   notes: string[];
 };
-
-const benchmarkBriefs: BenchmarkBrief[] = [
-  {
-    id: "cinematic-saas-hero",
-    title: "Cinematic SaaS Hero",
-    brandName: "Northstar",
-    siteType: "single-page SaaS hero",
-    audience: "founders evaluating premium software",
-    goal: "prove the product is credible in the first viewport",
-    visualDirection: "cinematic video background, restrained glass controls, clear product promise",
-    stack: "React + TypeScript + Vite + Tailwind CSS",
-    assets: "exact looping video URL, logo wordmark, desktop and mobile screenshot QA",
-    constraints: "no placeholder assets, no decorative blobs, no text overlap",
-  },
-  {
-    id: "ai-dashboard",
-    title: "AI Dashboard Surface",
-    brandName: "Metricflow",
-    siteType: "analytics dashboard landing page",
-    audience: "operations leaders and data teams",
-    goal: "show product depth without marketing fluff",
-    visualDirection: "dense but calm dashboard proof, neutral palette, readable metrics",
-    stack: "React + TypeScript + Tailwind CSS + lucide-react",
-    assets: "mock dashboard panels, charts, exact empty/loading/error states",
-    constraints: "no oversized hero-only marketing page; prioritize scanability",
-  },
-  {
-    id: "agency-portfolio",
-    title: "Agency Portfolio Hero",
-    brandName: "Atelier",
-    siteType: "creative studio portfolio",
-    audience: "brand teams looking for a design partner",
-    goal: "feel editorial, premium, and implementation-ready",
-    visualDirection: "full-screen video, expressive serif headline, mobile menu, case-study cues",
-    stack: "React + TypeScript + Vite + Tailwind CSS",
-    assets: "exact video URL, project thumbnails, accessible navigation states",
-    constraints: "no generic agency copy; visible first-screen signal of craft",
-  },
-  {
-    id: "signup-flow",
-    title: "Conversion Signup Flow",
-    brandName: "Aurora",
-    siteType: "two-column registration interface",
-    audience: "new users onboarding into a premium app",
-    goal: "make signup feel trustworthy and fast",
-    visualDirection: "video-supported left rail, clean form right rail, progress steps",
-    stack: "React + TypeScript + Tailwind CSS + motion/react",
-    assets: "background video, social icons, password visibility toggle",
-    constraints: "no external auth wiring; form states must fit on mobile",
-  },
-  {
-    id: "commerce-product",
-    title: "Commerce Product Hero",
-    brandName: "CozyPaws",
-    siteType: "pet commerce hero",
-    audience: "mobile shoppers comparing product quality",
-    goal: "sell the product with proof, not a landing-page brochure",
-    visualDirection: "warm product photography, compact cards, offer and rating proof",
-    stack: "React + TypeScript + Vite + Tailwind CSS",
-    assets: "product image URL, price/rating chips, responsive cart CTA",
-    constraints: "avoid one-note beige palette and generic stock placeholders",
-  },
-  {
-    id: "fintech-trust",
-    title: "Fintech Trust Hero",
-    brandName: "Harbor",
-    siteType: "stablecoin product landing page",
-    audience: "finance operators and technical buyers",
-    goal: "communicate trust, compliance, and product clarity",
-    visualDirection: "quiet fintech layout, proof badges, card/account visual",
-    stack: "React + TypeScript + Tailwind CSS",
-    assets: "logo, product mock, compliance badges, motion states",
-    constraints: "no hype crypto language; accessibility and contrast required",
-  },
-  {
-    id: "wellness-video",
-    title: "Wellness Video Hero",
-    brandName: "Aurai",
-    siteType: "AI wellness companion hero",
-    audience: "people seeking calm support",
-    goal: "feel personal, private, and safe",
-    visualDirection: "fullscreen video without dark overlay, glass email capture, feature pills",
-    stack: "React + TypeScript + Tailwind CSS + lucide-react",
-    assets: "exact video URL, custom SVG logo, email form states",
-    constraints: "no clinical overclaiming; protect mobile readability",
-  },
-  {
-    id: "education-platform",
-    title: "Education Platform Hero",
-    brandName: "DesignPro",
-    siteType: "product design education landing page",
-    audience: "emerging designers choosing a cohort",
-    goal: "make the program feel selective and career-ready",
-    visualDirection: "dark video hero, shiny headline treatment, cohort proof stats",
-    stack: "React + TypeScript + Tailwind CSS + Framer Motion",
-    assets: "exact video URL, animated gradient headline, application CTA",
-    constraints: "motion must be purposeful and responsive",
-  },
-  {
-    id: "feature-section",
-    title: "Core Feature Cards",
-    brandName: "Viktor",
-    siteType: "three-card marketing feature section",
-    audience: "builders evaluating an image-generation tool",
-    goal: "show concrete product capabilities in one section",
-    visualDirection: "gradient cards, exact SVG/image assets, no animation",
-    stack: "React + TypeScript + plain CSS or Tailwind CSS",
-    assets: "network SVG, folder SVG, cursor icon, search icon",
-    constraints: "static component, no hover behavior, exact card dimensions",
-  },
-  {
-    id: "error-page",
-    title: "404 Hero Page",
-    brandName: "Wayfinder",
-    siteType: "full-viewport error page",
-    audience: "users who hit a missing route",
-    goal: "recover gracefully with a polished empty state",
-    visualDirection: "minimal full-screen layout, useful navigation, subtle motion",
-    stack: "React + TypeScript + Tailwind CSS",
-    assets: "brand mark, background visual, home/search actions",
-    constraints: "100vh no scroll, accessible focus states, no dead CTAs",
-  },
-];
 
 function topFeatureLabels(features: Feature[] | undefined, fallback: string[], limit = 6) {
   const labels = (features ?? []).map((feature) => feature.label).filter(Boolean).slice(0, limit);
@@ -2421,6 +2297,7 @@ export default function App() {
     () => auditPromptImportBatch(draftBatchCandidates, examples),
     [draftBatchCandidates, examples],
   );
+  const learnerCorpusReviewRows = useMemo(() => buildCorpusReviewQueue(draftImportAudit), [draftImportAudit]);
   const draftContaminationReport = useMemo(() => buildDraftContaminationReport(draftPrompt), [draftPrompt]);
   const selectedPrompt = examples.find((example) => example.id === selectedId) ?? examples[0];
   const selectedAnalysis = useMemo(
@@ -2544,6 +2421,10 @@ export default function App() {
     [dnaExplanation, improvedPrompt, learnerSource],
   );
   const learnerRecipes = useMemo(() => buildLearnerRecipes({ clusters, profile }), [clusters, profile]);
+  const learnerProofGallery = useMemo(
+    () => buildLearnerProofGallery({ outcomes, screenshots, sessions: learnerSessions }),
+    [learnerSessions, outcomes, screenshots],
+  );
   const compiledPrompt = useMemo(
     () => compilePromptFromBrief(compilerInput, profile, outcomes, resultScore),
     [compilerInput, outcomes, profile, resultScore],
@@ -4285,6 +4166,35 @@ export default function App() {
     setDraftPrompt("");
   }
 
+  function reviewLearnerCorpusCandidate(row: CorpusReviewRow, action: CorpusCandidateReviewAction, notes: string) {
+    if (action === "quarantine") {
+      setImportNotice(`Quarantined candidate for review: ${row.title}. ${notes}`.trim());
+      return;
+    }
+    if (action === "merge") {
+      setDraftPrompt((current) => [current.trim(), `MERGE NOTE: ${row.title}\n${notes || row.duplicate}`].filter(Boolean).join("\n\n"));
+      setImportNotice(`Added merge note for ${row.title}.`);
+      return;
+    }
+    const duplicate = detectDuplicatePrompt(row.text, examples);
+    if (duplicate.kind === "exact") {
+      setImportNotice(`Skipped exact duplicate: ${duplicate.match?.title ?? row.title}`);
+      return;
+    }
+    const prompt = createCorpusCandidatePrompt(row);
+    setUserPrompts((current) => [prompt, ...current]);
+    setSelectedId(prompt.id);
+    addLineageNode(createCorpusReviewLineageNode(prompt, row, action, notes));
+    if (action === "gold" || action === "bad") {
+      updateOutcome(prompt, {
+        rating: action === "gold" ? "great" : "bad",
+        status: action === "gold" ? "gold" : "avoid",
+        notes: notes || `Marked ${action} from learner corpus review queue. ${row.reasons.join(" ")}`,
+      });
+    }
+    setImportNotice(`${action === "gold" ? "Imported and marked gold" : action === "bad" ? "Imported and marked bad" : "Imported"}: ${prompt.title}.`);
+  }
+
   async function importPromptFiles(files: FileList | null | undefined) {
     if (!files?.length) return;
     const candidates = (
@@ -5997,6 +5907,31 @@ export default function App() {
     });
     setLearnerSessions((current) => [session, ...current.filter((item) => item.id !== session.id)].slice(0, 60));
     setApiNotice(`Saved learner session: ${session.title}.`);
+  }
+
+  function openLearnerSession(session: LearnerSession) {
+    setImproveText(session.sourcePrompt);
+    if (learningProfiles.some((item) => item.id === session.profileId)) {
+      setActiveLearningProfileId(session.profileId);
+    }
+    setApiNotice(`Reopened learner session: ${session.title}.`);
+  }
+
+  function recordLearnerOutcomeFeedback(rating: OutcomeRating, notes: string, screenshotUrl: string, screenshotNotes: string) {
+    const status = outcomeStatusForRating(rating);
+    const prompt = selectedPrompt ?? createLearnerFeedbackPrompt(improvedPrompt || learnerSource);
+    if (!selectedPrompt) {
+      setUserPrompts((current) => [prompt, ...current]);
+      setSelectedId(prompt.id);
+    }
+    updateOutcome(prompt, {
+      rating,
+      status,
+      notes: notes || `Learner outcome feedback recorded as ${rating}.`,
+    });
+    const screenshotRecord = createLearnerFeedbackScreenshot({ notes, prompt, rating, screenshotNotes, screenshotUrl });
+    if (screenshotRecord) addScreenshot(screenshotRecord);
+    setApiNotice(`Saved learner feedback for ${prompt.title}: ${rating}.`);
   }
 
   function exportCodexBuildPack() {
@@ -7712,6 +7647,7 @@ export default function App() {
               batchCandidateCount={draftBatchCandidates.length}
               clusters={clusters}
               compiledPrompt={learnerHousePrompt}
+              corpusReviewRows={learnerCorpusReviewRows}
               copied={copied}
               dnaExplanation={dnaExplanation}
               dnaScore={dnaScore}
@@ -7722,6 +7658,7 @@ export default function App() {
               learnerDiff={learnerPromptDiff}
               learnerEvaluation={learnerEvaluation}
               learnerExportPack={learnerExportPack}
+              learnerProofGallery={learnerProofGallery}
               learnerRecipes={learnerRecipes}
               learnerText={improveText}
               learningProfiles={learningProfiles}
@@ -7731,6 +7668,9 @@ export default function App() {
               onCopy={(value, key) => void copyText(value, key)}
               onCopyImproved={() => void copyText(improvedPrompt, "learner-improved")}
               onExportLearnerPack={exportLearnerPack}
+              onOpenLearnerSession={openLearnerSession}
+              onRecordOutcomeFeedback={recordLearnerOutcomeFeedback}
+              onReviewCorpusCandidate={reviewLearnerCorpusCandidate}
               onSaveBattleWinner={() => saveVersion("tournament", learnerBattle.winner.title, learnerBattle.winner.prompt, learnerBattle.winner.score)}
               onSaveCompiledPrompt={() => saveVersion("compiled", "House-format compiled prompt", learnerHousePrompt, evaluatePrompt(learnerHousePrompt).score)}
               onSaveImproved={() => saveVersion("improved", "One-click improved prompt", improvedPrompt, evaluatePrompt(improvedPrompt).score)}
