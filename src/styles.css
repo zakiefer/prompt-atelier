@@ -2499,6 +2499,265 @@ button:disabled {
   white-space: nowrap;
 }
 
+.workflow-top-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+}
+
+.workflow-top-grid .workflow-os-panel {
+  grid-column: 1 / -1;
+}
+
+.workflow-os-panel,
+.mobile-operator-panel,
+.result-gallery-panel,
+.visual-repair-panel,
+.coverage-intelligence-panel,
+.export-studio-panel,
+.project-timeline-panel,
+.taste-version-panel,
+.ci-proof-status-panel {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.workflow-step-line,
+.mobile-operator-grid,
+.result-gallery-grid,
+.coverage-gap-grid,
+.export-studio-grid,
+.project-timeline-list,
+.taste-version-grid,
+.ci-proof-grid,
+.repair-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.workflow-step-line {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.workflow-step-line button,
+.mobile-operator-grid button,
+.result-gallery-grid article,
+.coverage-gap-grid article,
+.export-studio-grid article,
+.project-timeline-list button,
+.project-timeline-list article,
+.taste-version-grid article,
+.ci-proof-grid article,
+.repair-grid article {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  color: var(--ink);
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  text-align: left;
+}
+
+.workflow-step-line button,
+.mobile-operator-grid button,
+.project-timeline-list button,
+.export-preset-row button {
+  cursor: pointer;
+}
+
+.workflow-step-line button:hover,
+.mobile-operator-grid button:hover,
+.project-timeline-list button:hover,
+.export-preset-row button:hover {
+  background: #fff;
+  border-color: rgba(31, 122, 104, 0.32);
+  transform: translateY(-1px);
+}
+
+.workflow-step-line span,
+.result-card-topline span,
+.coverage-gap-grid span,
+.project-timeline-list span,
+.ci-proof-grid span,
+.repair-grid span,
+.taste-version-grid span {
+  color: var(--teal-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.workflow-step-line button > span {
+  align-items: center;
+  background: rgba(31, 122, 104, 0.1);
+  border-radius: 999px;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.workflow-step-line strong,
+.mobile-operator-grid strong,
+.result-gallery-grid h4,
+.coverage-gap-grid strong,
+.export-studio-grid strong,
+.project-timeline-list strong,
+.taste-version-grid strong,
+.ci-proof-grid strong,
+.repair-grid strong {
+  display: block;
+  font-size: 0.9rem;
+  line-height: 1.22;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-step-line p,
+.mobile-operator-grid span,
+.result-gallery-grid p,
+.coverage-gap-grid p,
+.coverage-gap-grid small,
+.export-studio-grid p,
+.project-timeline-list p,
+.taste-version-grid p,
+.ci-proof-grid p,
+.repair-grid p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.workflow-step-line button[data-status="ready"],
+.mobile-operator-grid button[data-ready="true"],
+.result-gallery-grid article[data-status="gold"],
+.coverage-gap-grid article[data-status="covered"],
+.ci-proof-grid article[data-ready="true"] {
+  border-color: rgba(31, 122, 104, 0.3);
+}
+
+.workflow-step-line button[data-status="active"],
+.result-gallery-grid article[data-status="watch"],
+.coverage-gap-grid article[data-status="thin"] {
+  border-color: rgba(185, 130, 42, 0.32);
+}
+
+.workflow-step-line button[data-status="watch"],
+.mobile-operator-grid button[data-ready="false"],
+.result-gallery-grid article[data-status="weak"],
+.coverage-gap-grid article[data-status="missing"],
+.ci-proof-grid article[data-ready="false"] {
+  border-color: rgba(164, 72, 63, 0.28);
+}
+
+.mobile-operator-panel {
+  display: none;
+}
+
+.result-gallery-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.result-card-topline {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.result-card-topline strong,
+.coverage-gap-grid strong {
+  color: var(--teal-dark);
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.result-gallery-grid img {
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.repair-grid {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+}
+
+.repair-grid textarea {
+  min-height: 180px;
+}
+
+.coverage-gap-grid,
+.ci-proof-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.export-studio-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.export-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.export-preset-row button {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 850;
+  gap: 5px;
+  padding: 7px 9px;
+}
+
+.project-timeline-list {
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.project-timeline-list button,
+.project-timeline-list article {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.project-timeline-list button strong,
+.project-timeline-list button p,
+.project-timeline-list button small,
+.project-timeline-list article strong,
+.project-timeline-list article p {
+  grid-column: 2;
+}
+
+.project-timeline-list small {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.taste-version-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.ci-proof-grid a {
+  color: var(--teal-dark);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .proof-checklist-grid button {
   cursor: pointer;
   grid-template-columns: auto minmax(0, 1fr);
@@ -6545,6 +6804,15 @@ button.preset-card {
 	  .guided-product-grid,
 	  .production-path-grid,
 	  .production-command-grid,
+	  .workflow-step-line,
+	  .result-gallery-grid,
+	  .coverage-gap-grid,
+	  .export-studio-grid,
+	  .project-timeline-list button,
+	  .taste-version-grid,
+	  .ci-proof-grid,
+	  .repair-grid,
+	  .mobile-operator-grid,
 	  .proof-checklist-grid,
 	  .quality-report-grid,
 	  .training-signal-list,
@@ -6555,6 +6823,10 @@ button.preset-card {
 	  .production-hardening-grid {
 	    grid-template-columns: 1fr;
 	  }
+
+  .mobile-operator-panel {
+    display: grid;
+  }
 
   .workspace,
   .center-panel,

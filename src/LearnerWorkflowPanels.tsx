@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, Clock, Copy, Database, Download, ExternalLink, FileText, History, ImagePlus, ListChecks, MonitorCheck, PackageCheck, PlayCircle, Save, Search, ShieldCheck, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, Check, Clock, Copy, Database, Download, ExternalLink, FileText, GitBranch, History, ImagePlus, ListChecks, MonitorCheck, PackageCheck, Palette, PlayCircle, Save, Search, ShieldCheck, Smartphone, Sparkles, Upload, Wrench } from "lucide-react";
 import { type OutcomeRating } from "./promptEngine";
 import { type CorpusReviewRow, type LearnerSession, type TargetExportPreset } from "./learnerProduct";
 import {
@@ -7,6 +7,16 @@ import {
   type LearnerOperatingLoop,
   type LearnerProofDeployStatus,
 } from "./learnerViewModel";
+import {
+  type CiProofCard,
+  type CoverageGap,
+  type ExportStudioGroup,
+  type MobileOperatorAction,
+  type ResultGalleryItem,
+  type TasteProfileVersion,
+  type TimelineItem,
+  type WorkflowMilestone,
+} from "./learnerWorkflowNext";
 
 export type LearnerWorkspaceTab = "compose" | "review" | "export";
 
@@ -462,6 +472,345 @@ export function EvalHistoryCompactPanel({ history }: { history: EvalHistoryRecor
         {!history.length ? <p className="selected-meta">No eval rows yet. Generate, sync, or run proof to start the trend.</p> : null}
       </div>
       {latest ? <p className="selected-meta">Latest: {new Date(latest.createdAt).toLocaleString()} / {latest.exportReadyCount} export target(s)</p> : null}
+    </section>
+  );
+}
+
+export function WorkflowOsPanel({
+  milestones,
+  onRunFullPath,
+  onSelectTarget,
+}: {
+  milestones: WorkflowMilestone[];
+  onRunFullPath: () => void;
+  onSelectTarget: (target: WorkflowMilestone["target"]) => void;
+}) {
+  const readyCount = milestones.filter((item) => item.status === "ready").length;
+  return (
+    <section className="workflow-os-panel" data-train-section="workflow-os">
+      <div className="output-header">
+        <div>
+          <span className="eyebrow">Workflow OS</span>
+          <h3>One clean path through the machine</h3>
+          <p>Paste, learn, generate, prove, and export without hunting through the advanced workbench.</p>
+        </div>
+        <div className="mini-score-badge">
+          <strong>{Math.round((readyCount / Math.max(1, milestones.length)) * 100)}</strong>
+          <span>flow</span>
+        </div>
+      </div>
+      <div className="workflow-step-line">
+        {milestones.map((milestone, index) => (
+          <button data-status={milestone.status} key={milestone.id} type="button" onClick={() => onSelectTarget(milestone.target)}>
+            <span>{index + 1}</span>
+            <strong>{milestone.label}</strong>
+            <p>{milestone.detail}</p>
+          </button>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onRunFullPath}>
+        Run guided proof path
+        <ArrowRight size={15} />
+      </button>
+    </section>
+  );
+}
+
+export function ResultGalleryPanel({
+  items,
+  onMarkWeak,
+  onPromote,
+  onRepair,
+}: {
+  items: ResultGalleryItem[];
+  onMarkWeak: (item: ResultGalleryItem) => void;
+  onPromote: (item: ResultGalleryItem) => void;
+  onRepair: (item: ResultGalleryItem) => void;
+}) {
+  return (
+    <section className="result-gallery-panel" data-train-section="result-gallery">
+      <div className="output-header">
+        <div>
+          <h3>Result gallery</h3>
+          <p>Generated prompts, proof runs, screenshots, and outcome notes become reviewable evidence cards.</p>
+        </div>
+        <span className="selected-meta">{items.length} result(s)</span>
+      </div>
+      <div className="result-gallery-grid">
+        {items.length ? items.map((item) => (
+          <article data-status={item.status} key={item.id}>
+            <div className="result-card-topline">
+              <span>{item.kind}</span>
+              <strong>{item.score}</strong>
+            </div>
+            {item.screenshotUrl ? <img src={item.screenshotUrl} alt="" /> : null}
+            <h4>{item.title}</h4>
+            <p>{item.detail}</p>
+            <small>Proof {item.proof}% / {item.status}</small>
+            <div className="button-row compact-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onPromote(item)}>Promote gold</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onMarkWeak(item)}>Mark weak</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onRepair(item)}>
+                <Wrench size={14} />
+                Repair
+              </button>
+            </div>
+          </article>
+        )) : (
+          <article data-status="watch">
+            <div className="result-card-topline">
+              <span>empty</span>
+              <strong>0</strong>
+            </div>
+            <h4>No result evidence yet</h4>
+            <p>Generate a prompt or save proof feedback to create the first result card.</p>
+            <small>Proof 0% / watch</small>
+          </article>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function VisualRepairLoopPanel({
+  copied,
+  onCopy,
+  onGenerateRepair,
+  onUseRepair,
+  repairPrompt,
+  repairs,
+  title,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onGenerateRepair: () => void;
+  onUseRepair: () => void;
+  repairPrompt: string;
+  repairs: string[];
+  title: string;
+}) {
+  return (
+    <section className="visual-repair-panel" data-train-section="visual-repair-loop">
+      <div className="output-header">
+        <div>
+          <h3>Visual repair loop</h3>
+          <p>{title}</p>
+        </div>
+        <div className="button-row compact-row">
+          <button className="primary-button compact-button" type="button" onClick={onGenerateRepair}>Build repair prompt</button>
+          <button className="ghost-button compact-button" type="button" onClick={onUseRepair} disabled={!repairPrompt}>Use repair prompt</button>
+        </div>
+      </div>
+      <div className="repair-grid">
+        <article>
+          <span>Repair targets</span>
+          {repairs.map((item) => <p key={item}>{item}</p>)}
+        </article>
+        <article>
+          <span>Generated repair prompt</span>
+          <textarea className="generated-output mini-output" readOnly value={repairPrompt || "Run the repair builder after a result card or proof gap is selected."} />
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(repairPrompt, "visual-repair-prompt")} disabled={!repairPrompt}>
+            {copied === "visual-repair-prompt" ? <Check size={15} /> : <Copy size={15} />}
+            Copy repair
+          </button>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+export function CoverageIntelligencePanel({ gaps }: { gaps: CoverageGap[] }) {
+  return (
+    <section className="coverage-intelligence-panel" data-train-section="coverage-intelligence">
+      <div className="output-header">
+        <div>
+          <h3>Coverage intelligence</h3>
+          <p>Shows where the prompt corpus is strong, thin, or missing before the learner overfits.</p>
+        </div>
+        <span className="selected-meta">{gaps.filter((gap) => gap.status === "covered").length}/{gaps.length} covered</span>
+      </div>
+      <div className="coverage-gap-grid">
+        {gaps.map((gap) => (
+          <article data-status={gap.status} key={gap.id}>
+            <strong>{gap.score}</strong>
+            <span>{gap.label}</span>
+            <p>{gap.detail}</p>
+            <small>{gap.action}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ExportStudioPanel({
+  copied,
+  groups,
+  onCopyPreset,
+  onOpenExport,
+}: {
+  copied: string;
+  groups: ExportStudioGroup[];
+  onCopyPreset: (preset: TargetExportPreset) => void;
+  onOpenExport: () => void;
+}) {
+  return (
+    <section className="export-studio-panel" data-train-section="export-studio">
+      <div className="output-header">
+        <div>
+          <h3>Export studio</h3>
+          <p>Builder, critique, and training exports are grouped by actual use case.</p>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onOpenExport}>
+          <PackageCheck size={15} />
+          Open package
+        </button>
+      </div>
+      <div className="export-studio-grid">
+        {groups.map((group) => (
+          <article key={group.id}>
+            <strong>{group.label}</strong>
+            <p>{group.detail}</p>
+            <div className="export-preset-row">
+              {group.presets.slice(0, 5).map((preset) => (
+                <button key={preset.id} type="button" onClick={() => onCopyPreset(preset)}>
+                  {copied === `export-studio-${preset.id}` ? <Check size={13} /> : <Copy size={13} />}
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ProjectTimelinePanel({
+  items,
+  onSelectItem,
+}: {
+  items: TimelineItem[];
+  onSelectItem: (item: TimelineItem) => void;
+}) {
+  return (
+    <section className="project-timeline-panel" data-train-section="project-timeline">
+      <div className="output-header">
+        <div>
+          <h3>Project timeline</h3>
+          <p>Every prompt, proof, sync, profile, and export action stays visible as a project history.</p>
+        </div>
+        <History size={18} />
+      </div>
+      <div className="project-timeline-list">
+        {items.length ? items.map((item) => (
+          <button data-kind={item.kind} key={item.id} type="button" onClick={() => onSelectItem(item)}>
+            <span>{item.kind}</span>
+            <strong>{item.label}</strong>
+            <p>{item.detail}</p>
+            <small>{new Date(item.at).toLocaleString()}</small>
+          </button>
+        )) : (
+          <article>
+            <span>empty</span>
+            <strong>No project events yet</strong>
+            <p>Generate, prove, sync, or export to populate the timeline.</p>
+          </article>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function TasteProfileVersionsPanel({
+  onSaveVersion,
+  onUseVersion,
+  versions,
+}: {
+  onSaveVersion: () => void;
+  onUseVersion: (version: TasteProfileVersion) => void;
+  versions: TasteProfileVersion[];
+}) {
+  return (
+    <section className="taste-version-panel" data-train-section="taste-profile-versions">
+      <div className="output-header">
+        <div>
+          <h3>Taste profile versions</h3>
+          <p>Save named versions of learned taste so style changes can be compared instead of guessed.</p>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onSaveVersion}>
+          <Palette size={15} />
+          Save taste version
+        </button>
+      </div>
+      <div className="taste-version-grid">
+        {versions.length ? versions.slice(0, 6).map((version) => (
+          <article key={version.id}>
+            <strong>{version.label}</strong>
+            <span>{version.profileLabel} / {version.score}%</span>
+            <p>{version.rules.slice(0, 2).join(" / ") || "No rules saved."}</p>
+            <button className="ghost-button compact-button" type="button" onClick={() => onUseVersion(version)}>Use version</button>
+          </article>
+        )) : (
+          <article>
+            <strong>No taste versions yet</strong>
+            <span>Save one after the prompt and proof scores look right.</span>
+            <p>Versions preserve profile, rules, seed prompt, prompt score, and proof score.</p>
+          </article>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export function CiProofStatusPanel({ cards }: { cards: CiProofCard[] }) {
+  return (
+    <section className="ci-proof-status-panel" data-train-section="ci-proof-status">
+      <div className="output-header">
+        <div>
+          <h3>CI proof status</h3>
+          <p>Build metadata, hosted proof, smoke status, and commit evidence are visible inside the app.</p>
+        </div>
+        <GitBranch size={18} />
+      </div>
+      <div className="ci-proof-grid">
+        {cards.map((card) => (
+          <article data-ready={card.ready ? "true" : "false"} key={card.id}>
+            <strong>{card.ready ? "Ready" : "Watch"}</strong>
+            <span>{card.label}</span>
+            <p>{card.detail}</p>
+            {card.href ? <a href={card.href} target="_blank" rel="noreferrer">Open proof</a> : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function MobileOperatorPanel({
+  actions,
+  onSelectTarget,
+}: {
+  actions: MobileOperatorAction[];
+  onSelectTarget: (target: MobileOperatorAction["target"]) => void;
+}) {
+  return (
+    <section className="mobile-operator-panel" data-train-section="mobile-operator">
+      <div className="output-header">
+        <div>
+          <h3>Mobile operator mode</h3>
+          <p>A compact command surface for phones: start, prove, or export without diagnostic walls.</p>
+        </div>
+        <Smartphone size={18} />
+      </div>
+      <div className="mobile-operator-grid">
+        {actions.map((action) => (
+          <button data-ready={action.ready ? "true" : "false"} key={action.id} type="button" onClick={() => onSelectTarget(action.target)}>
+            <strong>{action.label}</strong>
+            <span>{action.detail}</span>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }

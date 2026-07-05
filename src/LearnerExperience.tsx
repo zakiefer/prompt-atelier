@@ -52,9 +52,12 @@ import {
 } from "./learnerViewModel";
 import {
   BeginnerPromptPath,
+  CiProofStatusPanel,
+  CoverageIntelligencePanel,
   CorpusTriageToolbar,
   ExportDeliverablesPanel,
   EvalHistoryCompactPanel,
+  ExportStudioPanel,
   ExportPresetPreview,
   ImportFrontDoorPanel,
   LearnedPromptSectionEditor,
@@ -65,24 +68,31 @@ import {
   OneClickProofRail,
   ProjectCockpitPanel,
   ProjectHistoryPanel,
+  ProjectTimelinePanel,
   ProductionCommandCenterPanel,
   ProductionHardeningPanel,
   ProductChangelogPanel,
   ProjectPersistencePanel,
   PromptQualityReportPanel,
   ProofRunnerChecklistPanel,
+  ResultGalleryPanel,
+  TasteProfileVersionsPanel,
   PromptLintFixPanel,
   ProofQualityLeaderboardPanel,
   ProofArtifactVault,
   ProofDeployStatusPanel,
   ProofIntakePanel,
+  MobileOperatorPanel,
   TrainingImpactPanel,
+  VisualRepairLoopPanel,
+  WorkflowOsPanel,
   type CurrentProjectSummary,
   type CorpusHealthDecision,
   type EvalHistoryRecord,
   type ImportFrontDoorItem,
   type LearnerActivityItem,
   type LearnerProofVaultItem,
+  type LearnerWorkspaceTab,
   type LearnerSearchResult,
   type OneClickProofStep,
   type ProjectStage,
@@ -99,6 +109,20 @@ import {
 import { BUILD_STATUS } from "./buildStatus";
 import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
 import { getProjectCollections, runProjectProofViaApi, saveProjectToApi } from "./promptApi";
+import {
+  buildCiProofCards,
+  buildCoverageIntelligence,
+  buildExportStudioGroups,
+  buildMobileOperatorActions,
+  buildProjectTimeline,
+  buildResultGalleryItems,
+  buildVisualRepairPrompt,
+  buildWorkflowMilestones,
+  createTasteProfileVersion,
+  type ResultGalleryItem,
+  type TasteProfileVersion,
+  type TimelineItem,
+} from "./learnerWorkflowNext";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -109,6 +133,8 @@ const GENERATED_PROMPTS_KEY = "prompt-atelier-generated-prompts-v1";
 const PROJECT_PROOF_RUNS_KEY = "prompt-atelier-project-proof-runs-v1";
 const EVAL_HISTORY_KEY = "prompt-atelier-eval-history-v1";
 const CORPUS_HEALTH_DECISION_KEY = "prompt-atelier-corpus-health-decision-v1";
+const REPAIR_PROMPT_KEY = "prompt-atelier-visual-repair-prompt-v1";
+const TASTE_PROFILE_VERSIONS_KEY = "prompt-atelier-taste-profile-versions-v1";
 
 type GeneratedPromptRecord = {
   id: string;
@@ -187,6 +213,20 @@ function readLocalArray<T>(key: string, limit: number): T[] {
 function writeLocalArray<T>(key: string, value: T[], limit: number) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value.slice(0, limit)));
+}
+
+function readLocalString(key: string) {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeLocalString(key: string, value: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, value);
 }
 
 function readCorpusHealthDecision(): CorpusHealthDecision | undefined {
@@ -628,6 +668,9 @@ export function LearnView({
   const [projectProofRuns, setProjectProofRuns] = useState<ProjectProofRunRecord[]>(() => readLocalArray<ProjectProofRunRecord>(PROJECT_PROOF_RUNS_KEY, 24));
   const [evalHistory, setEvalHistory] = useState<EvalHistoryRecord[]>(() => readLocalArray<EvalHistoryRecord>(EVAL_HISTORY_KEY, 40));
   const [corpusHealthDecision, setCorpusHealthDecision] = useState<CorpusHealthDecision | undefined>(() => readCorpusHealthDecision());
+  const [visualRepairPrompt, setVisualRepairPrompt] = useState(() => readLocalString(REPAIR_PROMPT_KEY));
+  const [selectedRepairResult, setSelectedRepairResult] = useState<ResultGalleryItem | undefined>();
+  const [tasteProfileVersions, setTasteProfileVersions] = useState<TasteProfileVersion[]>(() => readLocalArray<TasteProfileVersion>(TASTE_PROFILE_VERSIONS_KEY, 16));
   const [projectSync, setProjectSync] = useState<ProjectSyncState>({
     status: "browser",
     detail: "Browser storage is active. Sync project when the local or hosted API is reachable.",
@@ -982,6 +1025,48 @@ export function LearnView({
     sessionCount: savedLearnerSessions.length,
     savedAt: projectSnapshot?.savedAt,
   }), [activeLearningProfile.label, dnaScore, exportTargetMatrix.readyCount, exportTargetMatrix.rows.length, improvedPrompt, learnerEvaluation.score, learnerProofAction.score, learnerProofGallery.length, learnerSource, learnerText, projectSnapshot, proofVault.length, savedLearnerSessions.length]);
+  const workflowMilestones = useMemo(() => buildWorkflowMilestones({
+    corpusDecision: corpusHealthDecision,
+    exportReadyCount: exportTargetMatrix.readyCount,
+    exportTargetCount: exportTargetMatrix.rows.length,
+    latestGenerated: latestGeneratedPrompt,
+    latestProofRun: latestProjectProofRun,
+    proofItems: proofVault.length + learnerProofGallery.length,
+    sourcePrompt: learnerSource,
+  }), [corpusHealthDecision, exportTargetMatrix.readyCount, exportTargetMatrix.rows.length, latestGeneratedPrompt, latestProjectProofRun, learnerProofGallery.length, learnerSource, proofVault.length]);
+  const resultGalleryItems = useMemo(() => buildResultGalleryItems({
+    generatedPrompts,
+    proofGallery: learnerProofGallery,
+    proofRuns: projectProofRuns,
+    proofVault,
+  }), [generatedPrompts, learnerProofGallery, projectProofRuns, proofVault]);
+  const visualRepairPlan = useMemo(() => buildVisualRepairPrompt({
+    activeProfile: activeLearningProfile,
+    gaps: learnerDiagnosis.gaps,
+    latestResult: selectedRepairResult || resultGalleryItems[0],
+    sourcePrompt: learnerSource || latestGeneratedPrompt?.prompt || improvedPrompt,
+  }), [activeLearningProfile, improvedPrompt, latestGeneratedPrompt?.prompt, learnerDiagnosis.gaps, learnerSource, resultGalleryItems, selectedRepairResult]);
+  const coverageGaps = useMemo(() => buildCoverageIntelligence({
+    corpusRows: corpusReviewRows,
+    sourcePrompt: learnerSource,
+    targetPresets: targetExportPresets,
+  }), [corpusReviewRows, learnerSource, targetExportPresets]);
+  const exportStudioGroups = useMemo(() => buildExportStudioGroups(targetExportPresets), [targetExportPresets]);
+  const projectTimelineItems = useMemo(() => buildProjectTimeline({
+    corpusDecision: corpusHealthDecision,
+    evalHistory,
+    generatedPrompts,
+    projectHistory,
+    proofRuns: projectProofRuns,
+    proofVault,
+  }), [corpusHealthDecision, evalHistory, generatedPrompts, projectHistory, projectProofRuns, proofVault]);
+  const ciProofCards = useMemo(() => buildCiProofCards(BUILD_STATUS), []);
+  const mobileOperatorActions = useMemo(() => buildMobileOperatorActions({
+    exportReadyCount: exportTargetMatrix.readyCount,
+    generatedCount: generatedPrompts.length,
+    proofCount: proofVault.length + learnerProofGallery.length + projectProofRuns.length,
+    promptReady: Boolean(learnerSource || latestGeneratedPrompt?.prompt),
+  }), [exportTargetMatrix.readyCount, generatedPrompts.length, latestGeneratedPrompt?.prompt, learnerProofGallery.length, learnerSource, projectProofRuns.length, proofVault.length]);
   const projectStages = useMemo<ProjectStage[]>(() => [
     {
       id: "import",
@@ -1296,6 +1381,91 @@ export function LearnView({
     addEvalHistoryRecord("Corpus health controls", `Marked the current prompt ${label}.`);
     recordActivity("Corpus health label", `${label}: ${detail}`, label === "gold" ? "good" : "watch");
   }
+  function handleSelectWorkflowTarget(target: LearnerWorkspaceTab) {
+    setActiveWorkspaceTab(target);
+    if (target === "export") setExportModalOpen(true);
+    recordActivity("Workflow OS", `Opened ${target}.`, "neutral");
+  }
+  function handleGenerateVisualRepairPrompt(item?: ResultGalleryItem) {
+    const plan = item
+      ? buildVisualRepairPrompt({
+          activeProfile: activeLearningProfile,
+          gaps: learnerDiagnosis.gaps,
+          latestResult: item,
+          sourcePrompt: learnerSource || latestGeneratedPrompt?.prompt || improvedPrompt,
+        })
+      : visualRepairPlan;
+    setVisualRepairPrompt(plan.prompt);
+    writeLocalString(REPAIR_PROMPT_KEY, plan.prompt);
+    addEvalHistoryRecord("Visual repair loop", `Built repair prompt with ${plan.repairs.length} target(s).`);
+    recordActivity("Visual repair prompt", plan.title, "good");
+  }
+  function handleUseVisualRepairPrompt() {
+    const prompt = visualRepairPrompt || visualRepairPlan.prompt;
+    setVisualRepairPrompt(prompt);
+    writeLocalString(REPAIR_PROMPT_KEY, prompt);
+    setLearnerText(prompt);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Visual repair applied", "Repair prompt is now the working prompt.", "good");
+  }
+  function handlePromoteResultGalleryItem(item: ResultGalleryItem) {
+    handleCurateCurrentPrompt("gold");
+    addEvalHistoryRecord("Result promoted", `${item.title} promoted to gold evidence.`, {
+      promptScore: item.score,
+      proofScore: item.proof,
+    });
+    recordActivity("Result promoted", `${item.title} marked gold.`, "good");
+  }
+  function handleMarkWeakResultGalleryItem(item: ResultGalleryItem) {
+    handleCurateCurrentPrompt("watch");
+    addEvalHistoryRecord("Result marked weak", `${item.title} needs repair before promotion.`, {
+      promptScore: item.score,
+      proofScore: item.proof,
+    });
+    recordActivity("Result marked weak", `${item.title} moved to repair watch.`, "watch");
+  }
+  function handleRepairResultGalleryItem(item: ResultGalleryItem) {
+    setSelectedRepairResult(item);
+    handleGenerateVisualRepairPrompt(item);
+    setActiveWorkspaceTab("compose");
+  }
+  function handleSaveTasteProfileVersion() {
+    const version = createTasteProfileVersion({
+      activeProfile: activeLearningProfile,
+      promptScore: currentProject.promptScore,
+      proofScore: currentProject.proofScore,
+      seedPrompt: learnerSource || latestGeneratedPrompt?.prompt || improvedPrompt,
+    });
+    setTasteProfileVersions((current) => {
+      const next = [version, ...current.filter((item) => item.id !== version.id)].slice(0, 16);
+      writeLocalArray(TASTE_PROFILE_VERSIONS_KEY, next, 16);
+      return next;
+    });
+    addEvalHistoryRecord("Taste profile version", `${version.label} saved at ${version.score}/100.`, {
+      promptScore: version.promptScore,
+      proofScore: version.proofScore,
+    });
+    recordActivity("Taste version saved", `${version.label} saved.`, "good");
+  }
+  function handleUseTasteProfileVersion(version: TasteProfileVersion) {
+    setActiveLearningProfileId(version.profileId);
+    if (version.seedPrompt) setLearnerText(version.seedPrompt);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Taste version restored", `${version.label} is active.`, "good");
+  }
+  function handleCopyExportStudioPreset(preset: TargetExportPreset) {
+    onCopy(preset.content, `export-studio-${preset.id}`);
+    recordActivity("Export studio copy", `${preset.label} copied.`, "good");
+  }
+  function handleSelectTimelineItem(item: TimelineItem) {
+    if (item.kind === "proof") setActiveWorkspaceTab("review");
+    if (item.kind === "prompt" || item.kind === "profile" || item.kind === "corpus") setActiveWorkspaceTab("compose");
+    if (item.kind === "export" || item.kind === "sync") {
+      setActiveWorkspaceTab("export");
+      setExportModalOpen(true);
+    }
+    recordActivity("Timeline opened", `${item.kind}: ${item.label}`, "neutral");
+  }
   function handleUseBriefPrompt() {
     onUseSamplePrompt(briefPrompt);
     recordActivity("Brief prompt applied", `${activeLearningProfile.label} brief moved into the working prompt.`, "good");
@@ -1491,6 +1661,11 @@ export function LearnView({
           stages={projectStages}
         />
 
+        <div className="guided-product-grid workflow-top-grid">
+          <WorkflowOsPanel milestones={workflowMilestones} onRunFullPath={handleRunOneClickProofPath} onSelectTarget={handleSelectWorkflowTarget} />
+          <MobileOperatorPanel actions={mobileOperatorActions} onSelectTarget={handleSelectWorkflowTarget} />
+        </div>
+
         <div className="guided-product-grid production-path-grid">
           <ProductionCommandCenterPanel
             checklist={firstRunChecklist}
@@ -1506,6 +1681,41 @@ export function LearnView({
           />
           <EvalHistoryCompactPanel history={evalHistory} />
         </div>
+
+        <details className="learner-tools-drawer product-intelligence-drawer" data-train-section="product-intelligence">
+          <summary>
+            <span>Product intelligence</span>
+            <strong>Gallery, repair, coverage, exports, timeline, taste, and CI proof</strong>
+          </summary>
+          <div className="learner-tools-stack">
+            <div className="self-serve-grid product-intelligence-grid">
+              <ResultGalleryPanel
+                items={resultGalleryItems}
+                onMarkWeak={handleMarkWeakResultGalleryItem}
+                onPromote={handlePromoteResultGalleryItem}
+                onRepair={handleRepairResultGalleryItem}
+              />
+              <VisualRepairLoopPanel
+                copied={copied}
+                onCopy={onCopy}
+                onGenerateRepair={handleGenerateVisualRepairPrompt}
+                onUseRepair={handleUseVisualRepairPrompt}
+                repairPrompt={visualRepairPrompt}
+                repairs={visualRepairPlan.repairs}
+                title={visualRepairPlan.title}
+              />
+            </div>
+            <div className="self-serve-grid product-intelligence-grid">
+              <CoverageIntelligencePanel gaps={coverageGaps} />
+              <ExportStudioPanel copied={copied} groups={exportStudioGroups} onCopyPreset={handleCopyExportStudioPreset} onOpenExport={() => setExportModalOpen(true)} />
+            </div>
+            <div className="self-serve-grid product-intelligence-grid">
+              <ProjectTimelinePanel items={projectTimelineItems} onSelectItem={handleSelectTimelineItem} />
+              <TasteProfileVersionsPanel versions={tasteProfileVersions} onSaveVersion={handleSaveTasteProfileVersion} onUseVersion={handleUseTasteProfileVersion} />
+            </div>
+            <CiProofStatusPanel cards={ciProofCards} />
+          </div>
+        </details>
 
         <div className="guided-product-grid">
           <LearnerCommandDeck

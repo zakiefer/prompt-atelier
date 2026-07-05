@@ -64,11 +64,21 @@ const trainHeadings = [
 const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
   "Current project",
+  "Workflow OS",
+  "Mobile operator mode",
   "Generate great prompt",
   "Backend project sync",
   "Corpus health controls",
   "CI proof links",
   "Eval history",
+  "Product intelligence",
+  "Result gallery",
+  "Visual repair loop",
+  "Coverage intelligence",
+  "Export studio",
+  "Project timeline",
+  "Taste profile versions",
+  "CI proof status",
   "Next best action",
   "Automatic proof runner",
   "Guided start",
@@ -196,8 +206,18 @@ try {
           : [
               "public-learner",
               "project-cockpit",
+              "workflow-os",
+              "mobile-operator",
               "production-command-center",
               "eval-history",
+              "product-intelligence",
+              "result-gallery",
+              "visual-repair-loop",
+              "coverage-intelligence",
+              "export-studio",
+              "project-timeline",
+              "taste-profile-versions",
+              "ci-proof-status",
               "learner-command-deck",
               "proof-runner-checklist",
               "beginner-prompt-path",
@@ -349,6 +369,48 @@ async function runLearnerInteractions(page) {
   if (await syncProjectButton.count()) {
     await syncProjectButton.click();
     checked.push("backend project sync attempted");
+  }
+
+  const productIntelligence = page.locator('[data-train-section="product-intelligence"]').first();
+  if (await productIntelligence.count()) {
+    const isOpen = await productIntelligence.evaluate((node) => node.hasAttribute("open"));
+    if (!isOpen) {
+      await productIntelligence.evaluate((node) => node.querySelector(":scope > summary")?.click());
+      checked.push("product intelligence opened");
+    }
+  }
+
+  const repairButton = page.locator('[data-train-section="visual-repair-loop"] button').filter({ hasText: /Build repair prompt/ }).first();
+  if (await repairButton.count()) {
+    await repairButton.click();
+    await page.waitForFunction(() => Boolean(globalThis.localStorage.getItem("prompt-atelier-visual-repair-prompt-v1")), null, { timeout: 5000 });
+    checked.push("visual repair prompt built");
+  }
+
+  const useRepairButton = page.locator('[data-train-section="visual-repair-loop"] button').filter({ hasText: /Use repair prompt/ }).first();
+  if (await useRepairButton.count()) {
+    await useRepairButton.click();
+    checked.push("visual repair prompt used");
+  }
+
+  const saveTasteButton = page.locator('[data-train-section="taste-profile-versions"] button').filter({ hasText: /Save taste version/ }).first();
+  if (await saveTasteButton.count()) {
+    await saveTasteButton.click();
+    await page.waitForFunction(() => {
+      const raw = globalThis.localStorage.getItem("prompt-atelier-taste-profile-versions-v1") || "[]";
+      try {
+        return JSON.parse(raw).length > 0;
+      } catch {
+        return false;
+      }
+    }, null, { timeout: 5000 });
+    checked.push("taste version saved");
+  }
+
+  const resultPromoteButton = page.locator('[data-train-section="result-gallery"] button').filter({ hasText: /Promote gold/ }).first();
+  if (await resultPromoteButton.count()) {
+    await resultPromoteButton.click();
+    checked.push("result promoted gold");
   }
 
   const proofChecklistButton = page.locator('[data-train-section="proof-runner-checklist"] button').first();
@@ -530,7 +592,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
+  if (!checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("visual repair prompt built") || !checked.includes("taste version saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {
@@ -542,7 +604,7 @@ async function runLearnerInteractions(page) {
   if (state.projectHistoryCount < 1) {
     throw new Error("Learner interaction smoke did not persist project history.");
   }
-  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2) {
+  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2 || state.tasteVersionCount < 1 || !state.repairPromptReady) {
     throw new Error("Learner interaction smoke did not persist production project records.");
   }
   return { ...state, checked };
@@ -577,6 +639,8 @@ async function readLearnerPersistenceState(page) {
     const generatedPrompts = safeParse("prompt-atelier-generated-prompts-v1");
     const projectProofRuns = safeParse("prompt-atelier-project-proof-runs-v1");
     const evalHistory = safeParse("prompt-atelier-eval-history-v1");
+    const tasteVersions = safeParse("prompt-atelier-taste-profile-versions-v1");
+    const repairPrompt = globalThis.localStorage.getItem("prompt-atelier-visual-repair-prompt-v1") || "";
     const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
     return {
       activeProfile,
@@ -585,7 +649,9 @@ async function readLearnerPersistenceState(page) {
       historyCount: history.length,
       projectHistoryCount: projectHistory.length,
       projectProofRunCount: projectProofRuns.length,
+      repairPromptReady: repairPrompt.length > 200,
       sessionCount: sessions.length,
+      tasteVersionCount: tasteVersions.length,
     };
   });
 }
