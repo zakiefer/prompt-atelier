@@ -64,6 +64,11 @@ const trainHeadings = [
 const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
   "Current project",
+  "Generate great prompt",
+  "Backend project sync",
+  "Corpus health controls",
+  "CI proof links",
+  "Eval history",
   "Next best action",
   "Automatic proof runner",
   "Guided start",
@@ -191,6 +196,8 @@ try {
           : [
               "public-learner",
               "project-cockpit",
+              "production-command-center",
+              "eval-history",
               "learner-command-deck",
               "proof-runner-checklist",
               "beginner-prompt-path",
@@ -319,6 +326,31 @@ async function runLearnerInteractions(page) {
     checked.push("project snapshot saved");
   }
 
+  const generatePromptButton = page.locator('[data-train-section="production-command-center"] button').filter({ hasText: /Generate prompt/ }).first();
+  if (await generatePromptButton.count()) {
+    await generatePromptButton.click();
+    await page.waitForFunction(() => (globalThis.localStorage.getItem("prompt-atelier-generated-prompts-v1") || "[]").includes("generated prompt"), null, { timeout: 5000 });
+    checked.push("great prompt generated");
+  }
+
+  const corpusGoldButton = page.locator('[data-train-section="production-command-center"] button').filter({ hasText: /^gold$/i }).first();
+  if (await corpusGoldButton.count()) {
+    await corpusGoldButton.click();
+    checked.push("corpus health labeled");
+  }
+
+  const projectProofButton = page.locator('[data-train-section="production-command-center"] button').filter({ hasText: /Run proof runner/ }).first();
+  if (await projectProofButton.count()) {
+    await projectProofButton.click();
+    checked.push("project proof runner saved");
+  }
+
+  const syncProjectButton = page.locator('[data-train-section="production-command-center"] button').filter({ hasText: /Sync project/ }).first();
+  if (await syncProjectButton.count()) {
+    await syncProjectButton.click();
+    checked.push("backend project sync attempted");
+  }
+
   const proofChecklistButton = page.locator('[data-train-section="proof-runner-checklist"] button').first();
   if (await proofChecklistButton.count()) {
     await proofChecklistButton.click();
@@ -332,10 +364,28 @@ async function runLearnerInteractions(page) {
     checked.push("training signal saved");
   }
 
+  const briefBuilder = page.locator('[data-train-section="brief-builder"]').first();
+  if (await briefBuilder.count()) {
+    const isOpen = await briefBuilder.evaluate((node) => node.hasAttribute("open"));
+    if (!isOpen) {
+      await briefBuilder.evaluate((node) => node.querySelector(":scope > summary")?.click());
+      checked.push("brief builder opened");
+    }
+  }
+
   const briefButton = page.locator('[data-train-section="brief-builder"] button').filter({ hasText: /Use brief prompt/ }).first();
   if (await briefButton.count()) {
     await briefButton.click();
     checked.push("brief prompt loaded");
+  }
+
+  const generatedSectionDrawer = page.locator('[data-train-section="generated-section-drawer"]').first();
+  if (await generatedSectionDrawer.count()) {
+    const isOpen = await generatedSectionDrawer.evaluate((node) => node.hasAttribute("open"));
+    if (!isOpen) {
+      await generatedSectionDrawer.evaluate((node) => node.querySelector(":scope > summary")?.click());
+      checked.push("generated section drawer opened");
+    }
   }
 
   const sectionCopyButton = page.locator('[data-train-section="learner-section-editor"] button').filter({ hasText: /Copy all/ }).first();
@@ -347,6 +397,15 @@ async function runLearnerInteractions(page) {
   if (await sectionApplyButton.count()) {
     await sectionApplyButton.click();
     checked.push("section editor applied");
+  }
+
+  const supportingIntelligence = page.locator('[data-train-section="supporting-prompt-intelligence"]').first();
+  if (await supportingIntelligence.count()) {
+    const isOpen = await supportingIntelligence.evaluate((node) => node.hasAttribute("open"));
+    if (!isOpen) {
+      await supportingIntelligence.evaluate((node) => node.querySelector(":scope > summary")?.click());
+      checked.push("supporting intelligence opened");
+    }
   }
 
   const profileButton = page.locator(".profile-chip").nth(1);
@@ -471,7 +530,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("project snapshot saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
+  if (!checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {
@@ -482,6 +541,9 @@ async function runLearnerInteractions(page) {
   }
   if (state.projectHistoryCount < 1) {
     throw new Error("Learner interaction smoke did not persist project history.");
+  }
+  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2) {
+    throw new Error("Learner interaction smoke did not persist production project records.");
   }
   return { ...state, checked };
 }
@@ -512,11 +574,17 @@ async function readLearnerPersistenceState(page) {
     const sessions = safeParse("prompt-atelier-learner-sessions");
     const history = safeParse("prompt-atelier-version-history");
     const projectHistory = safeParse("prompt-atelier-project-history-v1");
+    const generatedPrompts = safeParse("prompt-atelier-generated-prompts-v1");
+    const projectProofRuns = safeParse("prompt-atelier-project-proof-runs-v1");
+    const evalHistory = safeParse("prompt-atelier-eval-history-v1");
     const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
     return {
       activeProfile,
+      evalHistoryCount: evalHistory.length,
+      generatedPromptCount: generatedPrompts.length,
       historyCount: history.length,
       projectHistoryCount: projectHistory.length,
+      projectProofRunCount: projectProofRuns.length,
       sessionCount: sessions.length,
     };
   });

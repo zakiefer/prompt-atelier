@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, BarChart3, Check, Copy, Download, Layers, Save, SlidersHorizontal, Sparkles, Tags, Trophy } from "lucide-react";
 import {
   categoryLabels,
@@ -54,6 +54,7 @@ import {
   BeginnerPromptPath,
   CorpusTriageToolbar,
   ExportDeliverablesPanel,
+  EvalHistoryCompactPanel,
   ExportPresetPreview,
   ImportFrontDoorPanel,
   LearnedPromptSectionEditor,
@@ -64,6 +65,7 @@ import {
   OneClickProofRail,
   ProjectCockpitPanel,
   ProjectHistoryPanel,
+  ProductionCommandCenterPanel,
   ProductionHardeningPanel,
   ProductChangelogPanel,
   ProjectPersistencePanel,
@@ -76,6 +78,8 @@ import {
   ProofIntakePanel,
   TrainingImpactPanel,
   type CurrentProjectSummary,
+  type CorpusHealthDecision,
+  type EvalHistoryRecord,
   type ImportFrontDoorItem,
   type LearnerActivityItem,
   type LearnerProofVaultItem,
@@ -83,6 +87,8 @@ import {
   type OneClickProofStep,
   type ProjectStage,
   type ProjectSnapshot,
+  type ProjectProofRunRecord,
+  type ProjectSyncState,
   type PromptQualityReportItem,
   type ProofChecklistItem,
   type ProofLeaderboardRow,
@@ -92,12 +98,27 @@ import {
 } from "./LearnerWorkflowPanels";
 import { BUILD_STATUS } from "./buildStatus";
 import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
+import { getProjectCollections, runProjectProofViaApi, saveProjectToApi } from "./promptApi";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
 const PROOF_VAULT_KEY = "prompt-atelier-proof-vault-v1";
 const PROJECT_SNAPSHOT_KEY = "prompt-atelier-project-snapshot-v1";
 const PROJECT_HISTORY_KEY = "prompt-atelier-project-history-v1";
+const GENERATED_PROMPTS_KEY = "prompt-atelier-generated-prompts-v1";
+const PROJECT_PROOF_RUNS_KEY = "prompt-atelier-project-proof-runs-v1";
+const EVAL_HISTORY_KEY = "prompt-atelier-eval-history-v1";
+const CORPUS_HEALTH_DECISION_KEY = "prompt-atelier-corpus-health-decision-v1";
+
+type GeneratedPromptRecord = {
+  id: string;
+  projectId: string;
+  title: string;
+  prompt: string;
+  score: number;
+  source: string;
+  createdAt: string;
+};
 
 function addPercent(score: number) {
   return `${Math.max(0, Math.min(100, Math.round(score)))}%`;
@@ -150,6 +171,39 @@ function readProjectHistory(): ProjectSnapshot[] {
 function writeProjectHistory(history: ProjectSnapshot[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(history.slice(0, 12)));
+}
+
+function readLocalArray<T>(key: string, limit: number): T[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, limit) as T[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalArray<T>(key: string, value: T[], limit: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value.slice(0, limit)));
+}
+
+function readCorpusHealthDecision(): CorpusHealthDecision | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const raw = window.localStorage.getItem(CORPUS_HEALTH_DECISION_KEY);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as CorpusHealthDecision;
+    return parsed?.id ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCorpusHealthDecision(decision: CorpusHealthDecision) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(CORPUS_HEALTH_DECISION_KEY, JSON.stringify(decision));
 }
 
 function classifyImportFile(filename: string, text: string): Omit<ImportFrontDoorItem, "id" | "filename" | "text"> {
@@ -570,7 +624,78 @@ export function LearnView({
   const [proofVault, setProofVault] = useState<LearnerProofVaultItem[]>(() => readProofVault());
   const [projectSnapshot, setProjectSnapshot] = useState<ProjectSnapshot | undefined>(() => readProjectSnapshot());
   const [projectHistory, setProjectHistory] = useState<ProjectSnapshot[]>(() => readProjectHistory());
+  const [generatedPrompts, setGeneratedPrompts] = useState<GeneratedPromptRecord[]>(() => readLocalArray<GeneratedPromptRecord>(GENERATED_PROMPTS_KEY, 24));
+  const [projectProofRuns, setProjectProofRuns] = useState<ProjectProofRunRecord[]>(() => readLocalArray<ProjectProofRunRecord>(PROJECT_PROOF_RUNS_KEY, 24));
+  const [evalHistory, setEvalHistory] = useState<EvalHistoryRecord[]>(() => readLocalArray<EvalHistoryRecord>(EVAL_HISTORY_KEY, 40));
+  const [corpusHealthDecision, setCorpusHealthDecision] = useState<CorpusHealthDecision | undefined>(() => readCorpusHealthDecision());
+  const [projectSync, setProjectSync] = useState<ProjectSyncState>({
+    status: "browser",
+    detail: "Browser storage is active. Sync project when the local or hosted API is reachable.",
+    remoteProjects: 0,
+    versions: 0,
+    proofRuns: 0,
+    generatedPrompts: 0,
+  });
   const [importFrontDoorItems, setImportFrontDoorItems] = useState<ImportFrontDoorItem[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    const explicitApiBase = typeof window !== "undefined"
+      ? window.localStorage.getItem("prompt-atelier-api-base") || import.meta.env.VITE_PROMPT_ATELIER_API_BASE
+      : import.meta.env.VITE_PROMPT_ATELIER_API_BASE;
+    if (!explicitApiBase) {
+      setProjectSync((current) => ({
+        ...current,
+        remoteProjects: projectHistory.length ? 1 : 0,
+        versions: projectHistory.length,
+        proofRuns: projectProofRuns.length,
+        generatedPrompts: generatedPrompts.length,
+      }));
+      return () => {
+        active = false;
+      };
+    }
+    void getProjectCollections()
+      .then((payload) => {
+        if (!active) return;
+        const remoteGenerated = payload.collections.generatedPrompts as GeneratedPromptRecord[];
+        const remoteProofRuns = payload.collections.projectProofRuns as ProjectProofRunRecord[];
+        const remoteHistory = payload.collections.evalHistory as EvalHistoryRecord[];
+        if (remoteGenerated.length) {
+          setGeneratedPrompts(remoteGenerated.slice(0, 24));
+          writeLocalArray(GENERATED_PROMPTS_KEY, remoteGenerated, 24);
+        }
+        if (remoteProofRuns.length) {
+          setProjectProofRuns(remoteProofRuns.slice(0, 24));
+          writeLocalArray(PROJECT_PROOF_RUNS_KEY, remoteProofRuns, 24);
+        }
+        if (remoteHistory.length) {
+          setEvalHistory(remoteHistory.slice(0, 40));
+          writeLocalArray(EVAL_HISTORY_KEY, remoteHistory, 40);
+        }
+        setProjectSync({
+          status: "synced",
+          detail: "Backend project sync is online; project records can persist to SQLite.",
+          lastSyncedAt: new Date().toISOString(),
+          remoteProjects: payload.collections.promptProjects.length,
+          versions: payload.collections.projectVersions.length,
+          proofRuns: remoteProofRuns.length,
+          generatedPrompts: remoteGenerated.length,
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setProjectSync((current) => ({
+          ...current,
+          status: "browser",
+          detail: "Browser storage is active. Run npm run api or set a hosted API base to sync projects.",
+        }));
+      });
+    return () => {
+      active = false;
+    };
+  }, [generatedPrompts.length, projectHistory.length, projectProofRuns.length]);
+
   const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
   const diffCategories = learnerDiff?.categories.slice(0, 10) ?? [];
   const selectedSession = savedLearnerSessions.find((session) => session.id === selectedSessionId) || savedLearnerSessions[0];
@@ -796,6 +921,55 @@ export function LearnView({
       detail: BUILD_STATUS.lastSmoke || "Hosted smoke metadata is populated by CI or local verification.",
     },
   ], []);
+  const latestGeneratedPrompt = generatedPrompts[0];
+  const latestProjectProofRun = projectProofRuns[0];
+  const firstRunChecklist = useMemo(() => [
+    {
+      label: "Import or brief source",
+      ready: Boolean(learnerSource || latestGeneratedPrompt?.prompt),
+      detail: learnerSource ? "Working source prompt is loaded." : "Generate or paste a first source prompt.",
+    },
+    {
+      label: "Generate great prompt",
+      ready: Boolean(latestGeneratedPrompt?.prompt),
+      detail: latestGeneratedPrompt ? `${latestGeneratedPrompt.score}/100 generated prompt is saved.` : "Use the generator so the project starts from learned taste.",
+    },
+    {
+      label: "Run proof runner",
+      ready: Boolean(latestProjectProofRun),
+      detail: latestProjectProofRun ? `${latestProjectProofRun.score}/100 proof runner record exists.` : "Create a proof-run record before promoting.",
+    },
+    {
+      label: "Corpus health label",
+      ready: Boolean(corpusHealthDecision),
+      detail: corpusHealthDecision ? `Current prompt is labeled ${corpusHealthDecision.label}.` : "Choose gold, watch, or quarantine.",
+    },
+    {
+      label: "Handoff package",
+      ready: exportTargetMatrix.readyCount >= 6,
+      detail: `${exportTargetMatrix.readyCount}/${exportTargetMatrix.rows.length} export target(s) ready.`,
+    },
+  ], [corpusHealthDecision, exportTargetMatrix.readyCount, exportTargetMatrix.rows.length, latestGeneratedPrompt, latestProjectProofRun, learnerSource]);
+  const ciProofLinks = useMemo(() => [
+    {
+      label: "GitHub Actions run",
+      href: BUILD_STATUS.runId ? `https://github.com/zakiefer/prompt-atelier/actions/runs/${BUILD_STATUS.runId}` : undefined,
+      detail: BUILD_STATUS.runId ? `${BUILD_STATUS.workflow} #${BUILD_STATUS.runId}${BUILD_STATUS.runAttempt ? `.${BUILD_STATUS.runAttempt}` : ""}` : "Local build; CI run id is injected during hosted workflow.",
+      ready: Boolean(BUILD_STATUS.runId),
+    },
+    {
+      label: "Hosted Pages proof",
+      href: BUILD_STATUS.pagesUrl,
+      detail: BUILD_STATUS.pagesUrl ? "Open the hosted workbench that CI smoke checks target." : "Pages URL not configured.",
+      ready: Boolean(BUILD_STATUS.pagesUrl),
+    },
+    {
+      label: "Latest smoke",
+      href: BUILD_STATUS.runId ? `https://github.com/zakiefer/prompt-atelier/actions/runs/${BUILD_STATUS.runId}` : undefined,
+      detail: BUILD_STATUS.lastSmoke || "No smoke metadata yet.",
+      ready: /passed|ok|local|pending/i.test(BUILD_STATUS.lastSmoke),
+    },
+  ], []);
   const currentProject = useMemo<CurrentProjectSummary>(() => ({
     name: projectSnapshot?.label ?? `${activeLearningProfile.label} website prompt`,
     profileLabel: activeLearningProfile.label,
@@ -943,6 +1117,184 @@ export function LearnView({
       },
       ...items,
     ].slice(0, 8));
+  }
+  function addEvalHistoryRecord(label: string, detail: string, override?: Partial<EvalHistoryRecord>) {
+    const record: EvalHistoryRecord = {
+      id: `eval-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      label,
+      createdAt: new Date().toISOString(),
+      promptScore: currentProject.promptScore,
+      proofScore: currentProject.proofScore,
+      exportReadyCount: currentProject.exportReadyCount,
+      detail,
+      ...override,
+    };
+    setEvalHistory((current) => {
+      const next = [record, ...current.filter((item) => item.id !== record.id)].slice(0, 40);
+      writeLocalArray(EVAL_HISTORY_KEY, next, 40);
+      return next;
+    });
+    return record;
+  }
+  function applyRemoteProjectCollections(collections: {
+    promptProjects: unknown[];
+    projectVersions: unknown[];
+    projectProofRuns: unknown[];
+    generatedPrompts: unknown[];
+    evalHistory: unknown[];
+  }) {
+    const remoteGenerated = collections.generatedPrompts as GeneratedPromptRecord[];
+    const remoteProofRuns = collections.projectProofRuns as ProjectProofRunRecord[];
+    const remoteHistory = collections.evalHistory as EvalHistoryRecord[];
+    setGeneratedPrompts(remoteGenerated.slice(0, 24));
+    setProjectProofRuns(remoteProofRuns.slice(0, 24));
+    setEvalHistory(remoteHistory.slice(0, 40));
+    writeLocalArray(GENERATED_PROMPTS_KEY, remoteGenerated, 24);
+    writeLocalArray(PROJECT_PROOF_RUNS_KEY, remoteProofRuns, 24);
+    writeLocalArray(EVAL_HISTORY_KEY, remoteHistory, 40);
+    setProjectSync({
+      status: "synced",
+      detail: "Backend project sync is online and project records are persisted.",
+      lastSyncedAt: new Date().toISOString(),
+      remoteProjects: collections.promptProjects.length,
+      versions: collections.projectVersions.length,
+      proofRuns: remoteProofRuns.length,
+      generatedPrompts: remoteGenerated.length,
+    });
+  }
+  function handleGenerateGreatPrompt() {
+    const basePrompt = learnedStyleGenerator.prompt || briefPrompt || improvedPrompt || learnerSource;
+    const generated = [
+      basePrompt,
+      "",
+      "PRODUCTION QUALITY LOCKS",
+      "- Build the actual usable website experience first; do not create a marketing explanation page unless requested.",
+      "- Specify stack, assets, typography, layout, responsive behavior, interaction states, and no-go rules.",
+      "- Include desktop and mobile proof requirements, media checks, console health, and acceptance gates.",
+      "- Keep all secrets and provider keys out of browser-visible code, prompts, screenshots, exports, and logs.",
+      "",
+      `LEARNED TASTE: ${activeLearningProfile.label}`,
+      activeLearningProfile.rules.slice(0, 5).map((rule) => `- ${rule}`).join("\n"),
+    ].filter(Boolean).join("\n");
+    const record: GeneratedPromptRecord = {
+      id: `generated-${Date.now()}`,
+      projectId: projectSnapshot?.id || "browser-current-project",
+      title: `${activeLearningProfile.label} generated prompt`,
+      prompt: generated,
+      score: Math.min(100, Math.max(currentProject.promptScore, learnerEvaluation.score || dnaScore) + 4),
+      source: "learned-style-generator",
+      createdAt: new Date().toISOString(),
+    };
+    setGeneratedPrompts((current) => {
+      const next = [record, ...current.filter((item) => item.id !== record.id)].slice(0, 24);
+      writeLocalArray(GENERATED_PROMPTS_KEY, next, 24);
+      return next;
+    });
+    setLearnerText(generated);
+    addEvalHistoryRecord("Generated prompt", "Generated a production-ready prompt from learned style and current brief.", {
+      promptScore: record.score,
+      proofScore: currentProject.proofScore,
+    });
+    recordActivity("Generated great prompt", `${record.title} saved at ${record.score}/100.`, "good");
+  }
+  async function handleSyncProject() {
+    setProjectSync((current) => ({ ...current, status: "syncing", detail: "Syncing project records to the backend API." }));
+    const snapshot = handleSaveProjectSnapshot();
+    const version = {
+      id: `project-version-${Date.now()}`,
+      projectId: snapshot.id,
+      label: snapshot.label,
+      sourcePrompt: snapshot.sourcePrompt,
+      improvedPrompt: snapshot.improvedPrompt || "",
+      reviewedPrompt: snapshot.reviewedPrompt || "",
+      profileId: snapshot.profileId,
+      promptScore: snapshot.promptScore || 0,
+      proofScore: snapshot.proofScore || 0,
+      exportReadyCount: snapshot.exportReadyCount || 0,
+      exportPresetCount: snapshot.exportPresetCount || 0,
+      createdAt: new Date().toISOString(),
+    };
+    const evalRecord = addEvalHistoryRecord("Backend project sync", "Saved a versioned project snapshot to browser storage and attempted API sync.", {
+      promptScore: snapshot.promptScore || currentProject.promptScore,
+      proofScore: snapshot.proofScore || currentProject.proofScore,
+      exportReadyCount: snapshot.exportReadyCount || currentProject.exportReadyCount,
+    });
+    try {
+      const payload = await saveProjectToApi({
+        project: {
+          id: snapshot.id,
+          title: snapshot.label,
+          profileId: snapshot.profileId,
+          promptScore: snapshot.promptScore || 0,
+          proofScore: snapshot.proofScore || 0,
+          exportReadyCount: snapshot.exportReadyCount || 0,
+          proofArtifacts: snapshot.proofArtifacts.length,
+          status: "active",
+        },
+        version,
+        generatedPrompt: latestGeneratedPrompt,
+        evalRecord,
+        curationDecision: corpusHealthDecision,
+      });
+      applyRemoteProjectCollections(payload.collections);
+      recordActivity("Backend project sync", `${snapshot.label} synced to API collections.`, "good");
+    } catch (error) {
+      setProjectSync((current) => ({
+        ...current,
+        status: "error",
+        detail: error instanceof Error ? error.message : "Backend sync failed; browser snapshot is still saved.",
+      }));
+      recordActivity("Backend sync fallback", "Project is saved locally; API sync was not reachable.", "watch");
+    }
+  }
+  async function handleRunProjectProof() {
+    const proofRun: ProjectProofRunRecord = {
+      id: `project-proof-${Date.now()}`,
+      title: "Proof runner package",
+      createdAt: new Date().toISOString(),
+      score: Math.min(100, Math.round((proofChecklist.filter((item) => item.ready).length / Math.max(1, proofChecklist.length)) * 100)),
+      commands: [
+        "npm run lint",
+        "npm run build",
+        "npm run test:api",
+        "npm run smoke:hosted -- --url http://127.0.0.1:4173",
+        "npm run smoke:visual-regression -- --url http://127.0.0.1:4173",
+      ],
+      checks: proofChecklist.map((item) => ({ label: item.label, ready: item.ready, detail: item.detail })),
+    };
+    setProjectProofRuns((current) => {
+      const next = [proofRun, ...current.filter((item) => item.id !== proofRun.id)].slice(0, 24);
+      writeLocalArray(PROJECT_PROOF_RUNS_KEY, next, 24);
+      return next;
+    });
+    const evalRecord = addEvalHistoryRecord("Proof runner", "Created a proof-run package with commands, checklist state, and acceptance gates.", {
+      proofScore: proofRun.score,
+    });
+    recordActivity("Proof runner created", `${proofRun.score}/100 proof package saved.`, proofRun.score >= 75 ? "good" : "watch");
+    try {
+      const payload = await runProjectProofViaApi({ proofRun, evalRecord, projectId: projectSnapshot?.id || "browser-current-project" });
+      applyRemoteProjectCollections(payload.collections);
+      recordActivity("Proof runner synced", "Proof runner record persisted to API collections.", "good");
+    } catch {
+      recordActivity("Proof runner local", "Proof runner saved locally; API sync can happen later.", "watch");
+    }
+  }
+  function handleCurateCurrentPrompt(label: CorpusHealthDecision["label"]) {
+    const detail = label === "gold"
+      ? "Use as a high-quality training example after proof passes."
+      : label === "watch"
+        ? "Keep visible, but require more result proof before training."
+        : "Keep out of training memory until the prompt is scrubbed or proven relevant.";
+    const decision: CorpusHealthDecision = {
+      id: `corpus-health-${Date.now()}`,
+      label,
+      detail,
+      createdAt: new Date().toISOString(),
+    };
+    setCorpusHealthDecision(decision);
+    writeCorpusHealthDecision(decision);
+    addEvalHistoryRecord("Corpus health controls", `Marked the current prompt ${label}.`);
+    recordActivity("Corpus health label", `${label}: ${detail}`, label === "gold" ? "good" : "watch");
   }
   function handleUseBriefPrompt() {
     onUseSamplePrompt(briefPrompt);
@@ -1139,6 +1491,22 @@ export function LearnView({
           stages={projectStages}
         />
 
+        <div className="guided-product-grid production-path-grid">
+          <ProductionCommandCenterPanel
+            checklist={firstRunChecklist}
+            ciLinks={ciProofLinks}
+            corpusDecision={corpusHealthDecision}
+            generatedPrompt={latestGeneratedPrompt?.prompt}
+            onCurate={handleCurateCurrentPrompt}
+            onGenerate={handleGenerateGreatPrompt}
+            onRunProof={handleRunProjectProof}
+            onSync={handleSyncProject}
+            proofRun={latestProjectProofRun}
+            sync={projectSync}
+          />
+          <EvalHistoryCompactPanel history={evalHistory} />
+        </div>
+
         <div className="guided-product-grid">
           <LearnerCommandDeck
             activeTab={activeWorkspaceTab}
@@ -1200,120 +1568,128 @@ export function LearnView({
           </div>
         </details>
 
-        <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
-          <div className="loop-summary">
-            <div>
-              <span>Operating loop</span>
-              <strong>Paste, score, improve, battle, prove, export</strong>
-              <p>{operatingLoop.currentAction}</p>
-            </div>
-            <ScoreRing score={operatingLoop.score} label="loop" />
-          </div>
-          <div className="loop-step-grid">
-            {operatingLoop.steps.map((step) => (
+        <details className="learner-tools-drawer learner-insight-drawer" data-train-section="supporting-prompt-intelligence">
+          <summary>
+            <span>Supporting intelligence</span>
+            <strong>Diagnosis, project memory, proof hints, and style profiles</strong>
+          </summary>
+          <div className="learner-tools-stack">
+            <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
+              <div className="loop-summary">
+                <div>
+                  <span>Operating loop</span>
+                  <strong>Paste, score, improve, battle, prove, export</strong>
+                  <p>{operatingLoop.currentAction}</p>
+                </div>
+                <ScoreRing score={operatingLoop.score} label="loop" />
+              </div>
+              <div className="loop-step-grid">
+                {operatingLoop.steps.map((step) => (
+                  <button
+                    data-status={step.status}
+                    key={step.id}
+                    type="button"
+                    onClick={() => setActiveWorkspaceTab(step.target)}
+                  >
+                    <span>{step.label}</span>
+                    <strong>{step.status === "ready" ? "Ready" : step.status === "active" ? "Do next" : "Later"}</strong>
+                    <p>{step.detail}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="learner-proof-action" data-status={learnerProofAction.status} data-train-section="proof-first-action">
+              <div>
+                <span>Proof-first action</span>
+                <strong>{learnerProofAction.title}</strong>
+                <p>{learnerProofAction.detail}</p>
+              </div>
+              <ScoreRing score={learnerProofAction.score} label={learnerProofAction.status} />
+              <div className="proof-action-list">
+                <small>Ready: {learnerProofAction.ready.join(" / ") || "No proof signal yet"}</small>
+                <small>Next: {learnerProofAction.missing[0] || "Package this evidence into the export"}</small>
+              </div>
               <button
-                data-status={step.status}
-                key={step.id}
+                className="primary-button compact-button"
                 type="button"
-                onClick={() => setActiveWorkspaceTab(step.target)}
+                onClick={() => setActiveWorkspaceTab(learnerProofAction.status === "ready" ? "export" : "review")}
               >
-                <span>{step.label}</span>
-                <strong>{step.status === "ready" ? "Ready" : step.status === "active" ? "Do next" : "Later"}</strong>
-                <p>{step.detail}</p>
+                {learnerProofAction.cta}
               </button>
-            ))}
-          </div>
-        </section>
+            </section>
 
-        <section className="learner-proof-action" data-status={learnerProofAction.status} data-train-section="proof-first-action">
-          <div>
-            <span>Proof-first action</span>
-            <strong>{learnerProofAction.title}</strong>
-            <p>{learnerProofAction.detail}</p>
-          </div>
-          <ScoreRing score={learnerProofAction.score} label={learnerProofAction.status} />
-          <div className="proof-action-list">
-            <small>Ready: {learnerProofAction.ready.join(" / ") || "No proof signal yet"}</small>
-            <small>Next: {learnerProofAction.missing[0] || "Package this evidence into the export"}</small>
-          </div>
-          <button
-            className="primary-button compact-button"
-            type="button"
-            onClick={() => setActiveWorkspaceTab(learnerProofAction.status === "ready" ? "export" : "review")}
-          >
-            {learnerProofAction.cta}
-          </button>
-        </section>
-
-        <section className="learner-diagnosis-strip" data-train-section="prompt-diagnosis">
-          <article>
-            <span>Diagnosis</span>
-            <strong>{learnerDiagnosis.confidence.label}</strong>
-            <p>{learnerDiagnosis.confidence.detail}</p>
-          </article>
-          <article>
-            <span>Next rewrite</span>
-            <strong>{learnerDiagnosis.rewriteMoves[0] ?? "Tighten the prompt"}</strong>
-            <p>{learnerDiagnosis.gaps[0] ?? "No major missing ingredient detected."}</p>
-          </article>
-          <article>
-            <span>Nearest gold</span>
-            <strong>{learnerDiagnosis.closestGold[0] ?? "Add gold examples"}</strong>
-            <p>{learnerDiagnosis.closestGold.slice(1, 3).join(" / ") || "Closest examples appear here after import."}</p>
-          </article>
-        </section>
-
-        <section className="learner-project-system" data-status={learnerProjectSystem.status} data-train-section="project-system">
-          <div className="project-system-copy">
-            <span>Project memory</span>
-            <strong>{learnerProjectSystem.headline}</strong>
-            <p>{learnerProjectSystem.detail}</p>
-          </div>
-          <div className="project-system-grid">
-            {learnerProjectSystem.rows.map((row) => (
-              <article data-status={row.status} key={row.label}>
-                <strong>{row.count}</strong>
-                <span>{row.label}</span>
-                <p>{row.detail}</p>
+            <section className="learner-diagnosis-strip" data-train-section="prompt-diagnosis">
+              <article>
+                <span>Diagnosis</span>
+                <strong>{learnerDiagnosis.confidence.label}</strong>
+                <p>{learnerDiagnosis.confidence.detail}</p>
               </article>
-            ))}
-          </div>
-          <FeedbackList title="Policy" items={learnerProjectSystem.policy} empty="No project policy." />
-        </section>
+              <article>
+                <span>Next rewrite</span>
+                <strong>{learnerDiagnosis.rewriteMoves[0] ?? "Tighten the prompt"}</strong>
+                <p>{learnerDiagnosis.gaps[0] ?? "No major missing ingredient detected."}</p>
+              </article>
+              <article>
+                <span>Nearest gold</span>
+                <strong>{learnerDiagnosis.closestGold[0] ?? "Add gold examples"}</strong>
+                <p>{learnerDiagnosis.closestGold.slice(1, 3).join(" / ") || "Closest examples appear here after import."}</p>
+              </article>
+            </section>
 
-        <div className="profile-strip" aria-label="Learning profiles">
-          {learningProfiles.slice(0, 8).map((learningProfile) => (
-            <button
-              className={learningProfile.id === activeLearningProfile.id ? "profile-chip active" : "profile-chip"}
-              key={learningProfile.id}
-              type="button"
-              onClick={() => setActiveLearningProfileId(learningProfile.id)}
-            >
-              <strong>{learningProfile.label}</strong>
-              <span>{learningProfile.examples} examples / {learningProfile.score}%</span>
-            </button>
-          ))}
-        </div>
+            <section className="learner-project-system" data-status={learnerProjectSystem.status} data-train-section="project-system">
+              <div className="project-system-copy">
+                <span>Project memory</span>
+                <strong>{learnerProjectSystem.headline}</strong>
+                <p>{learnerProjectSystem.detail}</p>
+              </div>
+              <div className="project-system-grid">
+                {learnerProjectSystem.rows.map((row) => (
+                  <article data-status={row.status} key={row.label}>
+                    <strong>{row.count}</strong>
+                    <span>{row.label}</span>
+                    <p>{row.detail}</p>
+                  </article>
+                ))}
+              </div>
+              <FeedbackList title="Policy" items={learnerProjectSystem.policy} empty="No project policy." />
+            </section>
 
-        <section className="style-profile-board" data-train-section="style-profiles">
-          <div className="output-header">
-            <div>
-              <h3>Style profiles</h3>
-              <p>Choose the prompt taste the learner should emphasize before export.</p>
+            <div className="profile-strip" aria-label="Learning profiles">
+              {learningProfiles.slice(0, 8).map((learningProfile) => (
+                <button
+                  className={learningProfile.id === activeLearningProfile.id ? "profile-chip active" : "profile-chip"}
+                  key={learningProfile.id}
+                  type="button"
+                  onClick={() => setActiveLearningProfileId(learningProfile.id)}
+                >
+                  <strong>{learningProfile.label}</strong>
+                  <span>{learningProfile.examples} examples / {learningProfile.score}%</span>
+                </button>
+              ))}
             </div>
-            <span className="selected-meta">{activeLearningProfile.label}</span>
+
+            <section className="style-profile-board" data-train-section="style-profiles">
+              <div className="output-header">
+                <div>
+                  <h3>Style profiles</h3>
+                  <p>Choose the prompt taste the learner should emphasize before export.</p>
+                </div>
+                <span className="selected-meta">{activeLearningProfile.label}</span>
+              </div>
+              <div className="style-profile-grid">
+                {styleProfileCards.slice(0, 4).map((card) => (
+                  <button className="style-profile-card" data-active={card.active ? "true" : "false"} key={card.id} type="button" onClick={() => setActiveLearningProfileId(card.id)}>
+                    <strong>{card.label}</strong>
+                    <span>{card.examples} examples / {card.score}%</span>
+                    <p>{card.emphasis}</p>
+                    <small>{card.exportVoice}</small>
+                  </button>
+                ))}
+              </div>
+            </section>
           </div>
-          <div className="style-profile-grid">
-            {styleProfileCards.slice(0, 4).map((card) => (
-              <button className="style-profile-card" data-active={card.active ? "true" : "false"} key={card.id} type="button" onClick={() => setActiveLearningProfileId(card.id)}>
-                <strong>{card.label}</strong>
-                <span>{card.examples} examples / {card.score}%</span>
-                <p>{card.emphasis}</p>
-                <small>{card.exportVoice}</small>
-              </button>
-            ))}
-          </div>
-        </section>
+        </details>
 
         <nav className="learner-jump-nav" aria-label="Guided learner sections" data-train-section="guided-first-run">
           {workspaceTabs.map((tab, index) => (
@@ -1427,7 +1803,13 @@ export function LearnView({
           </div>
         </div>
 
-        <section className="learner-mini-panel" data-train-section="brief-builder" id="learner-score">
+        <details className="learner-tools-drawer compact-compose-drawer" data-train-section="brief-builder">
+          <summary>
+            <span>Make me a prompt</span>
+            <strong>Structured brief builder</strong>
+          </summary>
+          <div className="learner-tools-stack">
+        <section className="learner-mini-panel" id="learner-score">
           <div className="output-header">
             <div>
               <h3>Make me a prompt</h3>
@@ -1492,8 +1874,16 @@ export function LearnView({
             </div>
           </div>
           <textarea className="generated-output mini-output learned-style-output" readOnly value={learnedStyleGenerator.prompt} />
-          <LearnedPromptSectionEditor copied={copied} onApplyPrompt={handleApplySectionEdits} onCopy={onCopy} sections={learnedPromptSections} />
-          <textarea className="generated-output mini-output" readOnly value={briefPrompt} />
+          <details className="learner-tools-drawer compact-compose-drawer" data-train-section="generated-section-drawer">
+            <summary>
+              <span>Generated sections</span>
+              <strong>Edit sections and inspect raw brief output</strong>
+            </summary>
+            <div className="learner-tools-stack">
+              <LearnedPromptSectionEditor copied={copied} onApplyPrompt={handleApplySectionEdits} onCopy={onCopy} sections={learnedPromptSections} />
+              <textarea className="generated-output mini-output" readOnly value={briefPrompt} />
+            </div>
+          </details>
           <div className="button-row">
             <button className="ghost-button compact-button" type="button" onClick={() => onCopy(briefPrompt, "brief-builder")}>
               {copied === "brief-builder" ? <Check size={15} /> : <Copy size={15} />}
@@ -1504,91 +1894,101 @@ export function LearnView({
             </button>
           </div>
         </section>
+          </div>
+        </details>
 
-        <div className="self-serve-grid">
-          <article className="learner-mini-panel">
-            <div className="output-header">
-              <div>
-                <h3>Prompt diagnosis</h3>
-                <p>What is working, what is missing, and what to rewrite next.</p>
-              </div>
-              <ScoreRing score={learnerDiagnosis.confidence.score} label={learnerDiagnosis.confidence.label} />
-            </div>
-            <FeedbackList title="Strengths" items={learnerDiagnosis.strengths} empty="No strengths detected yet." />
-            <FeedbackList title="Missing ingredients" items={learnerDiagnosis.gaps} empty="No major gaps detected." />
-            <FeedbackList title="Rewrite moves" items={learnerDiagnosis.rewriteMoves} empty="No rewrite moves available." />
-            <div className="quality-explainer" data-train-section="quality-explanation">
-              <div>
-                <span>Text score</span>
-                <strong>{learnerEvaluation.score}</strong>
-                <p>Prompt structure, specificity, constraints, and implementation clarity.</p>
-              </div>
-              <div>
-                <span>Proof score</span>
-                <strong>{learnerProofAction.score}</strong>
-                <p>{learnerProofAction.ready.length ? learnerProofAction.ready.join(" / ") : learnerProofAction.missing[0]}</p>
-              </div>
-              <div>
-                <span>Confidence</span>
-                <strong>{learnerDiagnosis.confidence.score}</strong>
-                <p>{learnerDiagnosis.confidence.detail}</p>
-              </div>
-            </div>
-            <div className="mini-stat-row">
-              {dnaExplanation.dimensions.slice(0, 4).map((dimension) => (
-                <span key={dimension.key}>{dimension.label}: {dimension.score}</span>
-              ))}
-            </div>
-          </article>
+        <details className="learner-tools-drawer compact-compose-drawer" data-train-section="compose-diagnostics-drawer">
+          <summary>
+            <span>Compose diagnostics</span>
+            <strong>Prompt diagnosis, strength gaps, and similar prompts</strong>
+          </summary>
+          <div className="learner-tools-stack">
+            <div className="self-serve-grid">
+              <article className="learner-mini-panel">
+                <div className="output-header">
+                  <div>
+                    <h3>Prompt diagnosis</h3>
+                    <p>What is working, what is missing, and what to rewrite next.</p>
+                  </div>
+                  <ScoreRing score={learnerDiagnosis.confidence.score} label={learnerDiagnosis.confidence.label} />
+                </div>
+                <FeedbackList title="Strengths" items={learnerDiagnosis.strengths} empty="No strengths detected yet." />
+                <FeedbackList title="Missing ingredients" items={learnerDiagnosis.gaps} empty="No major gaps detected." />
+                <FeedbackList title="Rewrite moves" items={learnerDiagnosis.rewriteMoves} empty="No rewrite moves available." />
+                <div className="quality-explainer" data-train-section="quality-explanation">
+                  <div>
+                    <span>Text score</span>
+                    <strong>{learnerEvaluation.score}</strong>
+                    <p>Prompt structure, specificity, constraints, and implementation clarity.</p>
+                  </div>
+                  <div>
+                    <span>Proof score</span>
+                    <strong>{learnerProofAction.score}</strong>
+                    <p>{learnerProofAction.ready.length ? learnerProofAction.ready.join(" / ") : learnerProofAction.missing[0]}</p>
+                  </div>
+                  <div>
+                    <span>Confidence</span>
+                    <strong>{learnerDiagnosis.confidence.score}</strong>
+                    <p>{learnerDiagnosis.confidence.detail}</p>
+                  </div>
+                </div>
+                <div className="mini-stat-row">
+                  {dnaExplanation.dimensions.slice(0, 4).map((dimension) => (
+                    <span key={dimension.key}>{dimension.label}: {dimension.score}</span>
+                  ))}
+                </div>
+              </article>
 
-          <article className="learner-mini-panel">
-            <div className="output-header">
-              <h3>Learning profile</h3>
-              <ScoreRing score={activeLearningProfile.score} label="Profile" />
+              <article className="learner-mini-panel">
+                <div className="output-header">
+                  <h3>Learning profile</h3>
+                  <ScoreRing score={activeLearningProfile.score} label="Profile" />
+                </div>
+                <p>{activeLearningProfile.description}</p>
+                <div className="chips">
+                  {activeLearningProfile.rules.slice(0, 5).map((rule) => (
+                    <span key={rule}>{rule}</span>
+                  ))}
+                </div>
+              </article>
             </div>
-            <p>{activeLearningProfile.description}</p>
-            <div className="chips">
-              {activeLearningProfile.rules.slice(0, 5).map((rule) => (
-                <span key={rule}>{rule}</span>
-              ))}
-            </div>
-          </article>
-        </div>
 
-        <div className="self-serve-grid">
-          <article className="learner-mini-panel" data-train-section="strength-rewrite-plan">
-            <div className="output-header">
-              <h3>Strength gap plan</h3>
-              <span className="selected-meta">Exact rewrite moves</span>
-            </div>
-            <div className="version-list compact-list">
-              {dnaRewrites.map((rewrite) => (
-                <article className="version-card" key={rewrite.key}>
-                  <strong>{rewrite.label}: {rewrite.score}/100</strong>
-                  <p>{rewrite.why}</p>
-                  <small>{rewrite.rewrite}</small>
-                </article>
-              ))}
-            </div>
-          </article>
+            <div className="self-serve-grid">
+              <article className="learner-mini-panel" data-train-section="strength-rewrite-plan">
+                <div className="output-header">
+                  <h3>Strength gap plan</h3>
+                  <span className="selected-meta">Exact rewrite moves</span>
+                </div>
+                <div className="version-list compact-list">
+                  {dnaRewrites.map((rewrite) => (
+                    <article className="version-card" key={rewrite.key}>
+                      <strong>{rewrite.label}: {rewrite.score}/100</strong>
+                      <p>{rewrite.why}</p>
+                      <small>{rewrite.rewrite}</small>
+                    </article>
+                  ))}
+                </div>
+              </article>
 
-          <article className="learner-mini-panel" data-train-section="corpus-neighbors">
-            <div className="output-header">
-              <h3>Learned from similar prompts</h3>
-              <span className="selected-meta">{corpusNeighbors.length} matches</span>
+              <article className="learner-mini-panel" data-train-section="corpus-neighbors">
+                <div className="output-header">
+                  <h3>Learned from similar prompts</h3>
+                  <span className="selected-meta">{corpusNeighbors.length} matches</span>
+                </div>
+                <div className="version-list compact-list">
+                  {corpusNeighbors.slice(0, 4).map((neighbor) => (
+                    <article className="version-card" key={neighbor.id}>
+                      <strong>{neighbor.title}</strong>
+                      <span>{neighbor.score}% / {neighbor.words} words</span>
+                      <p>{neighbor.reasons.slice(0, 2).join(" / ")}</p>
+                      <small>{neighbor.tags.slice(0, 4).join(" / ")}</small>
+                    </article>
+                  ))}
+                </div>
+              </article>
             </div>
-            <div className="version-list compact-list">
-              {corpusNeighbors.slice(0, 4).map((neighbor) => (
-                <article className="version-card" key={neighbor.id}>
-                  <strong>{neighbor.title}</strong>
-                  <span>{neighbor.score}% / {neighbor.words} words</span>
-                  <p>{neighbor.reasons.slice(0, 2).join(" / ")}</p>
-                  <small>{neighbor.tags.slice(0, 4).join(" / ")}</small>
-                </article>
-              ))}
-            </div>
-          </article>
-        </div>
+          </div>
+        </details>
         </div>
 
         <div className="learner-tab-panel" data-active={activeWorkspaceTab === "review" ? "true" : "false"} hidden={activeWorkspaceTab !== "review"}>

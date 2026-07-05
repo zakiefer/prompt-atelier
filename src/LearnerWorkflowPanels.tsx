@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, Clock, Copy, Download, ExternalLink, FileText, History, ImagePlus, ListChecks, MonitorCheck, PackageCheck, Save, Search, ShieldCheck, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, Check, Clock, Copy, Database, Download, ExternalLink, FileText, History, ImagePlus, ListChecks, MonitorCheck, PackageCheck, PlayCircle, Save, Search, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { type OutcomeRating } from "./promptEngine";
 import { type CorpusReviewRow, type LearnerSession, type TargetExportPreset } from "./learnerProduct";
 import {
@@ -111,6 +111,55 @@ export type CurrentProjectSummary = {
   proofCount: number;
   sessionCount: number;
   savedAt?: string;
+};
+
+export type ProjectSyncState = {
+  status: "browser" | "syncing" | "synced" | "error";
+  detail: string;
+  lastSyncedAt?: string;
+  remoteProjects: number;
+  versions: number;
+  proofRuns: number;
+  generatedPrompts: number;
+};
+
+export type EvalHistoryRecord = {
+  id: string;
+  label: string;
+  createdAt: string;
+  promptScore: number;
+  proofScore: number;
+  exportReadyCount: number;
+  detail: string;
+};
+
+export type ProjectProofRunRecord = {
+  id: string;
+  title: string;
+  createdAt: string;
+  score: number;
+  commands: string[];
+  checks: { label: string; ready: boolean; detail?: string }[];
+};
+
+export type CorpusHealthDecision = {
+  id: string;
+  label: "gold" | "watch" | "quarantine";
+  detail: string;
+  createdAt: string;
+};
+
+export type ProductionCommandCenterProps = {
+  checklist: { label: string; ready: boolean; detail: string }[];
+  ciLinks: { label: string; href?: string; detail: string; ready: boolean }[];
+  corpusDecision?: CorpusHealthDecision;
+  generatedPrompt?: string;
+  onCurate: (label: CorpusHealthDecision["label"]) => void;
+  onGenerate: () => void;
+  onRunProof: () => void;
+  onSync: () => void;
+  proofRun?: ProjectProofRunRecord;
+  sync: ProjectSyncState;
 };
 
 export type ProofChecklistItem = {
@@ -301,6 +350,118 @@ export function TrainingImpactPanel({
           </article>
         ))}
       </div>
+    </section>
+  );
+}
+
+export function ProductionCommandCenterPanel({
+  checklist,
+  ciLinks,
+  corpusDecision,
+  generatedPrompt,
+  onCurate,
+  onGenerate,
+  onRunProof,
+  onSync,
+  proofRun,
+  sync,
+}: ProductionCommandCenterProps) {
+  const readyCount = checklist.filter((item) => item.ready).length;
+  const linkCount = ciLinks.filter((item) => item.ready).length;
+  return (
+    <section className="learner-mini-panel production-command-center" data-sync-status={sync.status} data-train-section="production-command-center">
+      <div className="output-header">
+        <div>
+          <h3>Generate great prompt</h3>
+          <p>One compact lane for backend project sync, proof runner evidence, corpus health controls, handoff packaging, and eval history.</p>
+        </div>
+        <span className="selected-meta backend-sync-badge">
+          <Database size={14} />
+          Backend project sync: {sync.status}
+        </span>
+      </div>
+      <div className="production-action-row">
+        <button className="primary-button compact-button" type="button" onClick={onGenerate}>
+          <Sparkles size={15} />
+          Generate prompt
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={onSync}>
+          <Save size={15} />
+          Sync project
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={onRunProof}>
+          <PlayCircle size={15} />
+          Run proof runner
+        </button>
+      </div>
+      <div className="production-command-grid">
+        <article>
+          <span>First-run checklist</span>
+          <strong>{readyCount}/{checklist.length} ready</strong>
+          <p>{checklist.find((item) => !item.ready)?.detail || "The guided path is complete enough to export."}</p>
+        </article>
+        <article>
+          <span>Corpus health controls</span>
+          <strong>{corpusDecision ? corpusDecision.label : "unlabeled"}</strong>
+          <p>{corpusDecision?.detail || "Label this prompt as gold, watch, or quarantine before training memory."}</p>
+          <div className="compact-segmented-row" role="group" aria-label="Corpus health controls">
+            {(["gold", "watch", "quarantine"] as const).map((label) => (
+              <button data-active={corpusDecision?.label === label ? "true" : "false"} key={label} type="button" onClick={() => onCurate(label)}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </article>
+        <article>
+          <span>Proof runner</span>
+          <strong>{proofRun ? `${proofRun.score}/100` : "not run"}</strong>
+          <p>{proofRun?.title || "Creates a stored proof-run record with commands, checklist status, and acceptance gates."}</p>
+        </article>
+        <article>
+          <span>CI proof links</span>
+          <strong>{linkCount}/{ciLinks.length}</strong>
+          <p>{ciLinks.find((item) => item.ready)?.detail || "CI and hosted proof links appear here after build metadata is available."}</p>
+        </article>
+      </div>
+      <div className="generated-prompt-preview">
+        <strong>Latest generated prompt</strong>
+        <p>{generatedPrompt || "Use Generate prompt to produce a clean, implementation-ready prompt from the learned style and current brief."}</p>
+      </div>
+      <p className="selected-meta">{sync.detail}{sync.lastSyncedAt ? ` / ${new Date(sync.lastSyncedAt).toLocaleString()}` : ""}</p>
+    </section>
+  );
+}
+
+export function EvalHistoryCompactPanel({ history }: { history: EvalHistoryRecord[] }) {
+  const latest = history[0];
+  const average = Math.round(
+    history.reduce((total, item) => total + Math.round((item.promptScore + item.proofScore) / 2), 0) / Math.max(1, history.length),
+  );
+  return (
+    <section className="learner-mini-panel eval-history-compact" data-train-section="eval-history">
+      <div className="output-header">
+        <div>
+          <h3>Eval history</h3>
+          <p>Every generated prompt, proof run, sync, and handoff package leaves a comparable score row.</p>
+        </div>
+        <div className="mini-score-badge">
+          <strong>{history.length ? average : 0}</strong>
+          <span>avg</span>
+        </div>
+      </div>
+      <div className="eval-history-list">
+        {history.slice(0, 5).map((item) => (
+          <article key={item.id}>
+            <div>
+              <strong>{item.label}</strong>
+              <p>{item.detail}</p>
+            </div>
+            <span>{item.promptScore}/{item.proofScore}</span>
+          </article>
+        ))}
+        {!history.length ? <p className="selected-meta">No eval rows yet. Generate, sync, or run proof to start the trend.</p> : null}
+      </div>
+      {latest ? <p className="selected-meta">Latest: {new Date(latest.createdAt).toLocaleString()} / {latest.exportReadyCount} export target(s)</p> : null}
     </section>
   );
 }

@@ -104,6 +104,15 @@ export type ApiResultImport<TBuildRun, TScreenshot, TLineage> = {
   };
 };
 
+export type ProjectCollectionsPayload = {
+  promptProjects: unknown[];
+  projectVersions: unknown[];
+  projectProofRuns: unknown[];
+  generatedPrompts: unknown[];
+  evalHistory: unknown[];
+  curationDecisions: unknown[];
+};
+
 export function getApiHealth() {
   return requestJson<ApiHealth>("/api/health");
 }
@@ -120,6 +129,24 @@ export function syncCollections(collections: Record<string, unknown>) {
   return requestJson<{ ok: boolean; collections: Record<string, unknown> }>("/api/collections", {
     method: "POST",
     body: JSON.stringify({ collections }),
+  });
+}
+
+export function getProjectCollections() {
+  return requestJson<{ ok: boolean; collections: ProjectCollectionsPayload }>("/api/projects");
+}
+
+export function saveProjectToApi(payload: Record<string, unknown>) {
+  return requestJson<{ ok: boolean; redactions?: unknown[]; collections: ProjectCollectionsPayload }>("/api/projects/save", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function runProjectProofViaApi(payload: Record<string, unknown>) {
+  return requestJson<{ ok: boolean; redactions?: unknown[]; proofRun: unknown; collections: ProjectCollectionsPayload }>("/api/projects/proof-run", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 
