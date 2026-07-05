@@ -1631,13 +1631,24 @@ const learnerProjectSystem = buildLearnerProjectSystem({ activeProfile: learning
 assert.equal(learnerProjectSystem.rows.length, 4, "Learner project system should summarize the main project spaces.");
 assert.ok(learnerProjectSystem.detail.includes("saved learner run"), "Learner project system should connect spaces to learner sessions.");
 const learnerProofDeployStatus = buildLearnerProofDeployStatus({
+  buildStatus: {
+    commit: "abcdef123456",
+    runId: "42",
+    runAttempt: "1",
+    workflow: "CI",
+    deployedAt: "2026-07-05T00:00:00.000Z",
+    pagesUrl: "https://zakiefer.github.io/prompt-atelier/",
+    lastSmoke: "visual and hosted smoke",
+  },
   corpusSafety: buildLearnerCorpusSafety(corpusReviewRows),
   exportReadyCount: targetPresets.length,
   proofAction: learnerProofAction,
   regressionSummary: buildLearnerRegressionSummary(holdoutBenchmark),
 });
 assert.ok(learnerProofDeployStatus.liveUrl.includes("prompt-atelier"), "Proof/deploy status should expose the live prompt atelier URL.");
-assert.equal(learnerProofDeployStatus.checks.length, 4, "Proof/deploy status should summarize four handoff checks.");
+assert.equal(learnerProofDeployStatus.checks.length, 5, "Proof/deploy status should summarize proof, export, corpus, regression, and build metadata.");
+assert.ok(learnerProofDeployStatus.metadata.some((item) => item.label === "Commit" && item.value === "abcdef123456"), "Proof/deploy status should expose build commit metadata.");
+assert.ok(learnerProofDeployStatus.commands.some((command) => command.includes("smoke:visual-regression")), "Proof/deploy status should include visual regression verification.");
 assert.ok(learnerProofDeployStatus.commands.some((command) => command.includes("smoke:hosted")), "Proof/deploy status should include hosted smoke verification.");
 
 const modularArchitecture = buildModularArchitectureReport({

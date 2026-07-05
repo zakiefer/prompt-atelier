@@ -35,6 +35,13 @@ jobs:
         env:
           GITHUB_PAGES: "true"
           VITE_PROMPT_ATELIER_API_BASE: ${{ secrets.PROMPT_LAB_API_URL }}
+          VITE_COMMIT_SHA: ${{ github.sha }}
+          VITE_GITHUB_RUN_ID: ${{ github.run_id }}
+          VITE_GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
+          VITE_WORKFLOW_NAME: ${{ github.workflow }}
+          VITE_DEPLOYED_AT: ${{ github.event.head_commit.timestamp }}
+          VITE_PAGES_URL: https://zakiefer.github.io/prompt-atelier/
+          VITE_LAST_SMOKE: pending pages smoke
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
@@ -79,3 +86,6 @@ jobs:
 
       - name: Smoke public demo view
         run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 660000 --demo --out output/playwright/pages-demo-smoke
+
+      - name: Visual regression snapshots
+        run: npm run smoke:visual-regression -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 660000 --out output/playwright/pages-visual-regression

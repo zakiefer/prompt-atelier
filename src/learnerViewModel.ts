@@ -1,4 +1,5 @@
 import { type DnaScoreExplanation, type Evaluation, type PromptBattle } from "./promptEngine";
+import { type BuildStatusSnapshot } from "./buildStatus";
 import {
   type CorpusNeighbor,
   type CorpusReviewRow,
@@ -128,6 +129,7 @@ export type LearnerProofDeployStatus = {
   headline: string;
   detail: string;
   liveUrl: string;
+  metadata: { label: string; value: string; ready: boolean }[];
   checks: { label: string; ready: boolean; detail: string }[];
   commands: string[];
 };
@@ -568,24 +570,40 @@ export function buildLearnerProjectSystem({
 }
 
 export function buildLearnerProofDeployStatus({
+  buildStatus,
   corpusSafety,
   exportReadyCount,
   proofAction,
   regressionSummary,
 }: {
+  buildStatus?: BuildStatusSnapshot;
   corpusSafety: LearnerCorpusSafety;
   exportReadyCount: number;
   proofAction: LearnerProofAction;
   regressionSummary: LearnerRegressionSummary;
 }): LearnerProofDeployStatus {
+  const liveUrl = buildStatus?.pagesUrl || "https://zakiefer.github.io/prompt-atelier/";
   const checks = [
     { label: "Proof evidence", ready: proofAction.status === "ready", detail: proofAction.detail },
     { label: "Export presets", ready: exportReadyCount >= 6, detail: `${exportReadyCount} target package(s) ready.` },
     { label: "Corpus posture", ready: corpusSafety.label !== "quarantine", detail: corpusSafety.detail },
     { label: "Regression guard", ready: regressionSummary.label !== "blocked", detail: regressionSummary.detail },
+    {
+      label: "Build metadata",
+      ready: Boolean(buildStatus?.commit && buildStatus.commit !== "local"),
+      detail: buildStatus?.commit && buildStatus.commit !== "local"
+        ? `${buildStatus.workflow} built ${buildStatus.commit.slice(0, 7)}.`
+        : "Local build metadata is shown until GitHub Pages injects workflow values.",
+    },
   ];
   const readyCount = checks.filter((check) => check.ready).length;
   const score = Math.round((readyCount / checks.length) * 100);
+  const metadata = [
+    { label: "Commit", value: buildStatus?.commit || "local", ready: Boolean(buildStatus?.commit && buildStatus.commit !== "local") },
+    { label: "Workflow", value: buildStatus?.workflow || "local build", ready: Boolean(buildStatus?.workflow && buildStatus.workflow !== "local build") },
+    { label: "Run", value: buildStatus?.runId ? `${buildStatus.runId}${buildStatus.runAttempt ? `.${buildStatus.runAttempt}` : ""}` : "local", ready: Boolean(buildStatus?.runId) },
+    { label: "Smoke", value: buildStatus?.lastSmoke || "local verification pending", ready: Boolean(buildStatus?.lastSmoke && buildStatus.lastSmoke !== "local verification pending") },
+  ];
   return {
     score,
     headline: score >= 90 ? "Ready for durable handoff" : score >= 65 ? "Handoff is usable with caveats" : "Finish proof before handoff",
@@ -595,12 +613,14 @@ export function buildLearnerProofDeployStatus({
         : score >= 65
           ? "You can export now, but the next proof or corpus item should be handled before promoting this as gold."
           : "Keep this in review until proof, corpus, and regression checks are less speculative.",
-    liveUrl: "https://zakiefer.github.io/prompt-atelier/",
+    liveUrl,
+    metadata,
     checks,
     commands: [
       "npm run build",
       "npm run lint",
       "npm run test:engine",
+      "npm run smoke:visual-regression -- --url http://127.0.0.1:4173/",
       "npm run smoke:hosted -- --url http://127.0.0.1:4173",
     ],
   };
