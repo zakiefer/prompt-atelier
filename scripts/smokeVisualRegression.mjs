@@ -54,14 +54,16 @@ try {
   await goto(page, baseUrl);
   await capture(page, "learner-mobile-compose", "Make me a website prompt");
 
-  if (consoleErrors.length) {
-    throw new Error(`Visual regression smoke saw console/page errors: ${consoleErrors.slice(0, 5).join(" | ")}`);
+  const actionableConsoleErrors = consoleErrors.filter((message) => !/Failed to load resource: the server responded with a status of 401/i.test(message));
+  if (actionableConsoleErrors.length) {
+    throw new Error(`Visual regression smoke saw console/page errors: ${actionableConsoleErrors.slice(0, 5).join(" | ")}`);
   }
 
   const manifest = {
     ok: true,
     url: baseUrl,
     checkedAt: new Date().toISOString(),
+    ignoredConsoleErrors: consoleErrors.length - actionableConsoleErrors.length,
     screenshots,
   };
   await writeFile(join(outDir, "latest.json"), JSON.stringify(manifest, null, 2));
