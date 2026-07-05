@@ -94,9 +94,42 @@ try {
   const missing = expectedHeadings.filter((heading) => !bodyText.includes(heading));
   const screenshotPath = join(outDir, "hosted-smoke.png");
   await page.screenshot({ path: screenshotPath, fullPage: true });
+  const panelState = shouldOpenTrain
+    ? await page.evaluate(() => {
+        const requiredSections = [
+          "product-evolution",
+          "learner-mode",
+          "memory-v2",
+          "result-reviewer",
+          "holdout",
+          "editor-studio",
+          "project-spaces",
+          "architecture",
+          "public-experience",
+        ];
+        const pageDocument = globalThis.document;
+        return {
+          missingSections: requiredSections.filter((section) => !pageDocument.querySelector(`[data-train-section="${section}"]`)),
+          horizontalOverflow: pageDocument.documentElement.scrollWidth > pageDocument.documentElement.clientWidth + 4,
+          safeCheckCount: pageDocument.querySelectorAll(".safe-check").length,
+          scoreRingCount: pageDocument.querySelectorAll(".score-ring").length,
+        };
+      })
+    : { missingSections: [], horizontalOverflow: false, safeCheckCount: 0, scoreRingCount: 0 };
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.screenshot({ path: join(outDir, "hosted-smoke-mobile.png"), fullPage: true });
 
   if (missing.length) {
     throw new Error(`Hosted smoke missing heading(s): ${missing.join(", ")}`);
+  }
+  if (panelState.missingSections.length) {
+    throw new Error(`Hosted smoke missing Train section(s): ${panelState.missingSections.join(", ")}`);
+  }
+  if (panelState.horizontalOverflow) {
+    throw new Error("Hosted smoke detected horizontal overflow in Train view.");
+  }
+  if (shouldOpenTrain && (panelState.safeCheckCount < 30 || panelState.scoreRingCount < 8)) {
+    throw new Error(`Hosted smoke found weak visual structure: ${panelState.safeCheckCount} checks, ${panelState.scoreRingCount} score rings.`);
   }
 
   console.log(JSON.stringify({
@@ -104,7 +137,11 @@ try {
     url: targetUrl.toString(),
     train: shouldOpenTrain,
     checked: expectedHeadings,
-    screenshot: screenshotPath,
+    visual: panelState,
+    screenshots: {
+      desktop: screenshotPath,
+      mobile: join(outDir, "hosted-smoke-mobile.png"),
+    },
   }, null, 2));
 } finally {
   await browser.close();

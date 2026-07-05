@@ -26,6 +26,7 @@
     "audit:security-boundary": "node scripts/auditSecurityBoundary.mjs",
     "check:corpus-safety": "node scripts/checkCorpusSafety.mjs",
     "check:quality-gate": "node scripts/checkQualityGate.mjs",
+    "check:holdout": "node scripts/checkHoldoutRegression.mjs",
     "verify:hosted-api": "node scripts/verifyHostedApi.mjs",
     "smoke:hosted": "node scripts/smokeHostedApp.mjs",
     "test:engine": "tsx scripts/testEngine.ts",

@@ -33,6 +33,9 @@ jobs:
       - name: Quality gate
         run: npm run check:quality-gate
 
+      - name: Holdout regression
+        run: npm run check:holdout -- --out output/holdout-regression-ci
+
       - name: Proof seed artifact
         run: npm run proof:seed -- --out output/proof-seed-ci
 

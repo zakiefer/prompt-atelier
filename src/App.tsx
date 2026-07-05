@@ -396,6 +396,7 @@ import {
   buildResultReviewerReport,
   type HoldoutBenchmarkReport,
   type LearningMemoryV2Report,
+  type MemoryRuleDecision,
   type ModularArchitectureReport,
   type ProductEvolutionReport,
   type ProjectSpacesReport,
@@ -403,6 +404,7 @@ import {
   type PromptLearnerModeReport,
   type PublicDemoExperienceReport,
   type ResultReviewerReport,
+  type SavedProjectSpaceInput,
 } from "./productEvolution";
 import {
   analyzeScreenshots,
@@ -448,6 +450,8 @@ const CURATION_KEY = "prompt-atelier-curation-decisions";
 const MODEL_BATCH_KEY = "prompt-atelier-model-batch-evaluations";
 const PAIRWISE_REVIEW_KEY = "prompt-atelier-pairwise-reviews";
 const BACKUP_KEY = "prompt-atelier-backup-snapshots";
+const MEMORY_RULE_DECISIONS_KEY = "prompt-atelier-memory-rule-decisions";
+const PROJECT_SPACES_KEY = "prompt-atelier-project-spaces";
 const ONBOARDING_KEY = "prompt-atelier-onboarding-mode";
 const WORKSPACE_KEY = "prompt-atelier-active-workspace";
 const CLOSED_LOOP_KEY = "prompt-atelier-closed-loop-runs";
@@ -679,6 +683,26 @@ function readStoredCurationDecisions(): Record<string, CurationDecision> {
   } catch {
     return {};
   }
+}
+
+function readStoredMemoryRuleDecisions(): Record<string, MemoryRuleDecision> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(MEMORY_RULE_DECISIONS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, MemoryRuleDecision>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStoredProjectSpaces(): SavedProjectSpace[] {
+  return readStoredArray<SavedProjectSpace>(
+    PROJECT_SPACES_KEY,
+    (item) => Boolean(item?.id && item?.label && Array.isArray(item?.query) && item?.createdAt),
+    20,
+  );
 }
 
 function readStoredModelBatchEvaluations() {
@@ -942,6 +966,9 @@ type ScoreWeights = Record<string, number>;
 type CurationDecision = "learn" | "quarantine" | "review";
 type OnboardingMode = "demo" | "blank" | "upload" | "trained";
 type WorkspaceKey = "all" | "hero" | "saas" | "agency" | "dashboard" | "auth-commerce";
+type SavedProjectSpace = SavedProjectSpaceInput & {
+  createdAt: string;
+};
 
 const workspacePresets: {
   key: WorkspaceKey;
@@ -2172,6 +2199,8 @@ type StoredCollections = {
   lineage: PromptLineageNode[];
   datasetVersions: DatasetVersion[];
   curationDecisions: Record<string, CurationDecision>;
+  memoryRuleDecisions: Record<string, MemoryRuleDecision>;
+  projectSpaces: SavedProjectSpace[];
   modelBatchEvaluations: ModelBatchEvaluation[];
   pairwiseReviews: PairwiseReviewRecord[];
   backupSnapshots: TrainingBackupSnapshot[];
@@ -2221,6 +2250,8 @@ export default function App() {
   const [queueJobs, setQueueJobs] = useState<BuildQueueJob[]>(() => readStoredQueueJobs());
   const [lineageNodes, setLineageNodes] = useState<PromptLineageNode[]>(() => readStoredLineage());
   const [curationDecisions, setCurationDecisions] = useState<Record<string, CurationDecision>>(() => readStoredCurationDecisions());
+  const [memoryRuleDecisions, setMemoryRuleDecisions] = useState<Record<string, MemoryRuleDecision>>(() => readStoredMemoryRuleDecisions());
+  const [savedProjectSpaces, setSavedProjectSpaces] = useState<SavedProjectSpace[]>(() => readStoredProjectSpaces());
   const [modelBatchEvaluations, setModelBatchEvaluations] = useState<ModelBatchEvaluation[]>(() => readStoredModelBatchEvaluations());
   const [pairwiseReviews, setPairwiseReviews] = useState<PairwiseReviewRecord[]>(() => readStoredPairwiseReviews());
   const [backupSnapshots, setBackupSnapshots] = useState<TrainingBackupSnapshot[]>(() => readStoredBackupSnapshots());
@@ -3532,11 +3563,12 @@ export default function App() {
         buildRuns,
         examples: learningExamples,
         outcomes,
+        ruleDecisions: memoryRuleDecisions,
         promptQualityDna,
         screenshots,
         templateCompiler,
       }),
-    [buildRuns, learningExamples, outcomes, promptQualityDna, screenshots, templateCompiler],
+    [buildRuns, learningExamples, memoryRuleDecisions, outcomes, promptQualityDna, screenshots, templateCompiler],
   );
   const resultReviewer = useMemo(
     () =>
@@ -3572,8 +3604,9 @@ export default function App() {
       buildProjectSpacesReport({
         cleanupMode: corpusCleanupMode,
         examples: learningExamples,
+        savedSpaces: savedProjectSpaces,
       }),
-    [corpusCleanupMode, learningExamples],
+    [corpusCleanupMode, learningExamples, savedProjectSpaces],
   );
   const modularArchitecture = useMemo(
     () =>
@@ -3683,6 +3716,8 @@ export default function App() {
       lineage: lineageNodes,
       datasetVersions,
       curationDecisions,
+      memoryRuleDecisions,
+      projectSpaces: savedProjectSpaces,
       modelBatchEvaluations,
       pairwiseReviews,
       backupSnapshots,
@@ -3719,6 +3754,10 @@ export default function App() {
       if (stored.curationDecisions && typeof stored.curationDecisions === "object" && !Array.isArray(stored.curationDecisions)) {
         setCurationDecisions(stored.curationDecisions as Record<string, CurationDecision>);
       }
+      if (stored.memoryRuleDecisions && typeof stored.memoryRuleDecisions === "object" && !Array.isArray(stored.memoryRuleDecisions)) {
+        setMemoryRuleDecisions(stored.memoryRuleDecisions as Record<string, MemoryRuleDecision>);
+      }
+      if (Array.isArray(stored.projectSpaces)) setSavedProjectSpaces((stored.projectSpaces as SavedProjectSpace[]).slice(0, 20));
       if (Array.isArray(stored.modelBatchEvaluations)) setModelBatchEvaluations((stored.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
       if (Array.isArray(stored.pairwiseReviews)) setPairwiseReviews((stored.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
       if (Array.isArray(stored.backupSnapshots)) setBackupSnapshots((stored.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
@@ -3846,6 +3885,18 @@ export default function App() {
     window.localStorage.setItem(CURATION_KEY, JSON.stringify(curationDecisions));
     void writeCollection("curationDecisions", curationDecisions);
   }, [curationDecisions, dbReady]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(MEMORY_RULE_DECISIONS_KEY, JSON.stringify(memoryRuleDecisions));
+    void writeCollection("memoryRuleDecisions", memoryRuleDecisions);
+  }, [dbReady, memoryRuleDecisions]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(PROJECT_SPACES_KEY, JSON.stringify(savedProjectSpaces));
+    void writeCollection("projectSpaces", savedProjectSpaces);
+  }, [dbReady, savedProjectSpaces]);
 
   useEffect(() => {
     if (!dbReady) return;
@@ -3989,6 +4040,8 @@ export default function App() {
         lineage: lineageNodes,
         datasetVersions,
         curationDecisions,
+        memoryRuleDecisions,
+        projectSpaces: savedProjectSpaces,
         modelBatchEvaluations,
         pairwiseReviews,
         backupSnapshots,
@@ -4015,7 +4068,7 @@ export default function App() {
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, benchmarkV2Runs, buildRuns, claudeHealthChecks, closedLoopRuns, corpusClusterRuns, curationDecisions, datasetVersions, dbReady, evaluationArtifacts, history, hostedSetupChecks, lineageNodes, modelBatchEvaluations, modelEvaluationCache, mutationTournamentRuns, outcomes, pairwiseReviews, promptCandidateRuns, promptComparisons, proofArtifacts, proofLearningRuns, queueJobs, screenshotJudgeRuns, screenshotPromptRuns, screenshots, trainingRuns, userPrompts, workspacePackRuns]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, benchmarkV2Runs, buildRuns, claudeHealthChecks, closedLoopRuns, corpusClusterRuns, curationDecisions, datasetVersions, dbReady, evaluationArtifacts, history, hostedSetupChecks, lineageNodes, memoryRuleDecisions, modelBatchEvaluations, modelEvaluationCache, mutationTournamentRuns, outcomes, pairwiseReviews, promptCandidateRuns, promptComparisons, proofArtifacts, proofLearningRuns, queueJobs, savedProjectSpaces, screenshotJudgeRuns, screenshotPromptRuns, screenshots, trainingRuns, userPrompts, workspacePackRuns]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -4232,6 +4285,79 @@ export default function App() {
       detail: patch.notes ?? "Outcome updated.",
       createdAt: now,
     });
+  }
+
+  function setMemoryRuleDecision(ruleId: string, decision: MemoryRuleDecision) {
+    setMemoryRuleDecisions((current) => ({ ...current, [ruleId]: decision }));
+    setApiNotice(`Learning Memory v2 rule ${decision}: ${ruleId.replace(/-/g, " ")}.`);
+  }
+
+  function saveActiveProjectSpace() {
+    const preset = activeWorkspacePreset;
+    const id = `space-${preset.key}`;
+    const space: SavedProjectSpace = {
+      id,
+      label: preset.label,
+      query: preset.query,
+      createdAt: new Date().toISOString(),
+    };
+    setSavedProjectSpaces((current) => [space, ...current.filter((item) => item.id !== id)].slice(0, 20));
+    setApiNotice(`Saved project space: ${preset.label}.`);
+  }
+
+  function applyResultReviewAction(row: ResultReviewerReport["rows"][number], action: "promote" | "repair" | "exclude") {
+    const prompt = examples.find((example) => example.id === row.promptId);
+    if (!prompt) {
+      setApiNotice("Could not find the prompt behind that review row.");
+      return;
+    }
+    setSelectedId(prompt.id);
+    if (action === "promote") {
+      updateOutcome(prompt, {
+        rating: "great",
+        status: "gold",
+        notes: `Promoted from side-by-side result reviewer. Build ${row.buildScore}, visual ${row.visualScore}. ${row.action}`,
+      });
+      setApiNotice(`Promoted ${row.title} to gold from result reviewer.`);
+      return;
+    }
+    if (action === "exclude") {
+      updateOutcome(prompt, {
+        rating: "bad",
+        status: "avoid",
+        notes: `Excluded from learning by result reviewer. Build ${row.buildScore}, visual ${row.visualScore}. ${row.action}`,
+      });
+      setApiNotice(`Excluded ${row.title} from learning.`);
+      return;
+    }
+    const repairPatch = [
+      `RESULT REVIEW REPAIR PATCH: ${row.title}`,
+      `- Build score: ${row.buildScore}`,
+      `- Visual score: ${row.visualScore}`,
+      `- Delta: ${row.delta}`,
+      `- Reviewer action: ${row.action}`,
+      "",
+      "Rewrite the prompt to preserve its strongest exact assets, then fix the visual/build gaps before promotion.",
+      "",
+      prompt.text,
+    ].join("\n");
+    setImproveText(repairPatch);
+    saveVersion("improved", `Reviewer repair - ${row.title}`, repairPatch, evaluatePrompt(repairPatch).score);
+    setApiNotice(`Saved reviewer repair patch for ${row.title}.`);
+  }
+
+  function saveEditorSectionPatch(card: PromptEditorStudioReport["cards"][number]) {
+    const base = selectedPrompt?.text || generatedPrompt;
+    const patch = [
+      `PROMPT EDITOR SECTION PATCH: ${card.label}`,
+      card.rewriteHint,
+      "",
+      "Apply this section-level repair without replacing unrelated prompt sections.",
+      "",
+      base,
+    ].join("\n");
+    saveVersion("compiled", `Editor section - ${card.label}`, patch, evaluatePrompt(patch).score);
+    setApiNotice(`Saved ${card.label} editor section patch.`);
   }
 
   function addScreenshot(record: Omit<ScreenshotRecord, "id" | "createdAt">) {
@@ -6038,6 +6164,8 @@ export default function App() {
       lineage: lineageNodes,
       datasetVersions,
       curationDecisions,
+      memoryRuleDecisions,
+      projectSpaces: savedProjectSpaces,
       modelBatchEvaluations,
       pairwiseReviews,
       activeWorkspace,
@@ -6083,6 +6211,8 @@ export default function App() {
     if (Array.isArray(collections.lineage)) setLineageNodes(collections.lineage);
     if (Array.isArray(collections.datasetVersions)) setDatasetVersions(collections.datasetVersions);
     if (collections.curationDecisions) setCurationDecisions(collections.curationDecisions);
+    if (collections.memoryRuleDecisions) setMemoryRuleDecisions(collections.memoryRuleDecisions);
+    if (Array.isArray(collections.projectSpaces)) setSavedProjectSpaces(collections.projectSpaces);
     if (Array.isArray(collections.modelBatchEvaluations)) setModelBatchEvaluations(collections.modelBatchEvaluations);
     if (Array.isArray(collections.pairwiseReviews)) setPairwiseReviews(collections.pairwiseReviews);
     if (Array.isArray(collections.closedLoopRuns)) setClosedLoopRuns(collections.closedLoopRuns);
@@ -6440,6 +6570,8 @@ export default function App() {
         lineage: lineageNodes,
         datasetVersions,
         curationDecisions,
+        memoryRuleDecisions,
+        projectSpaces: savedProjectSpaces,
         modelBatchEvaluations,
         pairwiseReviews,
         backupSnapshots,
@@ -6510,6 +6642,14 @@ export default function App() {
       if (collections.curationDecisions && typeof collections.curationDecisions === "object" && !Array.isArray(collections.curationDecisions)) {
         setCurationDecisions(collections.curationDecisions as Record<string, CurationDecision>);
         restored.push("curation");
+      }
+      if (collections.memoryRuleDecisions && typeof collections.memoryRuleDecisions === "object" && !Array.isArray(collections.memoryRuleDecisions)) {
+        setMemoryRuleDecisions(collections.memoryRuleDecisions as Record<string, MemoryRuleDecision>);
+        restored.push("memory decisions");
+      }
+      if (Array.isArray(collections.projectSpaces)) {
+        setSavedProjectSpaces((collections.projectSpaces as SavedProjectSpace[]).slice(0, 20));
+        restored.push("project spaces");
       }
       if (Array.isArray(collections.modelBatchEvaluations)) {
         setModelBatchEvaluations((collections.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
@@ -6624,6 +6764,8 @@ export default function App() {
           lineage: lineageNodes,
           datasetVersions,
           curationDecisions,
+          memoryRuleDecisions,
+          projectSpaces: savedProjectSpaces,
           modelBatchEvaluations,
           pairwiseReviews,
           backupSnapshots,
@@ -6699,6 +6841,14 @@ export default function App() {
       if (collections.curationDecisions && typeof collections.curationDecisions === "object" && !Array.isArray(collections.curationDecisions)) {
         setCurationDecisions(collections.curationDecisions as Record<string, CurationDecision>);
         restored.push("curation");
+      }
+      if (collections.memoryRuleDecisions && typeof collections.memoryRuleDecisions === "object" && !Array.isArray(collections.memoryRuleDecisions)) {
+        setMemoryRuleDecisions(collections.memoryRuleDecisions as Record<string, MemoryRuleDecision>);
+        restored.push("memory decisions");
+      }
+      if (Array.isArray(collections.projectSpaces)) {
+        setSavedProjectSpaces((collections.projectSpaces as SavedProjectSpace[]).slice(0, 20));
+        restored.push("project spaces");
       }
       if (Array.isArray(collections.modelBatchEvaluations)) {
         setModelBatchEvaluations((collections.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
@@ -6804,6 +6954,8 @@ export default function App() {
           lineage: collections.lineage ?? lineageNodes,
           datasetVersions: collections.datasetVersions ?? datasetVersions,
           curationDecisions: collections.curationDecisions ?? curationDecisions,
+          memoryRuleDecisions: collections.memoryRuleDecisions ?? memoryRuleDecisions,
+          projectSpaces: collections.projectSpaces ?? savedProjectSpaces,
           modelBatchEvaluations: collections.modelBatchEvaluations ?? modelBatchEvaluations,
           pairwiseReviews: collections.pairwiseReviews ?? pairwiseReviews,
           backupSnapshots: collections.backupSnapshots ?? backupSnapshots,
@@ -7376,10 +7528,16 @@ export default function App() {
           {tab === "learn" ? (
             <LearnView
               clusters={clusters}
+              copied={copied}
               dnaScore={dnaScore}
+              improvedPrompt={improvedPrompt}
+              learnerText={improveText}
+              onCopyImproved={() => void copyText(improvedPrompt, "learner-improved")}
+              onSaveImproved={() => saveVersion("improved", "One-click improved prompt", improvedPrompt, evaluatePrompt(improvedPrompt).score)}
               profile={profile}
               selectedAnalysis={selectedAnalysis}
               selectedPrompt={selectedPrompt}
+              setLearnerText={setImproveText}
             />
           ) : tab === "compose" ? (
             <ComposeView
@@ -7608,8 +7766,10 @@ export default function App() {
               onAddPairwiseReview={addPairwiseReview}
               onAddScreenshot={addScreenshot}
               onApplyCurationRecommendations={applyCurationRecommendations}
+              onApplyResultReviewAction={applyResultReviewAction}
               onCaptureSelectedResult={captureSelectedResult}
               onApplyResultLearningPatch={applyResultLearningPatch}
+              onSaveEditorSectionPatch={saveEditorSectionPatch}
               onCheckApi={checkApi}
               onConnectHostedBrain={connectHostedBrain}
               onCreateDatasetVersion={createDatasetVersion}
@@ -7684,7 +7844,9 @@ export default function App() {
               onRunQueueViaApi={runQueueViaApi}
               onSave={saveVersion}
               onSaveApiBase={saveApiBase}
+              onSaveProjectSpace={saveActiveProjectSpace}
               onSelectPrompt={setSelectedId}
+              onSetMemoryRuleDecision={setMemoryRuleDecision}
               onDatasetInboxDecision={handleDatasetInboxDecision}
               onBulkDatasetInboxDecision={handleBulkDatasetInboxDecision}
               onProveGeneratedPrompt={handleProveGeneratedPrompt}
@@ -7931,29 +8093,93 @@ function BatchIngestionPreview({ audit, candidates }: { audit: PromptImportAudit
 
 function LearnView({
   clusters,
+  copied,
   dnaScore,
+  improvedPrompt,
+  learnerText,
+  onCopyImproved,
+  onSaveImproved,
   profile,
   selectedAnalysis,
   selectedPrompt,
+  setLearnerText,
 }: {
   clusters: ArchetypeCluster[];
+  copied: string;
   dnaScore: number;
+  improvedPrompt: string;
+  learnerText: string;
+  onCopyImproved: () => void;
+  onSaveImproved: () => void;
   profile: PromptProfile;
   selectedAnalysis?: PromptAnalysis;
   selectedPrompt?: PromptExample;
+  setLearnerText: (value: string) => void;
 }) {
+  const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
+  const learnerEvaluation = evaluatePrompt(learnerSource);
+  const flowSteps = [
+    { label: "Paste", ready: Boolean(learnerSource.trim()), detail: "Bring in one website prompt." },
+    { label: "Score", ready: learnerEvaluation.score >= 20, detail: `${learnerEvaluation.score}/100 local score.` },
+    { label: "Improve", ready: improvedPrompt.length > learnerSource.length, detail: "One-click stronger prompt is ready." },
+    { label: "Battle", ready: learnerEvaluation.categoryScores.constraints >= 40, detail: "Constraints are strong enough to compare variants." },
+    { label: "Prove", ready: /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: "Proof checklist is present." },
+    { label: "Export", ready: Boolean(improvedPrompt.trim()), detail: "Copy or save the improved prompt." },
+  ];
   return (
     <div className="learn-grid">
-      <section className="panel hero-panel">
-        <div>
-          <p className="eyebrow">Pattern model</p>
-          <h2>Learning what makes website prompts executable.</h2>
-          <p>
-            The corpus is now fingerprinted for duplicate risk, tags, archetypes, DNA dimensions, technical
-            coverage, reusable templates, and rewrite guidance.
-          </p>
+      <section className="panel public-learner-panel" data-train-section="public-learner">
+        <div className="output-header">
+          <div>
+            <p className="eyebrow">Prompt Learner</p>
+            <h2>Paste, score, improve, prove, export.</h2>
+            <p>Start with one excellent website prompt and turn the learned DNA into a stronger build prompt.</p>
+          </div>
+          <ScoreRing score={learnerEvaluation.score || dnaScore} label="Prompt score" />
         </div>
-        <ScoreRing score={dnaScore} label="DNA score" />
+
+        <div className="learner-flow-grid">
+          <div className="learner-input-card">
+            <Field label="Prompt to learn from">
+              <textarea
+                value={learnerText}
+                onChange={(event) => setLearnerText(event.target.value)}
+                placeholder={selectedPrompt?.text || "Paste a website prompt here..."}
+              />
+            </Field>
+            <div className="safe-check-grid learner-step-grid">
+              {flowSteps.map((step) => (
+                <article className="safe-check" key={step.label} data-ready={step.ready ? "true" : "false"}>
+                  <strong>{step.ready ? "Ready" : "Next"}</strong>
+                  <span>{step.label}</span>
+                  <p>{step.detail}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="learner-output-card">
+            <div className="output-header">
+              <h3>One-click better prompt</h3>
+              <div className="button-row">
+                <button className="ghost-button compact-button" type="button" onClick={onCopyImproved}>
+                  {copied === "learner-improved" ? <Check size={15} /> : <Copy size={15} />}
+                  Copy
+                </button>
+                <button className="primary-button compact-button" type="button" onClick={onSaveImproved}>
+                  <Save size={15} />
+                  Save
+                </button>
+              </div>
+            </div>
+            <textarea className="generated-output learner-output" readOnly value={improvedPrompt} />
+            <FeedbackList title="What just happened" items={[
+              "Scored the prompt against the learned website-prompt corpus.",
+              "Kept exact assets, implementation stack, responsive details, and proof instructions explicit.",
+              "Produced a prompt you can copy, save, battle, or send to a builder.",
+            ]} empty="No explanation yet." />
+          </div>
+        </div>
       </section>
 
       <section className="insight-grid">
@@ -8835,7 +9061,9 @@ function TrainView({
   onAddPairwiseReview,
   onAddScreenshot,
   onApplyCurationRecommendations,
+  onApplyResultReviewAction,
   onApplyResultLearningPatch,
+  onSaveEditorSectionPatch,
   onApplyGeneratorPreset,
   onApplyGeneratorVariant,
   onApplyGoldReview,
@@ -8912,7 +9140,9 @@ function TrainView({
   onRunQueueViaApi,
   onSave,
   onSaveApiBase,
+  onSaveProjectSpace,
   onSelectPrompt,
+  onSetMemoryRuleDecision,
   onDatasetInboxDecision,
   onBulkDatasetInboxDecision,
   onProveGeneratedPrompt,
@@ -9191,7 +9421,9 @@ function TrainView({
   onAddPairwiseReview: (left: PromptExample | undefined, right: PromptExample | undefined, winnerId: string, reason: string) => void;
   onAddScreenshot: (record: Omit<ScreenshotRecord, "id" | "createdAt">) => void;
   onApplyCurationRecommendations: () => void;
+  onApplyResultReviewAction: (row: ResultReviewerReport["rows"][number], action: "promote" | "repair" | "exclude") => void;
   onApplyResultLearningPatch: () => void;
+  onSaveEditorSectionPatch: (card: PromptEditorStudioReport["cards"][number]) => void;
   onApplyGeneratorPreset: (preset: GeneratorPreset) => void;
   onApplyGeneratorVariant: (variant: LearnedGeneratorVariant) => void;
   onApplyGoldReview: () => void;
@@ -9268,7 +9500,9 @@ function TrainView({
   onRunQueueViaApi: () => void;
   onSave: (kind: PromptVersion["kind"], title: string, text: string, score?: number) => void;
   onSaveApiBase: () => void;
+  onSaveProjectSpace: () => void;
   onSelectPrompt: (id: string) => void;
+  onSetMemoryRuleDecision: (ruleId: string, decision: MemoryRuleDecision) => void;
   onDatasetInboxDecision: (promptId: string, action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
   onBulkDatasetInboxDecision: (action: DatasetInboxReport["rows"][number]["recommendation"]) => void;
   onProveGeneratedPrompt: () => void;
@@ -9477,17 +9711,17 @@ function TrainView({
       </section>
 
       <section className="train-columns">
-        <LearningMemoryV2Panel copied={copied} onCopy={onCopy} report={learningMemoryV2} />
-        <ResultReviewerPanel report={resultReviewer} />
+        <LearningMemoryV2Panel copied={copied} onCopy={onCopy} onSetDecision={onSetMemoryRuleDecision} report={learningMemoryV2} />
+        <ResultReviewerPanel onApplyAction={onApplyResultReviewAction} report={resultReviewer} />
       </section>
 
       <section className="train-columns">
         <HoldoutBenchmarkPanel report={holdoutBenchmark} />
-        <PromptEditorStudioPanel report={promptEditorStudio} />
+        <PromptEditorStudioPanel copied={copied} onCopy={onCopy} onSaveSection={onSaveEditorSectionPatch} report={promptEditorStudio} />
       </section>
 
       <section className="train-columns">
-        <ProjectSpacesPanel report={projectSpaces} />
+        <ProjectSpacesPanel onSaveProjectSpace={onSaveProjectSpace} report={projectSpaces} />
         <ModularArchitecturePanel report={modularArchitecture} />
       </section>
 
@@ -10805,10 +11039,12 @@ function PromptLearnerModePanel({
 function LearningMemoryV2Panel({
   copied,
   onCopy,
+  onSetDecision,
   report,
 }: {
   copied: string;
   onCopy: (value: string, key: string) => void;
+  onSetDecision: (ruleId: string, decision: MemoryRuleDecision) => void;
   report: LearningMemoryV2Report;
 }) {
   return (
@@ -10826,7 +11062,12 @@ function LearningMemoryV2Panel({
             <strong>{rule.confidence}</strong>
             <span>{rule.label}</span>
             <p>{rule.promptPatch}</p>
-            <small>{rule.evidenceCount} evidence item(s)</small>
+            <small>{rule.evidenceCount} evidence item(s) / {rule.decision}</small>
+            <div className="button-row compact-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onSetDecision(rule.id, "accepted")}>Accept</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSetDecision(rule.id, "pinned")}>Pin</button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSetDecision(rule.id, "rejected")}>Reject</button>
+            </div>
           </article>
         ))}
       </div>
@@ -10841,7 +11082,13 @@ function LearningMemoryV2Panel({
   );
 }
 
-function ResultReviewerPanel({ report }: { report: ResultReviewerReport }) {
+function ResultReviewerPanel({
+  onApplyAction,
+  report,
+}: {
+  onApplyAction: (row: ResultReviewerReport["rows"][number], action: "promote" | "repair" | "exclude") => void;
+  report: ResultReviewerReport;
+}) {
   return (
     <section className="panel lab-panel" data-readiness={report.status} data-train-section="result-reviewer">
       <div className="output-header">
@@ -10859,6 +11106,11 @@ function ResultReviewerPanel({ report }: { report: ResultReviewerReport }) {
               <span>{row.title}</span>
               <p>{row.action}</p>
               <small>{row.verdict} / delta {row.delta}</small>
+              <div className="button-row compact-row">
+                <button className="ghost-button compact-button" type="button" onClick={() => onApplyAction(row, "promote")}>Promote</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onApplyAction(row, "repair")}>Repair</button>
+                <button className="ghost-button compact-button" type="button" onClick={() => onApplyAction(row, "exclude")}>Exclude</button>
+              </div>
             </article>
           ))}
         </div>
@@ -10901,7 +11153,17 @@ function HoldoutBenchmarkPanel({ report }: { report: HoldoutBenchmarkReport }) {
   );
 }
 
-function PromptEditorStudioPanel({ report }: { report: PromptEditorStudioReport }) {
+function PromptEditorStudioPanel({
+  copied,
+  onCopy,
+  onSaveSection,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onSaveSection: (card: PromptEditorStudioReport["cards"][number]) => void;
+  report: PromptEditorStudioReport;
+}) {
   return (
     <section className="panel lab-panel" data-readiness={report.status} data-train-section="editor-studio">
       <div className="output-header">
@@ -10918,6 +11180,16 @@ function PromptEditorStudioPanel({ report }: { report: PromptEditorStudioReport 
             <span>{card.label}</span>
             <p>{card.detail}</p>
             <small>{card.rewriteHint}</small>
+            <div className="button-row compact-row">
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(card.rewriteHint, `editor-${card.label}`)}>
+                {copied === `editor-${card.label}` ? <Check size={15} /> : <Copy size={15} />}
+                Hint
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onSaveSection(card)}>
+                <Save size={15} />
+                Save patch
+              </button>
+            </div>
           </article>
         ))}
       </div>
@@ -10927,7 +11199,13 @@ function PromptEditorStudioPanel({ report }: { report: PromptEditorStudioReport 
   );
 }
 
-function ProjectSpacesPanel({ report }: { report: ProjectSpacesReport }) {
+function ProjectSpacesPanel({
+  onSaveProjectSpace,
+  report,
+}: {
+  onSaveProjectSpace: () => void;
+  report: ProjectSpacesReport;
+}) {
   return (
     <section className="panel lab-panel" data-readiness={report.status} data-train-section="project-spaces">
       <div className="output-header">
@@ -10935,7 +11213,13 @@ function ProjectSpacesPanel({ report }: { report: ProjectSpacesReport }) {
           <PackageOpen size={18} />
           <h2>Project spaces</h2>
         </div>
-        <ScoreRing score={report.score} label={report.status} />
+        <div className="button-row">
+          <button className="ghost-button compact-button" type="button" onClick={onSaveProjectSpace}>
+            <Save size={15} />
+            Save current
+          </button>
+          <ScoreRing score={report.score} label={report.status} />
+        </div>
       </div>
       <div className="safe-check-grid">
         {report.spaces.map((space) => (

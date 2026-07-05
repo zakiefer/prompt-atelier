@@ -1416,12 +1416,14 @@ const learningMemoryV2 = buildLearningMemoryV2Report({
   buildRuns,
   examples,
   outcomes,
+  ruleDecisions: { "exact-assets-beat-generic-art-direction": "pinned" },
   promptQualityDna,
   screenshots,
   templateCompiler,
 });
 assert.ok(learningMemoryV2.rules.length >= 7, "Learning Memory v2 should expose evidence-backed rules.");
 assert.ok(learningMemoryV2.memoryPatch.includes("Never require provider key changes"), "Learning Memory v2 should preserve provider-key boundaries.");
+assert.ok(learningMemoryV2.memoryPatch.includes("PINNED"), "Learning Memory v2 should respect pinned memory decisions.");
 
 const resultReviewer = buildResultReviewerReport({
   buildRuns,
@@ -1448,9 +1450,14 @@ const promptEditorStudio = buildPromptEditorStudioReport({
 });
 assert.equal(promptEditorStudio.cards.length, 6, "Prompt editor studio should cover the six editable prompt sections.");
 
-const projectSpaces = buildProjectSpacesReport({ cleanupMode: corpusCleanupMode, examples });
+const projectSpaces = buildProjectSpacesReport({
+  cleanupMode: corpusCleanupMode,
+  examples,
+  savedSpaces: [{ id: "saved-hero", label: "Saved hero systems", query: ["hero"], createdAt: new Date().toISOString() }],
+});
 assert.ok(projectSpaces.spaces.some((space) => space.id === "seed"), "Project spaces should isolate the seed corpus.");
 assert.ok(projectSpaces.activePolicy.some((item) => /unrelated repo/i.test(item)), "Project spaces should protect against unrelated repo contamination.");
+assert.ok(projectSpaces.spaces.some((space) => space.id === "saved-saved-hero"), "Project spaces should include persisted custom spaces.");
 
 const modularArchitecture = buildModularArchitectureReport({
   moduleNames: ["promptEngine", "productEvolution", "App panels", "engine tests", "README"],
@@ -1529,4 +1536,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 313, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 315, score: score.score, snapshot: snapshot.label }, null, 2));

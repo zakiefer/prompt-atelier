@@ -47,7 +47,7 @@ npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --train
 
 The command checks `/api/health` and `/api/model/settings`, then optionally posts a tiny schema-compatible prompt to `/api/model/evaluate` when `--evaluate` is supplied. Output is JSON with booleans, route status, and next actions only. It never prints bearer tokens, Claude keys, or model endpoint secrets.
 
-The hosted app smoke command is frontend-only. It loads the public Pages app, switches to Train, checks the Learning Machine headings, and writes a screenshot artifact so deployment proof is visible even when no hosted API token is present.
+The hosted app smoke command is frontend-only. It loads the public Pages app, switches to Train, checks the Learning Machine and Product Evolution headings, verifies the new Train section containers and horizontal overflow posture, and writes desktop/mobile screenshot artifacts so deployment proof is visible even when no hosted API token is present.
 
 Blocking failures are limited to health reachability, bearer auth, SQLite storage, and the model-settings route. Worker enablement, build allowlists, Claude key visibility, and model-route readiness are reported as operational checks because a hosted demo can still run in deterministic fallback mode.
 
@@ -61,6 +61,7 @@ npm run proof:seed -- --limit 5 --out output/proof-seed-runway
 npm run export:regression -- --out output/regression-timeline
 npm run audit:security-boundary -- --out output/security-boundary
 npm run export:training-v2 -- --out output/training-dataset-v2
+npm run check:holdout -- --out output/holdout-regression
 npm run gallery:hydrate -- --url http://127.0.0.1:8787 --out output/result-gallery
 npm run proof:batch -- --url http://127.0.0.1:8787 --limit 1 --allow-fail --out output/autonomous-proof-batch
 ```

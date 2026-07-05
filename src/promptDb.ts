@@ -12,6 +12,8 @@ export type CollectionKey =
   | "lineage"
   | "datasetVersions"
   | "curationDecisions"
+  | "memoryRuleDecisions"
+  | "projectSpaces"
   | "modelBatchEvaluations"
   | "pairwiseReviews"
   | "backupSnapshots"

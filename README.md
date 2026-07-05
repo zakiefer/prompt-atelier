@@ -68,6 +68,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Product OS layer that unifies command center, dataset inbox, generator modes, proof gallery, accessibility QA, demo polish, regression history, exports, and plain-English learning explanations
 - Next product sprint layer that adds one guided training run, corpus cleanup mode, prompt battle autopilot, template compiler, real result feedback loop, public demo simplification, and no-key local mode polish
 - Product evolution layer that simplifies the main Prompt Learner mode, upgrades Learning Memory v2, adds side-by-side result review, holdout regression, prompt editor studio, project spaces, modular report logic, and public demo experience polish
+- Actionable learner controls for pinning/rejecting memory rules, promoting/repairing/excluding result reviews, saving editor-section patches, persisting project spaces, and running holdout regression from the CLI
 
 ## Development
 
@@ -120,6 +121,7 @@ npm run lint
 npm run test:engine
 npm run check:corpus-safety
 npm run check:quality-gate
+npm run check:holdout -- --out output/holdout-regression
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
 npm run smoke:hosted -- --url http://127.0.0.1:4173 --train --out output/playwright/learning-machine-local
 npm run deploy:hosted-api -- --out output/hosted-api-deploy
@@ -187,6 +189,7 @@ The Train tab now starts with:
 30. A Product OS layer that turns the major product upgrades into one scored operating surface: command center, dataset inbox, generator, proof gallery, accessibility QA, public demo, regression dashboard, export packs, and learning explanations.
 31. A Next Product Sprint layer that turns the next upgrades into product controls: guided run, cleanup mode, battle autopilot, template compiler, result feedback, demo simplification, and local fallback polish without changing Claude or provider keys.
 32. A Product Evolution layer that makes the app feel like a prompt learner first: paste, score, improve, battle, prove, and export, with Learning Memory v2, result review, holdout regression, editor sections, isolated project spaces, modular report logic, and public demo polish.
+33. Actionable product controls: memory rules can be accepted, pinned, or rejected; result reviews can promote, repair, or exclude examples; editor sections can be saved as scoped patches; project spaces persist across browser/API snapshots; and `check:holdout` guards memory/template changes.
 
 The tightest improvement cycle is:
 
@@ -236,7 +239,7 @@ Generated markdown lands in `prompts/`. The attachment sync is intentionally opt
 
 GitHub Actions includes:
 
-- `CI`: lint, engine tests, corpus safety, quality gate, API route tests, build, visual QA, and script syntax checks.
+- `CI`: lint, engine tests, corpus safety, quality gate, holdout regression, API route tests, build, visual QA, and script syntax checks.
 - `Deploy Pages`: builds the static workbench for GitHub Pages on `main`.
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for setup notes.

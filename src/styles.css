@@ -607,6 +607,71 @@ button:disabled {
   max-width: 680px;
 }
 
+.public-learner-panel {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.public-learner-panel h2 {
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 5vw, 4.6rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 0.9;
+  margin: 0;
+}
+
+.public-learner-panel .output-header {
+  align-items: flex-start;
+}
+
+.public-learner-panel .output-header p {
+  color: var(--muted);
+  line-height: 1.55;
+  margin: 10px 0 0;
+  max-width: 680px;
+}
+
+.learner-flow-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.learner-input-card,
+.learner-output-card {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.learner-input-card textarea {
+  min-height: 190px;
+}
+
+.learner-step-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.learner-output {
+  min-height: 280px;
+}
+
+.compact-row {
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.compact-row .compact-button {
+  min-height: 30px;
+  padding: 0 8px;
+}
+
 .score-ring {
   align-items: center;
   border: 1px solid var(--line);
@@ -3525,6 +3590,7 @@ button.preset-card {
   .workspace,
   .compose-grid,
   .evaluate-grid,
+  .learner-flow-grid,
   .lab-columns,
   .train-columns,
   .train-section-nav,
@@ -3590,6 +3656,7 @@ button.preset-card {
 
   .feature-grid,
   .insight-grid,
+  .learner-step-grid,
   .template-grid,
   .rule-list,
   .health-grid,

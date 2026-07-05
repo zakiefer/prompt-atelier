@@ -21,6 +21,15 @@ import {
 
 type EvolutionStatus = "ready" | "active" | "needs-work" | "blocked";
 
+export type MemoryRuleDecision = "accepted" | "rejected" | "pinned";
+
+export type SavedProjectSpaceInput = {
+  id: string;
+  label: string;
+  query: string[];
+  createdAt?: string;
+};
+
 export type ProductEvolutionItem = {
   id:
     | "learner-mode"
@@ -69,8 +78,10 @@ export type LearningMemoryV2Report = {
   score: number;
   status: "ready" | "learning" | "thin";
   rules: {
+    id: string;
     label: string;
     confidence: number;
+    decision: MemoryRuleDecision | "suggested";
     evidenceCount: number;
     promptPatch: string;
   }[];
@@ -161,6 +172,10 @@ function bounded(value: number): number {
 
 function readyPercent(rows: { ready: boolean }[]): number {
   return rows.length ? bounded((rows.filter((row) => row.ready).length / rows.length) * 100) : 0;
+}
+
+function ruleId(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
 
 function latestByPrompt<T extends { promptId: string; createdAt?: string; updatedAt?: string }>(records: T[]): Map<string, T> {
@@ -262,6 +277,7 @@ export function buildLearningMemoryV2Report({
   buildRuns,
   examples,
   outcomes,
+  ruleDecisions = {},
   promptQualityDna,
   screenshots,
   templateCompiler,
@@ -269,6 +285,7 @@ export function buildLearningMemoryV2Report({
   buildRuns: BuildRunRecord[];
   examples: PromptExample[];
   outcomes: OutcomeRecord[];
+  ruleDecisions?: Record<string, MemoryRuleDecision>;
   promptQualityDna: PromptQualityDnaReport;
   screenshots: ScreenshotRecord[];
   templateCompiler: TemplateCompilerReport;
@@ -321,21 +338,26 @@ export function buildLearningMemoryV2Report({
       evidenceCount: promptQualityDna.dimensions.length,
       promptPatch: "Attach plain-English DNA fixes to every generated improvement.",
     },
-  ];
+  ].map((rule) => {
+    const id = ruleId(rule.label);
+    return { ...rule, id, decision: ruleDecisions[id] || "suggested" as const };
+  });
   const score = bounded(rules.reduce((sum, rule) => sum + rule.confidence, 0) / Math.max(1, rules.length));
+  const activeRules = rules.filter((rule) => rule.decision !== "rejected");
   return {
     score,
     status: score >= 80 ? "ready" : score >= 50 ? "learning" : "thin",
     rules,
     memoryPatch: [
       "LEARNING MEMORY V2 PATCH",
-      ...rules
+      ...activeRules
         .filter((rule) => rule.confidence >= 50 || rule.evidenceCount > 0)
-        .map((rule) => `- ${rule.label}: ${rule.promptPatch}`),
+        .map((rule) => `- ${rule.decision === "pinned" ? "PINNED: " : ""}${rule.label}: ${rule.promptPatch}`),
       "- Never require provider key changes to improve local prompt learning.",
     ].join("\n"),
     notes: [
       `${rules.filter((rule) => rule.confidence >= 70).length}/${rules.length} memory rule(s) have strong confidence.`,
+      `${rules.filter((rule) => rule.decision === "pinned").length} pinned / ${rules.filter((rule) => rule.decision === "rejected").length} rejected rule decision(s).`,
       "Learning Memory v2 separates proven result evidence from raw prompt frequency.",
     ],
   };
@@ -487,9 +509,11 @@ export function buildPromptEditorStudioReport({
 export function buildProjectSpacesReport({
   cleanupMode,
   examples,
+  savedSpaces = [],
 }: {
   cleanupMode: CorpusCleanupModeReport;
   examples: PromptExample[];
+  savedSpaces?: SavedProjectSpaceInput[];
 }): ProjectSpacesReport {
   const sourceCount = (source: PromptExample["source"]) => examples.filter((example) => example.source === source).length;
   const highScoreCount = examples.filter((example) => evaluatePrompt(example.text).score >= 75).length;
@@ -529,6 +553,19 @@ export function buildProjectSpacesReport({
       isolation: "clean",
       detail: "High-scoring examples can seed benchmarks, templates, and public demo copy.",
     },
+    ...savedSpaces.slice(0, 8).map((space) => {
+      const terms = space.query.map((item) => item.toLowerCase()).filter(Boolean);
+      const count = terms.length
+        ? examples.filter((example) => terms.some((term) => `${example.title} ${example.text}`.toLowerCase().includes(term))).length
+        : examples.length;
+      return {
+        id: `saved-${space.id}`,
+        label: space.label,
+        count,
+        isolation: "clean" as const,
+        detail: `Saved project space persisted with ${terms.length ? terms.join(" / ") : "all prompts"} query guard.`,
+      };
+    }),
   ];
   const score = readyPercent(spaces.map((space) => ({ ready: space.isolation !== "blocked" })));
   return {
