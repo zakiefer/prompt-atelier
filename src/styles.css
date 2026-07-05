@@ -49,6 +49,7 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -2076,6 +2077,10 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.learner-tools-drawer:not([open]) > .learner-tools-stack {
+  display: none;
+}
+
 .learner-tools-stack {
   border-top: 1px solid var(--line);
   display: grid;
@@ -2364,6 +2369,134 @@ button:disabled {
   min-width: 0;
   padding: 12px;
   text-align: left;
+}
+
+.production-path-grid {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+}
+
+.production-command-center {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(239, 248, 245, 0.92)),
+    var(--panel-soft);
+  border-radius: 18px;
+}
+
+.backend-sync-badge {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.production-action-row,
+.compact-segmented-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.production-command-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.production-command-grid article,
+.generated-prompt-preview,
+.eval-history-list article {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.production-command-grid span,
+.generated-prompt-preview strong {
+  color: var(--teal-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.production-command-grid strong {
+  display: block;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  text-transform: capitalize;
+}
+
+.production-command-grid p,
+.generated-prompt-preview p,
+.eval-history-list p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.compact-segmented-row {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.compact-segmented-row button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 900;
+  padding: 6px 9px;
+  text-transform: uppercase;
+}
+
+.compact-segmented-row button[data-active="true"] {
+  background: var(--ink);
+  color: #fff;
+}
+
+.generated-prompt-preview {
+  max-height: 126px;
+  overflow: auto;
+}
+
+.eval-history-compact {
+  align-content: start;
+  border-radius: 18px;
+}
+
+.eval-history-list {
+  display: grid;
+  gap: 8px;
+}
+
+.eval-history-list article {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.eval-history-list strong {
+  display: block;
+  font-size: 0.86rem;
+  line-height: 1.2;
+}
+
+.eval-history-list span {
+  background: rgba(31, 122, 104, 0.1);
+  border-radius: 999px;
+  color: var(--teal-dark);
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 6px 8px;
+  white-space: nowrap;
 }
 
 .proof-checklist-grid button {
@@ -3291,6 +3424,10 @@ button:disabled {
   width: 100%;
 }
 
+select {
+  color-scheme: light;
+}
+
 .field select {
   appearance: none;
   background-image:
@@ -3310,9 +3447,20 @@ button:disabled {
   padding-right: 48px;
 }
 
-.field select option {
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.version-card select:focus {
+  border-color: rgba(31, 122, 104, 0.42);
+  box-shadow: 0 0 0 3px rgba(31, 122, 104, 0.1);
+}
+
+.field select option,
+.version-card select option {
   background: var(--panel);
   color: var(--ink);
+  font: inherit;
+  padding: 10px;
 }
 
 .field textarea {
@@ -5085,9 +5233,12 @@ button:disabled {
 .wizard-question-card strong,
 .sync-check-card strong {
   color: var(--teal-dark);
+  display: block;
   font-size: 0.72rem;
   font-weight: 900;
   letter-spacing: 0.04em;
+  line-height: 1.2;
+  margin-bottom: 2px;
   text-transform: uppercase;
 }
 
@@ -5457,7 +5608,34 @@ button:disabled {
   display: block;
   font-size: 0.72rem;
   font-weight: 900;
+  line-height: 1.25;
+  margin-top: 2px;
   text-transform: uppercase;
+}
+
+.gate-check-card > strong,
+.review-card > strong,
+.signal-card > strong,
+.preset-card > strong,
+.gallery-card > strong,
+.safe-check > strong,
+.index-card > strong {
+  display: block;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.gate-check-card > span,
+.review-card > span,
+.signal-card > span,
+.preset-card > span,
+.gallery-card > span,
+.safe-check > span,
+.index-card > span {
+  display: block;
+  line-height: 1.25;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
 }
 
 .prompt-audit-card {
@@ -6365,6 +6543,8 @@ button.preset-card {
 	  .project-stage-grid,
 	  .project-score-stack,
 	  .guided-product-grid,
+	  .production-path-grid,
+	  .production-command-grid,
 	  .proof-checklist-grid,
 	  .quality-report-grid,
 	  .training-signal-list,

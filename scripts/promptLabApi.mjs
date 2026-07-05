@@ -61,6 +61,11 @@ const COLLECTION_KEYS = [
   "evaluationArtifacts",
   "hostedSetupChecks",
   "proofArtifacts",
+  "promptProjects",
+  "projectVersions",
+  "projectProofRuns",
+  "generatedPrompts",
+  "evalHistory",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -200,6 +205,18 @@ function appendCollectionRecord(key, record, limit = 100) {
   const next = [record, ...existing.filter((item) => item?.id !== record.id)].slice(0, limit);
   writeCollection(key, next);
   return next;
+}
+
+function projectCollectionsPayload() {
+  const collections = readCollections();
+  return {
+    promptProjects: Array.isArray(collections.promptProjects) ? collections.promptProjects : [],
+    projectVersions: Array.isArray(collections.projectVersions) ? collections.projectVersions : [],
+    projectProofRuns: Array.isArray(collections.projectProofRuns) ? collections.projectProofRuns : [],
+    generatedPrompts: Array.isArray(collections.generatedPrompts) ? collections.generatedPrompts : [],
+    evalHistory: Array.isArray(collections.evalHistory) ? collections.evalHistory : [],
+    curationDecisions: Array.isArray(collections.curationDecisions) ? collections.curationDecisions : [],
+  };
 }
 
 function stableHash(value) {
@@ -817,6 +834,71 @@ async function handle(request, response) {
       }
       logEvent("collections-sync", { keys: body.key ? [body.key] : Object.keys(body.collections || {}), redactions: redaction.findings });
       jsonResponse(response, 200, { ok: true, redactions: redaction.findings, collections: readCollections() });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/projects") {
+      jsonResponse(response, 200, { ok: true, collections: projectCollectionsPayload() });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/projects/save") {
+      const body = await readBody(request);
+      const redaction = redactSensitiveValue(body);
+      const createdAt = now();
+      const project = body.project && typeof body.project === "object"
+        ? { ...body.project, updatedAt: createdAt }
+        : null;
+      const version = body.version && typeof body.version === "object"
+        ? { ...body.version, createdAt: body.version.createdAt || createdAt }
+        : null;
+      const generatedPrompt = body.generatedPrompt && typeof body.generatedPrompt === "object"
+        ? { ...body.generatedPrompt, createdAt: body.generatedPrompt.createdAt || createdAt }
+        : null;
+      const evalRecord = body.evalRecord && typeof body.evalRecord === "object"
+        ? { ...body.evalRecord, createdAt: body.evalRecord.createdAt || createdAt }
+        : null;
+      const curationDecision = body.curationDecision && typeof body.curationDecision === "object"
+        ? { ...body.curationDecision, createdAt: body.curationDecision.createdAt || createdAt }
+        : null;
+
+      if (project?.id) appendCollectionRecord("promptProjects", project, 200);
+      if (version?.id) appendCollectionRecord("projectVersions", version, 400);
+      if (generatedPrompt?.id) appendCollectionRecord("generatedPrompts", generatedPrompt, 200);
+      if (evalRecord?.id) appendCollectionRecord("evalHistory", evalRecord, 300);
+      if (curationDecision?.id) appendCollectionRecord("curationDecisions", curationDecision, 300);
+      logEvent("project-save", {
+        projectId: project?.id || "",
+        versionId: version?.id || "",
+        generatedPromptId: generatedPrompt?.id || "",
+        evalRecordId: evalRecord?.id || "",
+        curationDecisionId: curationDecision?.id || "",
+        redactions: redaction.findings,
+      });
+      jsonResponse(response, 200, { ok: true, redactions: redaction.findings, collections: projectCollectionsPayload() });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/projects/proof-run") {
+      const body = await readBody(request);
+      const redaction = redactSensitiveValue(body);
+      const createdAt = now();
+      const proofRun = body.proofRun && typeof body.proofRun === "object"
+        ? { ...body.proofRun, createdAt: body.proofRun.createdAt || createdAt }
+        : {
+          id: `project-proof-${Date.now()}`,
+          projectId: String(body.projectId || ""),
+          title: String(body.title || "Project proof run"),
+          score: Number(body.score || 0),
+          commands: Array.isArray(body.commands) ? body.commands.map(String) : [],
+          checks: Array.isArray(body.checks) ? body.checks : [],
+          createdAt,
+        };
+      if (!proofRun.id) proofRun.id = `project-proof-${Date.now()}`;
+      appendCollectionRecord("projectProofRuns", proofRun, 200);
+      if (body.evalRecord?.id) appendCollectionRecord("evalHistory", { ...body.evalRecord, createdAt }, 300);
+      logEvent("project-proof-run", { projectId: proofRun.projectId || "", proofRunId: proofRun.id, redactions: redaction.findings });
+      jsonResponse(response, 200, { ok: true, redactions: redaction.findings, proofRun, collections: projectCollectionsPayload() });
       return;
     }
 

@@ -35,7 +35,12 @@ export type CollectionKey =
   | "benchmarkV2Runs"
   | "evaluationArtifacts"
   | "hostedSetupChecks"
-  | "proofArtifacts";
+  | "proofArtifacts"
+  | "promptProjects"
+  | "projectVersions"
+  | "projectProofRuns"
+  | "generatedPrompts"
+  | "evalHistory";
 
 type StoredCollection<T> = {
   key: CollectionKey;

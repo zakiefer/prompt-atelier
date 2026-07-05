@@ -67,6 +67,11 @@ try {
     "hostedSetupChecks",
     "proofArtifacts",
     "learnerSessions",
+    "promptProjects",
+    "projectVersions",
+    "projectProofRuns",
+    "generatedPrompts",
+    "evalHistory",
   ];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
@@ -212,6 +217,90 @@ try {
   const syncPayload = await sync.json();
   if (!syncPayload.redactions?.some((finding) => finding.kind === "anthropic-key")) {
     throw new Error("Collection sync should report server-side Anthropic key redaction.");
+  }
+
+  const projectSave = await fetch(`${base}/api/projects/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      project: {
+        id: "project-api-test",
+        title: "Website prompt project",
+        profileId: "all",
+        status: "synced",
+        promptScore: 84,
+        proofScore: 76,
+      },
+      version: {
+        id: "project-version-api-test",
+        projectId: "project-api-test",
+        label: "First saved version",
+        prompt: "Build a refined website prompt without sk-ant-api03-ffffffffffffffffffffffffffffffffffffffff.",
+        promptScore: 84,
+        proofScore: 76,
+      },
+      generatedPrompt: {
+        id: "generated-prompt-api-test",
+        projectId: "project-api-test",
+        prompt: "Build a polished generated prompt.",
+        source: "generate-mode",
+        score: 88,
+      },
+      evalRecord: {
+        id: "eval-history-api-test",
+        projectId: "project-api-test",
+        label: "Generated prompt",
+        promptScore: 88,
+        proofScore: 76,
+        exportReadyCount: 6,
+      },
+    }),
+  });
+  const projectSavePayload = await projectSave.json();
+  if (!projectSave.ok || !projectSavePayload.collections?.promptProjects?.some((project) => project.id === "project-api-test")) {
+    throw new Error("Project save route should persist promptProjects.");
+  }
+  if (!projectSavePayload.collections?.projectVersions?.some((version) => version.id === "project-version-api-test")) {
+    throw new Error("Project save route should persist projectVersions.");
+  }
+  if (!projectSavePayload.collections?.generatedPrompts?.some((prompt) => prompt.id === "generated-prompt-api-test")) {
+    throw new Error("Project save route should persist generatedPrompts.");
+  }
+  if (!projectSavePayload.collections?.evalHistory?.some((record) => record.id === "eval-history-api-test")) {
+    throw new Error("Project save route should persist evalHistory.");
+  }
+  if (!projectSavePayload.redactions?.some((finding) => finding.kind === "anthropic-key") || JSON.stringify(projectSavePayload).includes("sk-ant-api03-")) {
+    throw new Error("Project save route should redact prompt secrets.");
+  }
+
+  const projectProof = await fetch(`${base}/api/projects/proof-run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      proofRun: {
+        id: "project-proof-api-test",
+        projectId: "project-api-test",
+        title: "Proof runner smoke",
+        score: 82,
+        commands: ["npm run build", "npm run smoke:hosted -- --url http://127.0.0.1:4173"],
+        checks: [{ label: "Desktop/mobile screenshots", ready: true }],
+      },
+      evalRecord: {
+        id: "eval-history-proof-api-test",
+        projectId: "project-api-test",
+        label: "Proof runner",
+        promptScore: 84,
+        proofScore: 82,
+        exportReadyCount: 6,
+      },
+    }),
+  });
+  const projectProofPayload = await projectProof.json();
+  if (!projectProof.ok || !projectProofPayload.collections?.projectProofRuns?.some((run) => run.id === "project-proof-api-test")) {
+    throw new Error("Project proof route should persist projectProofRuns.");
+  }
+  if (!projectProofPayload.collections?.evalHistory?.some((record) => record.id === "eval-history-proof-api-test")) {
+    throw new Error("Project proof route should append proof eval history.");
   }
 
   const evaluate = await fetch(`${base}/api/model/evaluate`, {
