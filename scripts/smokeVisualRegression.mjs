@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { chromium } from "playwright";
 
 const args = new Map();
@@ -18,9 +18,13 @@ for (let index = 2; index < process.argv.length; index += 1) {
 
 const baseUrl = args.get("url") || "http://127.0.0.1:4173/";
 const outDir = resolve(args.get("out") || "output/playwright/visual-regression");
+const baselinePath = resolve(args.get("baseline") || "test/baselines/visual-regression/baseline.json");
+const maxByteDeltaRatio = Number(args.get("max-byte-delta-ratio") || 0.4);
 const readyTimeoutMs = Number(args.get("ready-timeout-ms") || 45_000);
 const screenshots = [];
+const baselineComparisons = [];
 const consoleErrors = [];
+const baseline = await readBaseline(baselinePath);
 
 await mkdir(outDir, { recursive: true });
 
@@ -62,8 +66,10 @@ try {
   const manifest = {
     ok: true,
     url: baseUrl,
+    baseline: baselinePath,
     checkedAt: new Date().toISOString(),
     ignoredConsoleErrors: consoleErrors.length - actionableConsoleErrors.length,
+    baselineComparisons,
     screenshots,
   };
   await writeFile(join(outDir, "latest.json"), JSON.stringify(manifest, null, 2));
@@ -100,5 +106,78 @@ async function capture(targetPage, name, expectedText) {
   }
   const path = join(outDir, `${name}.png`);
   await targetPage.screenshot({ path, fullPage: false });
-  screenshots.push({ name, path, ...overflow });
+  const file = await stat(path);
+  const record = { name, path, bytes: file.size, ...overflow };
+  screenshots.push(record);
+  await compareBaseline(record);
+}
+
+async function readBaseline(path) {
+  try {
+    const raw = await readFile(path, "utf8");
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error && error.code === "ENOENT") {
+      return { captures: {} };
+    }
+    throw error;
+  }
+}
+
+async function compareBaseline(record) {
+  const expected = baseline.captures?.[record.name];
+  if (!expected) {
+    baselineComparisons.push({ name: record.name, status: "missing-baseline-entry" });
+    return;
+  }
+  const failures = [];
+  if (expected.clientWidth && Math.abs(record.clientWidth - expected.clientWidth) > (expected.tolerancePx ?? 2)) {
+    failures.push(`clientWidth ${record.clientWidth} != ${expected.clientWidth}`);
+  }
+  if (expected.clientHeight && Math.abs(record.clientHeight - expected.clientHeight) > (expected.tolerancePx ?? 2)) {
+    failures.push(`clientHeight ${record.clientHeight} != ${expected.clientHeight}`);
+  }
+  if (typeof expected.maxHorizontalOverflow === "number") {
+    const horizontalOverflow = record.scrollWidth - record.clientWidth;
+    if (horizontalOverflow > expected.maxHorizontalOverflow) {
+      failures.push(`horizontal overflow ${horizontalOverflow} > ${expected.maxHorizontalOverflow}`);
+    }
+  }
+  if (typeof expected.minScrollHeight === "number" && record.scrollHeight < expected.minScrollHeight) {
+    failures.push(`scrollHeight ${record.scrollHeight} < ${expected.minScrollHeight}`);
+  }
+  if (typeof expected.maxScrollHeight === "number" && record.scrollHeight > expected.maxScrollHeight) {
+    failures.push(`scrollHeight ${record.scrollHeight} > ${expected.maxScrollHeight}`);
+  }
+
+  const baselineImage = expected.image ? resolve(dirname(baselinePath), expected.image) : "";
+  let imageDelta;
+  if (baselineImage) {
+    imageDelta = await compareImageBytes(baselineImage, record.path).catch((error) => ({ status: "missing-image", detail: error.message }));
+    if (imageDelta.status === "compared" && imageDelta.byteDeltaRatio > (expected.maxByteDeltaRatio ?? maxByteDeltaRatio)) {
+      failures.push(`image byte delta ${imageDelta.byteDeltaRatio.toFixed(3)} > ${expected.maxByteDeltaRatio ?? maxByteDeltaRatio}`);
+    }
+  }
+
+  const comparison = { name: record.name, status: failures.length ? "failed" : "passed", failures, imageDelta };
+  baselineComparisons.push(comparison);
+  if (failures.length) {
+    throw new Error(`${record.name} baseline failed: ${failures.join(" | ")}`);
+  }
+}
+
+async function compareImageBytes(leftPath, rightPath) {
+  const [left, right] = await Promise.all([readFile(leftPath), readFile(rightPath)]);
+  const maxLength = Math.max(left.length, right.length);
+  let changed = Math.abs(left.length - right.length);
+  const minLength = Math.min(left.length, right.length);
+  for (let index = 0; index < minLength; index += 1) {
+    if (left[index] !== right[index]) changed += 1;
+  }
+  return {
+    status: "compared",
+    byteDeltaRatio: maxLength ? changed / maxLength : 0,
+    leftBytes: left.length,
+    rightBytes: right.length,
+  };
 }

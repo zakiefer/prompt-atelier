@@ -89,3 +89,11 @@ jobs:
 
       - name: Visual regression snapshots
         run: npm run smoke:visual-regression -- --url https://zakiefer.github.io/prompt-atelier/ --ready-timeout-ms 660000 --out output/playwright/pages-visual-regression
+
+      - name: Upload hosted smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-atelier-pages-smoke
+          path: output/playwright/pages-*
+          if-no-files-found: ignore

@@ -73,6 +73,18 @@ jobs:
           npm run visual:qa -- --url http://127.0.0.1:4173/ --out /tmp/prompt-atelier-ci-visual-qa
           npm run smoke:visual-regression -- --url http://127.0.0.1:4173/ --out /tmp/prompt-atelier-ci-visual-regression
 
+      - name: Upload visual proof artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-atelier-visual-proof
+          path: |
+            /tmp/prompt-atelier-ci-visual-qa
+            /tmp/prompt-atelier-ci-visual-regression
+            /tmp/prompt-atelier-api.log
+            /tmp/prompt-atelier-preview.log
+          if-no-files-found: ignore
+
       - name: Script syntax checks
         run: |
           for file in scripts/*.mjs; do

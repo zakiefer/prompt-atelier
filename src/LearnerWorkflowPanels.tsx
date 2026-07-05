@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, Clock, Copy, Download, ExternalLink, ImagePlus, ListChecks, MonitorCheck, Save, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, Check, Clock, Copy, Download, ExternalLink, ImagePlus, ListChecks, MonitorCheck, Save, Search, Sparkles, Upload } from "lucide-react";
 import { type OutcomeRating } from "./promptEngine";
 import { type CorpusReviewRow, type LearnerSession, type TargetExportPreset } from "./learnerProduct";
 import {
@@ -16,6 +16,39 @@ export type LearnerActivityItem = {
   detail: string;
   tone?: "good" | "watch" | "neutral";
   at: string;
+};
+
+export type LearnerProofVaultItem = {
+  id: string;
+  title: string;
+  rating: OutcomeRating;
+  screenshotUrl: string;
+  screenshotNotes: string;
+  notes: string;
+  createdAt: string;
+};
+
+export type LearnerSearchResult = {
+  id: string;
+  kind: "session" | "proof" | "export" | "corpus" | "sample";
+  title: string;
+  detail: string;
+  actionLabel?: string;
+};
+
+export type PromptLintFix = {
+  id: string;
+  label: string;
+  detail: string;
+  patch: string;
+  severity: "fix" | "watch";
+};
+
+export type ProductChangelogItem = {
+  id: string;
+  label: string;
+  detail: string;
+  meta: string;
 };
 
 export function LearnerCommandDeck({
@@ -504,6 +537,7 @@ export function ExportPresetPreview({
     }
   }, [presets, selectedPresetId]);
   const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? presets[0];
+  const targetChanges = selectedPreset ? describeTargetPreset(selectedPreset) : [];
 
   return (
     <section className="learner-mini-panel export-preset-preview" data-learner-section="export-preset-preview" data-train-section="target-export-presets">
@@ -537,10 +571,191 @@ export function ExportPresetPreview({
         <textarea className="generated-output mini-output preset-preview-output" readOnly value={selectedPreset?.content ?? ""} />
       </div>
       {selectedPreset ? (
-        <p className="selected-meta">
-          <ListChecks size={14} /> {selectedPreset.detail}
-        </p>
+        <div className="target-difference-panel">
+          <p className="selected-meta">
+            <ListChecks size={14} /> {selectedPreset.detail}
+          </p>
+          <strong>How this target changes the handoff</strong>
+          <ul>
+            {targetChanges.map((change) => (
+              <li key={change}>{change}</li>
+            ))}
+          </ul>
+        </div>
       ) : null}
+    </section>
+  );
+}
+
+function describeTargetPreset(preset: TargetExportPreset) {
+  const label = `${preset.label} ${preset.filename}`.toLowerCase();
+  if (label.includes("codex")) {
+    return ["Keeps implementation scope, file edits, and verification commands explicit.", "Includes proof gates so the build agent has a clear done state."];
+  }
+  if (label.includes("claude")) {
+    return ["Adds critique-friendly context and missing-proof questions.", "Keeps memory concise enough for project instructions or artifact prompts."];
+  }
+  if (label.includes("v0")) {
+    return ["Compresses the prompt into UI-first implementation details.", "Highlights exact visual constraints while removing repo-operation noise."];
+  }
+  if (label.includes("json")) {
+    return ["Normalizes the prompt into model-training rows.", "Keeps quality metadata and proof expectations machine-readable."];
+  }
+  if (label.includes("cursor")) {
+    return ["Frames the prompt as a scoped code-edit task.", "Emphasizes existing project boundaries, checks, and expected file changes."];
+  }
+  return ["Keeps the neutral source spec portable across builders.", "Preserves exact assets, stack, responsive rules, and acceptance gates."];
+}
+
+export function LearnerWorkspaceSearchPanel({
+  onUseResult,
+  results,
+}: {
+  onUseResult: (result: LearnerSearchResult) => void;
+  results: LearnerSearchResult[];
+}) {
+  const [query, setQuery] = useState("");
+  const normalized = query.trim().toLowerCase();
+  const visible = (normalized
+    ? results.filter((result) => `${result.kind} ${result.title} ${result.detail}`.toLowerCase().includes(normalized))
+    : results
+  ).slice(0, 8);
+  const counts = results.reduce<Record<LearnerSearchResult["kind"], number>>(
+    (map, result) => ({ ...map, [result.kind]: (map[result.kind] ?? 0) + 1 }),
+    { session: 0, proof: 0, export: 0, corpus: 0, sample: 0 },
+  );
+
+  return (
+    <section className="learner-mini-panel workspace-search-panel" data-train-section="workspace-search">
+      <div className="output-header">
+        <div>
+          <h3>Workspace search</h3>
+          <p>Search sessions, proof, exports, corpus rows, and examples from one place.</p>
+        </div>
+        <Search size={16} />
+      </div>
+      <label className="search-field">
+        <Search size={15} />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search prompts, proof, exports, sessions..." />
+      </label>
+      <div className="mini-stat-row">
+        <span>{counts.session} sessions</span>
+        <span>{counts.proof} proof</span>
+        <span>{counts.export} exports</span>
+        <span>{counts.corpus} corpus</span>
+        <span>{counts.sample} samples</span>
+      </div>
+      <div className="workspace-search-results">
+        {visible.map((result) => (
+          <button key={result.id} type="button" onClick={() => onUseResult(result)}>
+            <span>{result.kind}</span>
+            <strong>{result.title}</strong>
+            <p>{result.detail}</p>
+            <small>{result.actionLabel ?? "Open"}</small>
+          </button>
+        ))}
+        {!visible.length ? <p className="selected-meta">No matching workspace items.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+export function PromptLintFixPanel({
+  fixes,
+  onApplyFix,
+}: {
+  fixes: PromptLintFix[];
+  onApplyFix: (fix: PromptLintFix) => void;
+}) {
+  return (
+    <section className="learner-mini-panel prompt-lint-panel" data-train-section="prompt-lint-fixes">
+      <div className="output-header">
+        <div>
+          <h3>Prompt lint fixes</h3>
+          <p>One-click patches for missing proof, assets, responsive behavior, and no-go rules.</p>
+        </div>
+        <span className="selected-meta">{fixes.length} issue(s)</span>
+      </div>
+      <div className="lint-fix-grid">
+        {fixes.map((fix) => (
+          <button data-severity={fix.severity} key={fix.id} type="button" onClick={() => onApplyFix(fix)}>
+            <strong>{fix.label}</strong>
+            <p>{fix.detail}</p>
+            <small>Apply patch</small>
+          </button>
+        ))}
+        {!fixes.length ? <p className="selected-meta">No lint gaps detected in the working prompt.</p> : null}
+      </div>
+    </section>
+  );
+}
+
+export function ProofArtifactVault({
+  artifacts,
+  copied,
+  onCopy,
+}: {
+  artifacts: LearnerProofVaultItem[];
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+}) {
+  const latest = artifacts[0];
+  const payload = JSON.stringify({ schema: "prompt-atelier.proof-vault.v1", artifacts }, null, 2);
+  return (
+    <section className="learner-mini-panel proof-artifact-vault" data-train-section="proof-artifact-vault">
+      <div className="output-header">
+        <div>
+          <h3>Proof artifact vault</h3>
+          <p>Saved proof persists in this browser and travels through exported JSON.</p>
+        </div>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(payload, "proof-vault-json")}>
+          {copied === "proof-vault-json" ? <Check size={15} /> : <Copy size={15} />}
+          Copy JSON
+        </button>
+      </div>
+      <div className="proof-vault-grid">
+        <article>
+          <strong>{artifacts.length}</strong>
+          <span>saved artifact(s)</span>
+          <p>{latest ? `${latest.title} / ${latest.rating}` : "Save screenshot proof to create the first durable local artifact."}</p>
+        </article>
+        {artifacts.slice(0, 3).map((artifact) => (
+          <article key={artifact.id}>
+            <strong>{artifact.title}</strong>
+            <span>{artifact.rating} / {new Date(artifact.createdAt).toLocaleString()}</span>
+            <p>{artifact.screenshotNotes || artifact.notes}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ProductChangelogPanel({
+  items,
+  status,
+}: {
+  items: ProductChangelogItem[];
+  status: { label: string; detail: string };
+}) {
+  return (
+    <section className="learner-mini-panel product-changelog-panel" data-train-section="product-changelog">
+      <div className="output-header">
+        <div>
+          <h3>Product changelog</h3>
+          <p>{status.detail}</p>
+        </div>
+        <span className="selected-meta">{status.label}</span>
+      </div>
+      <div className="changelog-list">
+        {items.map((item) => (
+          <article key={item.id}>
+            <span>{item.meta}</span>
+            <strong>{item.label}</strong>
+            <p>{item.detail}</p>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
