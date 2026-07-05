@@ -162,7 +162,17 @@ import {
   buildPublicDemoExperienceReport,
   buildResultReviewerReport,
 } from "../src/productEvolution";
-import { buildCompilerHouseFormatText, buildLearnerExportPack, buildLearningProfiles } from "../src/learnerProduct";
+import {
+  buildCompilerHouseFormatText,
+  buildCorpusNeighbors,
+  buildDnaRewritePlan,
+  buildLearnerExportPack,
+  buildLearnerRecipes,
+  buildLearningProfiles,
+  buildSamplePromptGallery,
+  buildTargetExportPresets,
+  createLearnerSession,
+} from "../src/learnerProduct";
 
 function readCuratedSeedPrompts() {
   return readdirSync("src/prompts")
@@ -501,6 +511,40 @@ assert.equal(learnerPack.files.length, 5, "Learner export pack should expose fiv
 assert.ok(learnerPack.markdown.includes("Screenshot Proof References"), "Learner export pack should include screenshot proof references.");
 assert.equal(JSON.parse(learnerPack.json).sourcePrompt, exactPrompt, "Learner export JSON should preserve the source prompt.");
 assert.equal(learnerPack.scorecard.length, 3, "Learner export pack should include a compact scorecard.");
+const corpusNeighbors = buildCorpusNeighbors(exactPrompt, examples, outcomes);
+assert.ok(corpusNeighbors.length >= 3, "Learner should surface nearest-neighbor corpus examples.");
+assert.ok(corpusNeighbors.every((neighbor) => neighbor.reasons.length), "Corpus neighbors should explain why they matched.");
+const dnaRewritePlan = buildDnaRewritePlan({ dnaExplanation, improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt, source: exactPrompt });
+assert.equal(dnaRewritePlan.length, 5, "DNA rewrite plan should focus the weakest five dimensions.");
+assert.ok(dnaRewritePlan.every((rewrite) => rewrite.rewrite.length > 20), "DNA rewrite plan should include exact rewrite moves.");
+const learnerRecipes = buildLearnerRecipes({ clusters, profile });
+assert.ok(learnerRecipes.length >= 3, "Learner recipe builder should emit archetype recipes.");
+assert.ok(learnerRecipes[0].prompt.includes("RESPONSIVE AND BUILD RULES"), "Learner recipe should use the house prompt recipe shape.");
+const sampleGallery = buildSamplePromptGallery(examples);
+assert.ok(sampleGallery.length >= 3, "Sample gallery should expose tryable prompts.");
+assert.ok(sampleGallery[0].score >= sampleGallery.at(-1)!.score, "Sample gallery should be sorted by prompt score.");
+const targetPresets = buildTargetExportPresets({
+  activeProfile: learningProfiles[0],
+  compiledPrompt: houseCompiledPrompt,
+  improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt,
+  learnerExportPack: learnerPack,
+});
+assert.deepEqual(targetPresets.map((preset) => preset.id), ["codex", "claude", "v0", "gpt"], "Target export presets should cover Codex, Claude, v0, and GPT.");
+assert.ok(targetPresets.every((preset) => preset.content.includes("prompt") || preset.content.includes("PROMPT")), "Target presets should include prompt content.");
+const learnerSession = createLearnerSession({
+  acceptedDiffs: ["Assets", "QA"],
+  activeProfile: learningProfiles[0],
+  benchmarkWinner: { title: "Winner", score: 94, prompt: exactPrompt },
+  dnaScore: dnaExplanation.overall,
+  exportFilesReady: learnerPack.files.filter((file) => file.ready).length,
+  improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt,
+  promptScore: evaluatePrompt(exactPrompt).score,
+  rejectedDiffs: ["Extra decoration"],
+  reviewedPrompt: `${JSON.parse(learnerPack.json).improvedPrompt}\nReviewed.`,
+  sourcePrompt: exactPrompt,
+});
+assert.equal(learnerSession.profileId, learningProfiles[0].id, "Learner session should preserve the active profile.");
+assert.equal(learnerSession.acceptedDiffs.length, 2, "Learner session should preserve accepted diff decisions.");
 
 const codexBuildPack = buildCodexBuildPack({
   prompt: examples[0],
@@ -1593,4 +1637,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 323, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 335, score: score.score, snapshot: snapshot.label }, null, 2));

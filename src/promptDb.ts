@@ -14,6 +14,7 @@ export type CollectionKey =
   | "curationDecisions"
   | "memoryRuleDecisions"
   | "projectSpaces"
+  | "learnerSessions"
   | "modelBatchEvaluations"
   | "pairwiseReviews"
   | "backupSnapshots"

@@ -66,6 +66,7 @@ try {
     "evaluationArtifacts",
     "hostedSetupChecks",
     "proofArtifacts",
+    "learnerSessions",
   ];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
@@ -82,6 +83,22 @@ try {
         datasetVersions: [{ id: "test", label: "test", createdAt: new Date().toISOString(), counts: {}, scores: {}, notes: [] }],
         pairwiseReviews: [{ id: "pairwise-test" }],
         backupSnapshots: [{ id: "backup-test", payload: {} }],
+        learnerSessions: [{
+          id: "learner-session-test",
+          createdAt: new Date().toISOString(),
+          title: "Learner session",
+          profileId: "all",
+          profileLabel: "All prompts",
+          sourcePrompt: "Build a cinematic website hero.",
+          improvedPrompt: "Build a cinematic website hero with exact stack, media, layout, responsive rules, constraints, and QA.",
+          reviewedPrompt: "Build a cinematic website hero with reviewed diff locks.",
+          promptScore: 82,
+          dnaScore: 88,
+          acceptedDiffs: ["Assets"],
+          rejectedDiffs: [],
+          benchmarkWinner: { title: "Winner", score: 91, prompt: "Build the winner." },
+          exportFilesReady: 4,
+        }],
         activeWorkspace: "hero",
         closedLoopRuns: [{
           id: "closed-loop-test",
@@ -373,6 +390,7 @@ try {
     !payload.collections?.datasetVersions?.length ||
     !payload.collections?.pairwiseReviews?.length ||
     !payload.collections?.backupSnapshots?.length ||
+    !payload.collections?.learnerSessions?.length ||
     !payload.collections?.closedLoopRuns?.length ||
     !payload.collections?.benchmarkRuns?.length ||
     !payload.collections?.claudeHealthChecks?.length ||

@@ -41,6 +41,7 @@ const COLLECTION_KEYS = [
   "modelBatchEvaluations",
   "pairwiseReviews",
   "backupSnapshots",
+  "learnerSessions",
   "activeWorkspace",
   "closedLoopRuns",
   "benchmarkRuns",

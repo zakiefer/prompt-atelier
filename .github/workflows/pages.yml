@@ -71,5 +71,11 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Smoke public learner view
+        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --out output/playwright/pages-learner-smoke
+
       - name: Smoke public Train view
         run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --train --out output/playwright/pages-hosted-smoke
+
+      - name: Smoke public demo view
+        run: npm run smoke:hosted -- --url https://zakiefer.github.io/prompt-atelier/ --demo --out output/playwright/pages-demo-smoke

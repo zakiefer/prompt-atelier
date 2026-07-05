@@ -61,16 +61,24 @@ const trainHeadings = [
 ];
 const learnerHeadings = [
   "Paste, score, improve, prove, export.",
-  "One-click better prompt",
+  "Try sample prompts",
+  "Prompt revision",
+  "Why not 100",
+  "Learned from similar prompts",
   "Prompt diff editor",
   "House-format compiler",
   "Benchmark battle",
+  "Prompt recipe builder",
+  "Target export presets",
   "Batch training review",
   "Export pack",
+  "Corpus quarantine queue",
+  "Saved learner sessions",
 ];
 const demoHeadings = [
   "Website prompt learner",
-  "Learn its DNA, then make it sharper.",
+  "Score it clearly, then revise it.",
+  "Try sample prompts",
   "Better prompt",
   "Guided path",
   "Export pack",
@@ -80,7 +88,8 @@ const expectedHeadings = shouldOpenTrain ? trainHeadings : shouldOpenDemo ? demo
 await mkdir(outDir, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1200 } });
+const page = await context.newPage();
 
 try {
   await page.goto(targetUrl.toString(), { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -113,6 +122,9 @@ try {
 
   const bodyText = await pageText();
   const missing = expectedHeadings.filter((heading) => !bodyText.includes(heading));
+  const interactionState = !shouldOpenTrain && !shouldOpenDemo
+    ? await runLearnerInteractions(page)
+    : { checked: [], sessionCount: 0, historyCount: 0 };
   const screenshotPath = join(outDir, "hosted-smoke.png");
   await page.screenshot({ path: screenshotPath, fullPage: true });
   const panelState = shouldOpenTrain || !shouldOpenDemo
@@ -132,11 +144,17 @@ try {
             ]
           : [
               "public-learner",
+              "dna-rewrite-plan",
+              "corpus-neighbors",
               "prompt-diff-editor",
               "house-compiler",
               "benchmark-battle",
+              "recipe-builder",
+              "target-export-presets",
               "batch-training-review",
               "learner-export-pack",
+              "corpus-quarantine",
+              "learner-session-history",
             ];
         return {
           missingSections: requiredSections.filter((section) => !pageDocument.querySelector(`[data-train-section="${section}"]`)),
@@ -168,6 +186,7 @@ try {
     demo: shouldOpenDemo,
     train: shouldOpenTrain,
     checked: expectedHeadings,
+    interactions: interactionState,
     visual: panelState,
     screenshots: {
       desktop: screenshotPath,
@@ -175,5 +194,88 @@ try {
     },
   }, null, 2));
 } finally {
+  await context.close();
   await browser.close();
+}
+
+async function runLearnerInteractions(page) {
+  const checked = [];
+  const sampleButton = page.locator(".sample-card").first();
+  if (await sampleButton.count()) {
+    await sampleButton.click();
+    checked.push("sample prompt loaded");
+  }
+
+  const profileButton = page.locator(".profile-chip").nth(1);
+  if (await profileButton.count()) {
+    await profileButton.click();
+    checked.push("profile switched");
+  }
+
+  const acceptButton = page.locator('[data-train-section="prompt-diff-editor"] button').filter({ hasText: /^Accept$/ }).first();
+  if (await acceptButton.count()) {
+    await acceptButton.click();
+    checked.push("diff accepted");
+  }
+
+  const rejectButton = page.locator('[data-train-section="prompt-diff-editor"] button').filter({ hasText: /^Reject$/ }).first();
+  if (await rejectButton.count()) {
+    await rejectButton.click();
+    checked.push("diff rejected");
+  }
+
+  const saveCompiledButton = page.locator('[data-train-section="house-compiler"] button').filter({ hasText: /^Save$/ }).first();
+  if (await saveCompiledButton.count()) {
+    await saveCompiledButton.click();
+    checked.push("compiled prompt saved");
+  }
+
+  const saveWinnerButton = page.locator('[data-train-section="benchmark-battle"] button').filter({ hasText: /Save winner/ }).first();
+  if (await saveWinnerButton.count()) {
+    await saveWinnerButton.click();
+    checked.push("benchmark winner saved");
+  }
+
+  const saveSessionButton = page.locator('[data-learner-action="save-session"]').first();
+  if (await saveSessionButton.count()) {
+    await saveSessionButton.click();
+    checked.push("learner session saved");
+  }
+
+  const exportButton = page.locator('[data-train-section="learner-export-pack"] button').filter({ hasText: /^Export$/ }).first();
+  if (await exportButton.count()) {
+    const download = await Promise.all([
+      page.waitForEvent("download", { timeout: 5000 }).catch(() => undefined),
+      exportButton.click(),
+    ]).then(([downloadResult]) => downloadResult);
+    if (download) checked.push(`export downloaded:${download.suggestedFilename()}`);
+  }
+
+  await page.waitForFunction(() => {
+    const sessions = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-learner-sessions") || "[]");
+    const history = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-version-history") || "[]");
+    return Array.isArray(sessions) && sessions.length >= 1 && Array.isArray(history) && history.length >= 2;
+  }, null, { timeout: 5000 }).catch(() => undefined);
+
+  const state = await page.evaluate(() => {
+    const sessions = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-learner-sessions") || "[]");
+    const history = JSON.parse(globalThis.localStorage.getItem("prompt-atelier-version-history") || "[]");
+    const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
+    return {
+      activeProfile,
+      historyCount: Array.isArray(history) ? history.length : 0,
+      sessionCount: Array.isArray(sessions) ? sessions.length : 0,
+    };
+  });
+
+  if (!checked.includes("profile switched") || !checked.includes("diff accepted") || !checked.includes("learner session saved")) {
+    throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
+  }
+  if (state.sessionCount < 1) {
+    throw new Error("Learner interaction smoke did not persist a learner session.");
+  }
+  if (state.historyCount < 2) {
+    throw new Error("Learner interaction smoke did not persist saved prompt history.");
+  }
+  return { ...state, checked };
 }

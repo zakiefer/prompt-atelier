@@ -82,6 +82,12 @@ button:disabled {
   width: 48px;
 }
 
+.brand-mark span {
+  font-size: 0.82rem;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
 .eyebrow {
   color: var(--teal);
   font-size: 0.72rem;
@@ -737,10 +743,62 @@ button:disabled {
   opacity: 0.78;
 }
 
+.sample-gallery,
+.recipe-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.sample-gallery {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 4px;
+}
+
+.sample-gallery.compact-list {
+  grid-template-columns: 1fr;
+}
+
+.sample-card,
+.preset-card {
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.sample-card strong,
+.preset-card strong {
+  font-size: 0.83rem;
+}
+
+.sample-card span,
+.preset-card span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sample-card small,
+.preset-card small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
+.recipe-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.recipe-grid .recipe-card {
+  margin: 0;
+}
+
 .demo-shell {
-  background:
-    radial-gradient(circle at 10% 0%, rgba(30, 132, 113, 0.14), transparent 34%),
-    var(--bg);
+  background: var(--bg);
   color: var(--text);
   min-height: 100vh;
   padding: 16px;
@@ -3734,6 +3792,8 @@ button.preset-card {
   .learner-flow-grid,
   .self-serve-grid,
   .diff-action-grid,
+  .recipe-grid,
+  .sample-gallery,
   .demo-hero,
   .demo-grid,
   .lab-columns,

@@ -1,13 +1,13 @@
 # Prompt Atelier
 
-Prompt Atelier is a local workbench for learning what makes high-fidelity website prompts effective. It imports strong prompt examples, scores prompt DNA, compiles reusable recipes, runs prompt battles, tracks build outcomes, and exports a compact memory pack for future Codex sessions.
+Prompt Atelier is a local workbench for learning what makes high-fidelity website prompts effective. It imports strong prompt examples, scores prompt quality, compiles reusable recipes, runs prompt battles, tracks build outcomes, and exports a compact memory pack for future Codex sessions.
 
 Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 
 ## Features
 
 - Prompt corpus ingestion and duplicate detection
-- Prompt DNA and ready-to-build quality gates
+- Prompt quality scoring and ready-to-build gates
 - Golden recipe distillation from successful examples
 - Gold vs bad review workflow
 - Autonomous prompt battle queue scaffolding
@@ -25,7 +25,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Automated visual QA for desktop/mobile screenshots, console errors, media readiness, text fit, overlap, and horizontal overflow
 - Export presets for Codex, v0, Claude artifacts, Lovable, and raw implementation specs
 - Codex skill and reusable memory pack exports
-- Start-here proof loop that queues a build, blends prompt/result/screenshot/DNA scores, and records whether the prompt learned from real evidence
+- Start-here proof loop that queues a build, blends prompt/result/screenshot quality scores, and records whether the prompt learned from real evidence
 - One-click proof runner that can scaffold, build, capture desktop/mobile screenshots, import the result, and update the proof-learning ledger
 - Proof runner progress tracking for queue, build, capture, and learning states
 - Durable queue progress events in the hosted API plus a Train-tab queue ledger
@@ -70,6 +70,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Product evolution layer that simplifies the main Prompt Learner mode, upgrades Learning Memory v2, adds side-by-side result review, holdout regression, prompt editor studio, project spaces, modular report logic, and public demo experience polish
 - Actionable learner controls for pinning/rejecting memory rules, promoting/repairing/excluding result reviews, saving editor-section patches, persisting project spaces, and running holdout regression from the CLI
 - Self-serve learner experience with saved learning profiles, prompt diff review, house-format compiler output, benchmark battles, batch review, public demo routing, learner export packs, and split learner/app chrome chunks that keep the main bundle under the Vite warning line
+- Learner workbench upgrades for saved learner sessions, nearest-neighbor corpus examples, why-not-100 rewrite moves, learned recipe cards, sample prompts, Codex/Claude/v0/GPT export presets, corpus quarantine review, hosted learner-session sync, and Pages CI smokes for learner, Train, and demo routes
 
 ## Development
 
@@ -155,6 +156,7 @@ The app runs at `http://127.0.0.1:5173` and the API runs at `http://127.0.0.1:87
 - Pairwise reviews are persisted as a first-class collection.
 - Proof-loop runs, screenshot judge runs, mutation tournaments, Claude health checks, prompt comparisons, screenshot prompts, and workspace packs are persisted as first-class collections.
 - Training runs, cached model evaluations, candidate loops, corpus intelligence runs, benchmark v2 runs, safe-to-train setup checks, and evaluation artifacts are persisted as first-class collections.
+- Learner sessions are persisted as a first-class browser, IndexedDB, SQLite, backup, and hosted-sync collection without storing or rotating provider keys.
 
 ## Learning Loop
 
@@ -162,7 +164,7 @@ The Train tab now starts with:
 
 1. A first-run checklist for curation, versioning, API connection, calibration, and memory export.
 2. Corpus curation that classifies website prompts and keeps unrelated repo-operation tasks out of the learning set.
-3. Claude/local batch calibration for comparing external model judgment against internal DNA scores.
+3. Claude/local batch calibration for comparing external model judgment against internal quality scores.
 4. Pairwise labeling that converts human preference into gold and avoid outcome records.
 5. Pattern and visual regression dashboards for spotting which prompt structures are actually winning.
 6. A Claude/local prompt coach and project export pack for turning the current state into a reusable handoff.
@@ -193,7 +195,8 @@ The Train tab now starts with:
 31. A Next Product Sprint layer that turns the next upgrades into product controls: guided run, cleanup mode, battle autopilot, template compiler, result feedback, demo simplification, and local fallback polish without changing Claude or provider keys.
 32. A Product Evolution layer that makes the app feel like a prompt learner first: paste, score, improve, battle, prove, and export, with Learning Memory v2, result review, holdout regression, editor sections, isolated project spaces, modular report logic, and public demo polish.
 33. Actionable product controls: memory rules can be accepted, pinned, or rejected; result reviews can promote, repair, or exclude examples; editor sections can be saved as scoped patches; project spaces persist across browser/API snapshots; and `check:holdout` guards memory/template changes.
-34. A self-serve learner front door that lets someone paste a website prompt, pick a saved learning profile, see an explainable DNA score, accept/reject exact prompt diffs, compile the result into the house format, run benchmark battles, review batch training readiness, open a public demo route, and export a complete training pack without changing Claude or provider keys.
+34. A self-serve learner front door that lets someone paste a website prompt, pick a saved learning profile, see an explainable quality score, accept/reject exact prompt diffs, compile the result into the house format, run benchmark battles, review batch training readiness, open a public demo route, and export a complete training pack without changing Claude or provider keys.
+35. A learner proof layer that saves prompt sessions, shows the closest corpus examples, explains why a prompt is not 100 with exact rewrite moves, builds learned archetype recipes, offers sample prompts, exports target-specific prompt packs, surfaces quarantine candidates, and exercises the learner/demo/Train routes in CI.
 
 The tightest improvement cycle is:
 

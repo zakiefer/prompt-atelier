@@ -22,7 +22,6 @@ import {
   Search,
   Save,
   ShieldCheck,
-  Sparkles,
   Shuffle,
   SlidersHorizontal,
   Swords,
@@ -30,7 +29,6 @@ import {
   Trophy,
   Trash2,
   Upload,
-  Wand2,
 } from "lucide-react";
 import {
   analyzeArchetypeClusters,
@@ -302,7 +300,6 @@ import {
   type PreferenceReviewDeckReport,
   type PreferenceTrainingReport,
   type PromptPack,
-  type PromptAnalysis,
   type PromptBattle,
   type PromptBattleAutopilotReport,
   type PromptCandidateTournamentReport,
@@ -314,7 +311,6 @@ import {
   type PromptDnaV2,
   type PromptExample,
   type PromptCompilerInput,
-  type PromptImportAudit,
   type PromptMutation,
   type PromptMemoryExport,
   type PromptLineageNode,
@@ -405,12 +401,19 @@ import {
   type SavedProjectSpaceInput,
 } from "./productEvolution";
 import {
+  buildCorpusNeighbors,
   buildCompilerHouseFormatText,
+  buildDnaRewritePlan,
   buildLearnerExportPack,
   buildLearningProfiles,
+  buildLearnerRecipes,
+  buildSamplePromptGallery,
+  buildTargetExportPresets,
+  createLearnerSession,
+  type LearnerSession,
 } from "./learnerProduct";
 import { LearnView, PublicDemoRoute } from "./LearnerExperience";
-import { Field, Metric, SliderField, TabButton, Toggle } from "./AppChrome";
+import { BatchIngestionPreview, DraftIngestionPreflight, Field, Metric, SliderField, SmartIngestion, TabButton, Toggle } from "./AppChrome";
 import {
   analyzeScreenshots,
   analyzeCorpusViaApi,
@@ -458,6 +461,7 @@ const BACKUP_KEY = "prompt-atelier-backup-snapshots";
 const MEMORY_RULE_DECISIONS_KEY = "prompt-atelier-memory-rule-decisions";
 const PROJECT_SPACES_KEY = "prompt-atelier-project-spaces";
 const LEARNING_PROFILE_KEY = "prompt-atelier-active-learning-profile";
+const LEARNER_SESSION_KEY = "prompt-atelier-learner-sessions";
 const ONBOARDING_KEY = "prompt-atelier-onboarding-mode";
 const WORKSPACE_KEY = "prompt-atelier-active-workspace";
 const CLOSED_LOOP_KEY = "prompt-atelier-closed-loop-runs";
@@ -707,6 +711,14 @@ function readStoredProjectSpaces(): SavedProjectSpace[] {
     PROJECT_SPACES_KEY,
     (item) => Boolean(item?.id && item?.label && Array.isArray(item?.query) && item?.createdAt),
     20,
+  );
+}
+
+function readStoredLearnerSessions() {
+  return readStoredArray<LearnerSession>(
+    LEARNER_SESSION_KEY,
+    (item) => Boolean(item?.id && item?.createdAt && item?.sourcePrompt && item?.improvedPrompt),
+    60,
   );
 }
 
@@ -2211,6 +2223,7 @@ type StoredCollections = {
   curationDecisions: Record<string, CurationDecision>;
   memoryRuleDecisions: Record<string, MemoryRuleDecision>;
   projectSpaces: SavedProjectSpace[];
+  learnerSessions: LearnerSession[];
   modelBatchEvaluations: ModelBatchEvaluation[];
   pairwiseReviews: PairwiseReviewRecord[];
   backupSnapshots: TrainingBackupSnapshot[];
@@ -2262,6 +2275,7 @@ export default function App() {
   const [curationDecisions, setCurationDecisions] = useState<Record<string, CurationDecision>>(() => readStoredCurationDecisions());
   const [memoryRuleDecisions, setMemoryRuleDecisions] = useState<Record<string, MemoryRuleDecision>>(() => readStoredMemoryRuleDecisions());
   const [savedProjectSpaces, setSavedProjectSpaces] = useState<SavedProjectSpace[]>(() => readStoredProjectSpaces());
+  const [learnerSessions, setLearnerSessions] = useState<LearnerSession[]>(() => readStoredLearnerSessions());
   const [modelBatchEvaluations, setModelBatchEvaluations] = useState<ModelBatchEvaluation[]>(() => readStoredModelBatchEvaluations());
   const [pairwiseReviews, setPairwiseReviews] = useState<PairwiseReviewRecord[]>(() => readStoredPairwiseReviews());
   const [backupSnapshots, setBackupSnapshots] = useState<TrainingBackupSnapshot[]>(() => readStoredBackupSnapshots());
@@ -2483,6 +2497,11 @@ export default function App() {
   );
   const learnerSource = improveText.trim() || selectedPrompt?.text || generatedPrompt;
   const learnerEvaluation = useMemo(() => evaluatePrompt(learnerSource), [learnerSource]);
+  const learnerSamples = useMemo(() => buildSamplePromptGallery(learningExamples), [learningExamples]);
+  const learnerCorpusNeighbors = useMemo(
+    () => buildCorpusNeighbors(learnerSource, learningExamples, outcomes),
+    [learnerSource, learningExamples, outcomes],
+  );
   const mutationSourceText = mutationSource.trim() || selectedPrompt?.text || generatedPrompt;
   const promptMutations = useMemo(
     () => mutatePromptVariants(mutationSourceText, profile, outcomes),
@@ -2520,6 +2539,11 @@ export default function App() {
     () => buildPromptBattle(improvedPrompt, profile, outcomes, resultScore),
     [improvedPrompt, outcomes, profile, resultScore],
   );
+  const learnerDnaRewrites = useMemo(
+    () => buildDnaRewritePlan({ dnaExplanation, improvedPrompt, source: learnerSource }),
+    [dnaExplanation, improvedPrompt, learnerSource],
+  );
+  const learnerRecipes = useMemo(() => buildLearnerRecipes({ clusters, profile }), [clusters, profile]);
   const compiledPrompt = useMemo(
     () => compilePromptFromBrief(compilerInput, profile, outcomes, resultScore),
     [compilerInput, outcomes, profile, resultScore],
@@ -3633,6 +3657,16 @@ export default function App() {
       }),
     [activeLearningProfile, dnaExplanation, improvedPrompt, learnerPromptDiff, learnerSource, learningMemoryV2, projectExportPack, selectedScreenshots],
   );
+  const learnerTargetExportPresets = useMemo(
+    () =>
+      buildTargetExportPresets({
+        activeProfile: activeLearningProfile,
+        compiledPrompt: learnerHousePrompt,
+        improvedPrompt,
+        learnerExportPack,
+      }),
+    [activeLearningProfile, improvedPrompt, learnerExportPack, learnerHousePrompt],
+  );
   const resultReviewer = useMemo(
     () =>
       buildResultReviewerReport({
@@ -3781,6 +3815,7 @@ export default function App() {
       curationDecisions,
       memoryRuleDecisions,
       projectSpaces: savedProjectSpaces,
+      learnerSessions,
       modelBatchEvaluations,
       pairwiseReviews,
       backupSnapshots,
@@ -3821,6 +3856,7 @@ export default function App() {
         setMemoryRuleDecisions(stored.memoryRuleDecisions as Record<string, MemoryRuleDecision>);
       }
       if (Array.isArray(stored.projectSpaces)) setSavedProjectSpaces((stored.projectSpaces as SavedProjectSpace[]).slice(0, 20));
+      if (Array.isArray(stored.learnerSessions)) setLearnerSessions((stored.learnerSessions as LearnerSession[]).slice(0, 60));
       if (Array.isArray(stored.modelBatchEvaluations)) setModelBatchEvaluations((stored.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
       if (Array.isArray(stored.pairwiseReviews)) setPairwiseReviews((stored.pairwiseReviews as PairwiseReviewRecord[]).slice(0, 200));
       if (Array.isArray(stored.backupSnapshots)) setBackupSnapshots((stored.backupSnapshots as TrainingBackupSnapshot[]).slice(0, 8));
@@ -3960,6 +3996,12 @@ export default function App() {
     window.localStorage.setItem(PROJECT_SPACES_KEY, JSON.stringify(savedProjectSpaces));
     void writeCollection("projectSpaces", savedProjectSpaces);
   }, [dbReady, savedProjectSpaces]);
+
+  useEffect(() => {
+    if (!dbReady) return;
+    window.localStorage.setItem(LEARNER_SESSION_KEY, JSON.stringify(learnerSessions));
+    void writeCollection("learnerSessions", learnerSessions);
+  }, [dbReady, learnerSessions]);
 
   useEffect(() => {
     if (!dbReady) return;
@@ -4109,6 +4151,7 @@ export default function App() {
         curationDecisions,
         memoryRuleDecisions,
         projectSpaces: savedProjectSpaces,
+        learnerSessions,
         modelBatchEvaluations,
         pairwiseReviews,
         backupSnapshots,
@@ -4135,7 +4178,7 @@ export default function App() {
         .catch(() => setDbStatus("IndexedDB fallback ready; SQLite autosync failed"));
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, benchmarkV2Runs, buildRuns, claudeHealthChecks, closedLoopRuns, corpusClusterRuns, curationDecisions, datasetVersions, dbReady, evaluationArtifacts, history, hostedSetupChecks, lineageNodes, memoryRuleDecisions, modelBatchEvaluations, modelEvaluationCache, mutationTournamentRuns, outcomes, pairwiseReviews, promptCandidateRuns, promptComparisons, proofArtifacts, proofLearningRuns, queueJobs, savedProjectSpaces, screenshotJudgeRuns, screenshotPromptRuns, screenshots, trainingRuns, userPrompts, workspacePackRuns]);
+  }, [activeWorkspace, apiHealth?.ok, backupSnapshots, benchmarkRuns, benchmarkV2Runs, buildRuns, claudeHealthChecks, closedLoopRuns, corpusClusterRuns, curationDecisions, datasetVersions, dbReady, evaluationArtifacts, history, hostedSetupChecks, learnerSessions, lineageNodes, memoryRuleDecisions, modelBatchEvaluations, modelEvaluationCache, mutationTournamentRuns, outcomes, pairwiseReviews, promptCandidateRuns, promptComparisons, proofArtifacts, proofLearningRuns, queueJobs, savedProjectSpaces, screenshotJudgeRuns, screenshotPromptRuns, screenshots, trainingRuns, userPrompts, workspacePackRuns]);
 
   useEffect(() => {
     if (!selectedPrompt && examples[0]) setSelectedId(examples[0].id);
@@ -5935,6 +5978,27 @@ export default function App() {
     setApiNotice("Exported learner pack with prompt markdown, JSON training record, scorecard, memory patch, and screenshot proof refs.");
   }
 
+  function saveLearnerSession(reviewedPrompt: string, acceptedDiffs: string[], rejectedDiffs: string[]) {
+    const session = createLearnerSession({
+      acceptedDiffs,
+      activeProfile: activeLearningProfile,
+      benchmarkWinner: {
+        title: learnerBattle.winner.title,
+        score: learnerBattle.winner.score,
+        prompt: learnerBattle.winner.prompt,
+      },
+      dnaScore: dnaExplanation.overall,
+      exportFilesReady: learnerExportPack.files.filter((file) => file.ready).length,
+      improvedPrompt,
+      promptScore: learnerEvaluation.score,
+      rejectedDiffs,
+      reviewedPrompt,
+      sourcePrompt: learnerSource,
+    });
+    setLearnerSessions((current) => [session, ...current.filter((item) => item.id !== session.id)].slice(0, 60));
+    setApiNotice(`Saved learner session: ${session.title}.`);
+  }
+
   function exportCodexBuildPack() {
     downloadText(`codex-build-pack-${Date.now()}.md`, codexBuildPack.markdown, "text/markdown");
     downloadText(`codex-build-pack-${Date.now()}.json`, codexBuildPack.json, "application/json");
@@ -6240,6 +6304,7 @@ export default function App() {
       curationDecisions,
       memoryRuleDecisions,
       projectSpaces: savedProjectSpaces,
+      learnerSessions,
       modelBatchEvaluations,
       pairwiseReviews,
       activeWorkspace,
@@ -6287,6 +6352,7 @@ export default function App() {
     if (collections.curationDecisions) setCurationDecisions(collections.curationDecisions);
     if (collections.memoryRuleDecisions) setMemoryRuleDecisions(collections.memoryRuleDecisions);
     if (Array.isArray(collections.projectSpaces)) setSavedProjectSpaces(collections.projectSpaces);
+    if (Array.isArray(collections.learnerSessions)) setLearnerSessions(collections.learnerSessions);
     if (Array.isArray(collections.modelBatchEvaluations)) setModelBatchEvaluations(collections.modelBatchEvaluations);
     if (Array.isArray(collections.pairwiseReviews)) setPairwiseReviews(collections.pairwiseReviews);
     if (Array.isArray(collections.closedLoopRuns)) setClosedLoopRuns(collections.closedLoopRuns);
@@ -6646,6 +6712,7 @@ export default function App() {
         curationDecisions,
         memoryRuleDecisions,
         projectSpaces: savedProjectSpaces,
+        learnerSessions,
         modelBatchEvaluations,
         pairwiseReviews,
         backupSnapshots,
@@ -6724,6 +6791,10 @@ export default function App() {
       if (Array.isArray(collections.projectSpaces)) {
         setSavedProjectSpaces((collections.projectSpaces as SavedProjectSpace[]).slice(0, 20));
         restored.push("project spaces");
+      }
+      if (Array.isArray(collections.learnerSessions)) {
+        setLearnerSessions((collections.learnerSessions as LearnerSession[]).slice(0, 60));
+        restored.push("learner sessions");
       }
       if (Array.isArray(collections.modelBatchEvaluations)) {
         setModelBatchEvaluations((collections.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
@@ -6840,6 +6911,7 @@ export default function App() {
           curationDecisions,
           memoryRuleDecisions,
           projectSpaces: savedProjectSpaces,
+          learnerSessions,
           modelBatchEvaluations,
           pairwiseReviews,
           backupSnapshots,
@@ -6923,6 +6995,10 @@ export default function App() {
       if (Array.isArray(collections.projectSpaces)) {
         setSavedProjectSpaces((collections.projectSpaces as SavedProjectSpace[]).slice(0, 20));
         restored.push("project spaces");
+      }
+      if (Array.isArray(collections.learnerSessions)) {
+        setLearnerSessions((collections.learnerSessions as LearnerSession[]).slice(0, 60));
+        restored.push("learner sessions");
       }
       if (Array.isArray(collections.modelBatchEvaluations)) {
         setModelBatchEvaluations((collections.modelBatchEvaluations as ModelBatchEvaluation[]).slice(0, 200));
@@ -7030,6 +7106,7 @@ export default function App() {
           curationDecisions: collections.curationDecisions ?? curationDecisions,
           memoryRuleDecisions: collections.memoryRuleDecisions ?? memoryRuleDecisions,
           projectSpaces: collections.projectSpaces ?? savedProjectSpaces,
+          learnerSessions: collections.learnerSessions ?? learnerSessions,
           modelBatchEvaluations: collections.modelBatchEvaluations ?? modelBatchEvaluations,
           pairwiseReviews: collections.pairwiseReviews ?? pairwiseReviews,
           backupSnapshots: collections.backupSnapshots ?? backupSnapshots,
@@ -7426,9 +7503,12 @@ export default function App() {
         learnerExportPack={learnerExportPack}
         learnerText={improveText}
         learningProfiles={learningProfiles}
+        samplePrompts={learnerSamples}
+        targetExportPresets={learnerTargetExportPresets}
         onCopy={(value, key) => void copyText(value, key)}
         onExportLearnerPack={exportLearnerPack}
         onSaveImproved={() => saveVersion("improved", "Demo improved prompt", improvedPrompt, evaluatePrompt(improvedPrompt).score)}
+        onUseSamplePrompt={setImproveText}
         profile={profile}
         selectedPrompt={selectedPrompt}
         setActiveLearningProfileId={setActiveLearningProfileId}
@@ -7441,16 +7521,16 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-mark" aria-hidden="true">
-          <Sparkles size={22} />
+          <span>PA</span>
         </div>
         <div>
-          <p className="eyebrow">Prompt learning workbench</p>
+          <p className="eyebrow">Prompt review workbench</p>
           <h1>Website prompt learner</h1>
         </div>
         <div className="topbar-actions" aria-label="Corpus metrics">
           <Metric value={formatNumber(profile.exampleCount)} label="Examples" />
           <Metric value={formatNumber(clusters.length)} label="Archetypes" />
-          <Metric value={addPercent(dnaScore)} label="DNA score" />
+          <Metric value={addPercent(dnaScore)} label="Quality score" />
         </div>
       </header>
 
@@ -7469,7 +7549,7 @@ export default function App() {
             />
             <DraftIngestionPreflight report={draftContaminationReport} />
             {draftAnalysis ? <SmartIngestion analysis={draftAnalysis} /> : null}
-            {draftBatchCandidates.length > 1 ? <BatchIngestionPreview audit={draftImportAudit} candidates={draftBatchCandidates} /> : null}
+            {draftBatchCandidates.length > 1 ? <BatchIngestionPreview audit={draftImportAudit} candidateCount={draftBatchCandidates.length} /> : null}
             <div className="import-actions">
               <label className="file-button">
                 <Upload size={15} />
@@ -7608,7 +7688,7 @@ export default function App() {
             <TabButton active={tab === "learn"} icon={<BarChart3 size={16} />} onClick={() => setTab("learn")}>
               Learn
             </TabButton>
-            <TabButton active={tab === "compose"} icon={<Wand2 size={16} />} onClick={() => setTab("compose")}>
+            <TabButton active={tab === "compose"} icon={<Hammer size={16} />} onClick={() => setTab("compose")}>
               Compose
             </TabButton>
             <TabButton active={tab === "critic"} icon={<Gauge size={16} />} onClick={() => setTab("critic")}>
@@ -7620,7 +7700,7 @@ export default function App() {
             <TabButton active={tab === "lab"} icon={<SlidersHorizontal size={16} />} onClick={() => setTab("lab")}>
               Lab
             </TabButton>
-            <TabButton active={tab === "train"} icon={<Sparkles size={16} />} onClick={() => setTab("train")}>
+            <TabButton active={tab === "train"} icon={<ListChecks size={16} />} onClick={() => setTab("train")}>
               Train
             </TabButton>
           </nav>
@@ -7637,18 +7717,26 @@ export default function App() {
               dnaScore={dnaScore}
               improvedPrompt={improvedPrompt}
               learnerBattle={learnerBattle}
+              corpusNeighbors={learnerCorpusNeighbors}
+              dnaRewrites={learnerDnaRewrites}
               learnerDiff={learnerPromptDiff}
               learnerEvaluation={learnerEvaluation}
               learnerExportPack={learnerExportPack}
+              learnerRecipes={learnerRecipes}
               learnerText={improveText}
               learningProfiles={learningProfiles}
+              samplePrompts={learnerSamples}
+              savedLearnerSessions={learnerSessions}
+              targetExportPresets={learnerTargetExportPresets}
               onCopy={(value, key) => void copyText(value, key)}
               onCopyImproved={() => void copyText(improvedPrompt, "learner-improved")}
               onExportLearnerPack={exportLearnerPack}
               onSaveBattleWinner={() => saveVersion("tournament", learnerBattle.winner.title, learnerBattle.winner.prompt, learnerBattle.winner.score)}
               onSaveCompiledPrompt={() => saveVersion("compiled", "House-format compiled prompt", learnerHousePrompt, evaluatePrompt(learnerHousePrompt).score)}
               onSaveImproved={() => saveVersion("improved", "One-click improved prompt", improvedPrompt, evaluatePrompt(improvedPrompt).score)}
+              onSaveLearnerSession={saveLearnerSession}
               onSaveReviewedDiff={(text) => saveVersion("merged", "Reviewed learner diff", text, evaluatePrompt(text).score)}
+              onUseSamplePrompt={setImproveText}
               profile={profile}
               selectedAnalysis={selectedAnalysis}
               selectedPrompt={selectedPrompt}
@@ -8092,93 +8180,6 @@ export default function App() {
   );
 }
 
-function DraftIngestionPreflight({ report }: { report: DraftContaminationReport }) {
-  if (report.status === "clean" && !report.warnings.length) return null;
-  return (
-    <div className="analysis-card draft-preflight" data-status={report.status}>
-      <div>
-        <strong>{report.status === "block" ? "Import blocked" : "Review before import"}</strong>
-        <span>{report.score}/100 source safety</span>
-      </div>
-      <div className="mini-stat-row">
-        {report.warnings.map((warning) => (
-          <span key={warning}>{warning}</span>
-        ))}
-      </div>
-      <div className="batch-recommendations">
-        {report.actions.slice(0, 3).map((action) => (
-          <span key={action}>{action}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SmartIngestion({ analysis }: { analysis: PromptAnalysis }) {
-  const duplicateLabel =
-    analysis.duplicate.kind === "exact"
-      ? `Exact duplicate of ${analysis.duplicate.match?.title ?? "an existing prompt"}`
-      : analysis.duplicate.kind === "near"
-        ? `Near ${Math.round(analysis.duplicate.score * 100)}% match: ${analysis.duplicate.match?.title}`
-        : "Distinct prompt";
-
-  return (
-    <div className="analysis-card">
-      <div>
-        <strong>{analysis.title}</strong>
-        <span>{analysis.wordCount} words / {analysis.assetCount} assets / {analysis.archetypes[0]?.label ?? "unclustered"}</span>
-      </div>
-      <p data-tone={analysis.duplicate.kind}>{duplicateLabel}</p>
-      <div className="chips">
-        {analysis.tags.slice(0, 6).map((tag) => (
-          <span key={tag}>{tag}</span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BatchIngestionPreview({ audit, candidates }: { audit: PromptImportAudit; candidates: ReturnType<typeof parsePromptBatch> }) {
-  const buckets: PromptImportAudit["items"][number]["decision"][] = ["gold", "learn", "review", "quarantine"];
-  return (
-    <div className="analysis-card batch-preview">
-      <div>
-        <strong>{candidates.length} prompt candidates detected</strong>
-        <span>
-          Average score {audit.averageScore} / {audit.importable} importable / {audit.goldCandidates} gold / {audit.nearDuplicates} near duplicate(s)
-        </span>
-      </div>
-      <div className="mini-stat-row">
-        <span>{audit.importable} learn-ready</span>
-        <span>{audit.reviewCandidates} review</span>
-        <span>{audit.quarantineCandidates} quarantine</span>
-        {audit.topClusters.slice(0, 3).map((cluster) => (
-          <span key={cluster.label}>{cluster.label}: {cluster.count}</span>
-        ))}
-      </div>
-      <div className="batch-recommendations">
-        {audit.recommendations.slice(0, 3).map((recommendation) => (
-          <span key={recommendation}>{recommendation}</span>
-        ))}
-      </div>
-      <div className="batch-candidate-list">
-        {buckets.flatMap((bucket) =>
-          audit.items
-            .filter((item) => item.decision === bucket)
-            .slice(0, 3)
-            .map((item) => (
-              <article data-decision={item.decision} key={item.candidate.id}>
-                <strong>{item.candidate.title}</strong>
-                <span>{item.decision} / {item.candidate.score} score / {item.cluster}</span>
-                <small>{item.reasons.slice(0, 4).join(" / ")}</small>
-              </article>
-            )),
-        )}
-      </div>
-    </div>
-  );
-}
-
 function ComposeView({
   clusters,
   copied,
@@ -8204,7 +8205,7 @@ function ComposeView({
     <div className="compose-grid">
       <section className="panel form-panel">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Prompt brief</h2>
         </div>
         <Field label="Brand name">
@@ -10891,7 +10892,7 @@ function ProductEvolutionPanel({
     <section className="panel lab-panel product-sprint-panel" data-readiness={report.status} data-train-section="product-evolution">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>{report.headline}</h2>
         </div>
         <ScoreRing score={report.score} label={report.status} />
@@ -11222,7 +11223,7 @@ function ProductSprintPanel({
     <section className="panel lab-panel product-sprint-panel" data-readiness={report.status} data-train-section="product-sprint">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>{report.headline}</h2>
         </div>
         <ScoreRing score={report.score} label={report.status} />
@@ -11555,7 +11556,7 @@ function PromptProductOsPanel({
     <section className="panel lab-panel product-os-panel" data-readiness={report.status} data-train-section="product-os">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>{report.headline}</h2>
         </div>
         <ScoreRing score={report.score} label={report.status} />
@@ -11638,7 +11639,7 @@ function ProductCommandCenterPanel({
     <section className="panel lab-panel" data-readiness={report.status} data-train-section="workflow">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Product Command Center</h2>
         </div>
         <ScoreRing score={report.score} label={report.status} />
@@ -11708,7 +11709,7 @@ function LearningMachinePanel({
     <section className="panel lab-panel" data-readiness={report.status} data-train-section="machine">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Learning machine control plane</h2>
         </div>
         <ScoreRing score={report.score} label={report.status} />
@@ -11884,7 +11885,7 @@ function GeneratorV3Panel({
     <section className="panel lab-panel" data-readiness={report.status} data-train-section="generator-v3">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Prompt generator v3</h2>
         </div>
         <ScoreRing score={report.score} label={report.status} />
@@ -12630,7 +12631,7 @@ function GeneratePromptFrontDoorPanel({
     <section className="panel lab-panel" data-readiness={report.readiness} data-train-section="generate">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Generate Prompt</h2>
         </div>
         <ScoreRing score={report.score} label={report.readiness} />
@@ -12879,7 +12880,7 @@ function PromptGeneratorV2Panel({
     <section className="panel lab-panel" data-readiness={report.readiness}>
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Prompt Generator v2</h2>
         </div>
         <ScoreRing score={report.score} label={report.readiness} />
@@ -13132,7 +13133,7 @@ function SimpleModeCleanupPanel({ report }: { report: SimpleModeReport }) {
     <section className="panel lab-panel" data-readiness={report.mode}>
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Simple beginner mode cleanup</h2>
         </div>
         <ScoreRing score={report.score} label={report.mode} />
@@ -13360,7 +13361,7 @@ function BeginnerPromptMakerPanel({
     <section className="panel lab-panel">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>One-click make me a great prompt</h2>
         </div>
         <ScoreRing score={report.score} label={report.readiness} />
@@ -13688,7 +13689,7 @@ function PromptSectionRegenerationPanel({
   return (
     <section className="panel lab-panel section-regeneration-panel" data-train-section="improve">
       <div className="panel-header">
-        <Wand2 size={18} />
+        <Hammer size={18} />
         <h2>Prompt section regeneration</h2>
       </div>
       <p className="selected-meta">{report.notes[1]}</p>
@@ -14023,7 +14024,7 @@ function ModelJudgeComparisonPanel({
     <section className="panel lab-panel model-judge-comparison-panel" data-train-section="api">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Claude/local/result comparison</h2>
         </div>
         <button className="ghost-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>
@@ -14147,7 +14148,7 @@ function GuidedTrainingWorkflowPanel({
           <h2>Guided training workflow</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onRunGuidedTraining}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           Run guided train
         </button>
       </div>
@@ -14225,7 +14226,7 @@ function ModelIntelligencePanel({
           <h2>Model intelligence</h2>
         </div>
         <button className="ghost-button compact-button" type="button" onClick={onRunCachedModelEvaluation}>
-          <Sparkles size={14} />
+          <BarChart3 size={14} />
           Cache eval
         </button>
       </div>
@@ -14464,11 +14465,11 @@ function TrainFromCorpusPanel({
     <section className="panel lab-panel train-from-corpus-panel" data-train-section="workflow">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Train from this corpus</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onTrainFromCorpus} disabled={!dataset.rows.length}>
-          <Wand2 size={15} />
+          <Hammer size={15} />
           Train corpus
         </button>
       </div>
@@ -14947,7 +14948,7 @@ function OneClickLearningLoopPanel({
           <h2>One-click generate, score, and label</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onOneClickLearningLoop} disabled={!variant}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           Run loop
         </button>
       </div>
@@ -15059,7 +15060,7 @@ function StartHereProofLoopPanel({
     <section className="panel lab-panel start-here-panel" data-train-section="workflow">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Start here: prove and improve</h2>
         </div>
         <ScoreRing score={buildFeedback.score} label="proof" />
@@ -15125,7 +15126,7 @@ function GoldenBenchmarkBoardPanel({
           <h2>Golden benchmark board</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onRunBenchmarkSuite}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           Run suite
         </button>
       </div>
@@ -15253,7 +15254,7 @@ function ConnectHostedBrainPanel({
   return (
     <section className="panel lab-panel hosted-brain-panel" data-train-section="api">
       <div className="panel-header">
-        <Sparkles size={18} />
+        <BarChart3 size={18} />
         <h2>Connect hosted brain</h2>
       </div>
       <div className="two-field-grid">
@@ -15313,7 +15314,7 @@ function SimplePromptFrontDoorPanel({
     <section className="panel lab-panel simple-front-door-panel" data-train-section="generate">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Generate a great website prompt</h2>
         </div>
         <ScoreRing score={guidedWizard.readiness} label="brief" />
@@ -15365,7 +15366,7 @@ function SimplePromptFrontDoorPanel({
               Save
             </button>
             <button className="primary-button compact-button" type="button" disabled={!best} onClick={onRunClosedLoopTrainer}>
-              <Sparkles size={15} />
+              <BarChart3 size={15} />
               Refine with Claude
             </button>
           </div>
@@ -15409,7 +15410,7 @@ function PromptGeneratorFrontDoorPanel({
     <section className="panel lab-panel prompt-generator-front-door-panel" data-train-section="generate">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Prompt generator front door</h2>
         </div>
         <span className="workspace-pill">{generatorInput.outputTarget}</span>
@@ -15479,7 +15480,7 @@ function ClosedLoopTrainerPanel({
     <section className="panel lab-panel">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Closed-loop prompt trainer</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onRunClosedLoopTrainer} disabled={!candidate}>
@@ -15725,7 +15726,7 @@ function HostedClaudeSetupPanel({
     <section className="panel lab-panel hosted-claude-panel" data-train-section="api">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Hosted Claude setup</h2>
         </div>
         <div className="button-row">
@@ -15782,7 +15783,7 @@ function ClaudeHealthDeepCheckPanel({
           <h2>Hosted Claude readiness</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onRunHostedClaudeHealthCheck}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           Run deep check
         </button>
       </div>
@@ -15841,7 +15842,7 @@ function GreatPromptWizardPanel({
     <section className="panel lab-panel great-prompt-wizard-panel" data-train-section="generate">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Great Prompt wizard</h2>
         </div>
         <ScoreRing score={guidedWizard.readiness} label="ready" />
@@ -15890,7 +15891,7 @@ function GreatPromptWizardPanel({
               Save
             </button>
             <button className="primary-button compact-button" type="button" disabled={!best} onClick={onRunClosedLoopTrainer}>
-              <Sparkles size={15} />
+              <BarChart3 size={15} />
               Claude refine
             </button>
           </div>
@@ -15995,7 +15996,7 @@ function PromptComparisonClaudePanel({
           <h2>Claude A/B prompt comparison</h2>
         </div>
         <button className="primary-button compact-button" type="button" disabled={!left || !right} onClick={() => onRunPromptComparison(left, right)}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           Compare
         </button>
       </div>
@@ -16084,7 +16085,7 @@ function ScreenshotPromptGeneratorPanel({
           <h2>Generate prompt from screenshot</h2>
         </div>
         <button className="primary-button compact-button" type="button" disabled={running} onClick={() => void runGenerator()}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           {running ? "Generating..." : "Generate"}
         </button>
       </div>
@@ -16330,7 +16331,7 @@ function GuidedPromptWizardPanel({
     <section className="panel lab-panel guided-wizard-panel" data-testid="guided-prompt-wizard" data-train-section="generate">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>Real prompt generation workflow</h2>
         </div>
         <ScoreRing score={guidedWizard.readiness} label="Ready" />
@@ -16455,7 +16456,7 @@ function PromptImprovementStudioPanel({
     <section className="panel lab-panel" data-testid="prompt-improvement-studio" data-train-section="improve">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Before/after prompt improvement</h2>
         </div>
         <div className="score-delta" data-positive={rewriteComparison.delta >= 0}>
@@ -16862,10 +16863,10 @@ function DnaScoreExplainerPanel({
     <section className="panel lab-panel">
       <div className="panel-header">
         <Gauge size={18} />
-        <h2>Why this DNA score?</h2>
+        <h2>Why this quality score?</h2>
       </div>
       <div className="qa-score-row">
-        <ScoreRing score={dnaExplanation.overall} label="DNA" />
+        <ScoreRing score={dnaExplanation.overall} label="Quality" />
         <div>
           <strong>{selectedPrompt?.title ?? "No prompt selected"}</strong>
           <FeedbackList title="Score explanation" items={dnaExplanation.summary} empty="Select a prompt to explain." />
@@ -17577,7 +17578,7 @@ function LearnedGeneratorWorkspacePanel({
   return (
     <section className="panel lab-panel">
       <div className="panel-header">
-        <Wand2 size={18} />
+        <Hammer size={18} />
         <h2>Learned prompt generator</h2>
       </div>
       <div className="two-field-grid">
@@ -18166,11 +18167,11 @@ function ModelBatchCalibrationPanel({
     <section className="panel lab-panel">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Claude batch calibration</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onRunModelBatchCalibration}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           Run batch
         </button>
       </div>
@@ -18467,11 +18468,11 @@ function PromptCoachPanel({
     <section className="panel lab-panel">
       <div className="output-header">
         <div className="panel-header">
-          <Sparkles size={18} />
+          <BarChart3 size={18} />
           <h2>Claude prompt coach</h2>
         </div>
         <button className="primary-button compact-button" type="button" onClick={onRunPromptCoach}>
-          <Sparkles size={15} />
+          <BarChart3 size={15} />
           Coach prompt
         </button>
       </div>
@@ -18517,7 +18518,7 @@ function OneClickWizardPanel({
     <section className="panel lab-panel wizard-panel">
       <div className="output-header">
         <div className="panel-header">
-          <Wand2 size={18} />
+          <Hammer size={18} />
           <h2>One-click great prompt flow</h2>
         </div>
         <div className="button-row">
@@ -18808,7 +18809,7 @@ function ModelProviderSettingsPanel({
   return (
     <section className="panel lab-panel">
       <div className="panel-header">
-        <Sparkles size={18} />
+        <BarChart3 size={18} />
         <h2>External model provider settings</h2>
       </div>
       <div className="env-status-grid">
@@ -19063,14 +19064,14 @@ function ModelIntegrationPanel({
   return (
     <section className="panel lab-panel">
       <div className="panel-header">
-        <Sparkles size={18} />
+        <BarChart3 size={18} />
         <h2>Model integration</h2>
       </div>
       <p className="selected-meta">
         Sends the selected prompt plus compiled memory to the local API. Set <code>PROMPT_LAB_MODEL_ENDPOINT</code> for an external evaluator; otherwise it uses a local fallback.
       </p>
       <button className="primary-button wide-button" type="button" onClick={onModelEvaluate} disabled={!selectedPrompt}>
-        <Sparkles size={15} />
+        <BarChart3 size={15} />
         Evaluate selected prompt
       </button>
       <p className="selected-meta">{modelNotice}</p>
@@ -19849,7 +19850,7 @@ function PromptCompilerPanel({
   return (
     <section className="panel lab-panel">
       <div className="panel-header">
-        <Wand2 size={18} />
+        <Hammer size={18} />
         <h2>Prompt compiler</h2>
       </div>
       <Field label="Rough idea">
@@ -19977,7 +19978,7 @@ function OutcomePanel({
   return (
     <section className="panel lab-panel">
       <div className="panel-header">
-        <Sparkles size={18} />
+        <BarChart3 size={18} />
         <h2>Outcome tracking and gold set</h2>
       </div>
       {selectedPrompt ? (
@@ -20352,7 +20353,7 @@ function InterviewPanel({
   return (
     <section className="panel lab-panel">
       <div className="panel-header">
-        <Wand2 size={18} />
+        <Hammer size={18} />
         <h2>Brief-to-prompt interview</h2>
       </div>
       <div className="two-field-grid">
@@ -20501,7 +20502,7 @@ function ImprovePanel({
   return (
     <section className="panel lab-panel">
       <div className="panel-header">
-        <Wand2 size={18} />
+        <Hammer size={18} />
         <h2>Weak prompt repair</h2>
       </div>
       <Field label="Prompt to improve">

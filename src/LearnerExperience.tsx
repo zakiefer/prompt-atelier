@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BarChart3, Check, Copy, Download, Save, SlidersHorizontal, Sparkles, Tags, Trophy, Wand2 } from "lucide-react";
+import { BarChart3, Check, Copy, Download, Save, SlidersHorizontal, Tags, Trophy } from "lucide-react";
 import {
   categoryLabels,
   countWords,
@@ -17,7 +17,16 @@ import {
   type PromptImportAudit,
   type PromptProfile,
 } from "./promptEngine";
-import { type LearnerExportPack, type LearningProfile } from "./learnerProduct";
+import {
+  type CorpusNeighbor,
+  type DnaRewrite,
+  type LearnerExportPack,
+  type LearnerRecipe,
+  type LearnerSamplePrompt,
+  type LearnerSession,
+  type LearningProfile,
+  type TargetExportPreset,
+} from "./learnerProduct";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -117,9 +126,12 @@ export function PublicDemoRoute({
   learnerExportPack,
   learnerText,
   learningProfiles,
+  samplePrompts,
+  targetExportPresets,
   onCopy,
   onExportLearnerPack,
   onSaveImproved,
+  onUseSamplePrompt,
   profile,
   selectedPrompt,
   setActiveLearningProfileId,
@@ -133,9 +145,12 @@ export function PublicDemoRoute({
   learnerExportPack: LearnerExportPack;
   learnerText: string;
   learningProfiles: LearningProfile[];
+  samplePrompts: LearnerSamplePrompt[];
+  targetExportPresets: TargetExportPreset[];
   onCopy: (value: string, key: string) => void;
   onExportLearnerPack: () => void;
   onSaveImproved: () => void;
+  onUseSamplePrompt: (text: string) => void;
   profile: PromptProfile;
   selectedPrompt?: PromptExample;
   setActiveLearningProfileId: (id: string) => void;
@@ -145,14 +160,14 @@ export function PublicDemoRoute({
   const demoSteps = [
     { label: "Paste", ready: Boolean(sourceText), detail: "Start with a high-quality website prompt." },
     { label: "Score", ready: learnerEvaluation.score > 0, detail: `${learnerEvaluation.score}/100 prompt score.` },
-    { label: "Improve", ready: improvedPrompt.length > sourceText.length, detail: "Better prompt generated from learned DNA." },
+    { label: "Improve", ready: improvedPrompt.length > sourceText.length, detail: "Better prompt generated from learned patterns." },
     { label: "Export", ready: learnerExportPack.files.every((file) => file.ready || file.label === "Screenshot proof refs"), detail: "Markdown and JSON pack ready." },
   ];
   return (
     <div className="demo-shell">
       <header className="demo-topbar">
         <div className="brand-mark" aria-hidden="true">
-          <Sparkles size={22} />
+          <span>PA</span>
         </div>
         <div>
           <p className="eyebrow">Public demo</p>
@@ -167,7 +182,7 @@ export function PublicDemoRoute({
         <section className="demo-hero panel">
           <div>
             <p className="eyebrow">Paste one great prompt</p>
-            <h2>Learn its DNA, then make it sharper.</h2>
+            <h2>Score it clearly, then revise it.</h2>
             <p>
               Prompt Atelier scores stack, assets, typography, layout, motion, responsiveness, constraints, and QA, then exports
               a builder-ready prompt pack.
@@ -175,7 +190,7 @@ export function PublicDemoRoute({
           </div>
           <div className="demo-score-row">
             <ScoreRing score={learnerEvaluation.score || activeLearningProfile.score || profile.detailScore} label="Prompt" />
-            <ScoreRing score={dnaExplanation.overall} label="DNA" />
+            <ScoreRing score={dnaExplanation.overall} label="Quality" />
           </div>
         </section>
 
@@ -203,6 +218,18 @@ export function PublicDemoRoute({
                 </button>
               ))}
             </div>
+            <div className="sample-gallery compact-list">
+              <div className="output-header">
+                <h3>Try sample prompts</h3>
+                <span className="selected-meta">No paste needed</span>
+              </div>
+              {samplePrompts.slice(0, 4).map((sample) => (
+                <button className="sample-card" key={sample.id} type="button" onClick={() => onUseSamplePrompt(sample.prompt)}>
+                  <strong>{sample.title}</strong>
+                  <span>{sample.archetype} / {sample.score}%</span>
+                </button>
+              ))}
+            </div>
           </article>
 
           <article className="panel learner-output-card">
@@ -210,8 +237,7 @@ export function PublicDemoRoute({
               <h3>Better prompt</h3>
               <div className="button-row">
                 <button className="primary-button compact-button" type="button" onClick={onSaveImproved}>
-                  <Wand2 size={15} />
-                  Make better
+                  Revise
                 </button>
                 <button className="ghost-button compact-button" type="button" onClick={() => onCopy(improvedPrompt, "demo-improved")}>
                   {copied === "demo-improved" ? <Check size={15} /> : <Copy size={15} />}
@@ -245,6 +271,14 @@ export function PublicDemoRoute({
               </button>
             </div>
             <FeedbackList title="Included files" items={learnerExportPack.files.map((file) => `${file.filename}: ${file.detail}`)} empty="No files." />
+            <div className="preset-grid">
+              {targetExportPresets.slice(0, 4).map((preset) => (
+                <button className="ghost-button compact-button" key={preset.id} type="button" onClick={() => onCopy(preset.content, `demo-preset-${preset.id}`)}>
+                  {copied === `demo-preset-${preset.id}` ? <Check size={15} /> : <Copy size={15} />}
+                  {preset.label}
+                </button>
+              ))}
+            </div>
           </article>
         </section>
       </main>
@@ -263,18 +297,26 @@ export function LearnView({
   dnaScore,
   improvedPrompt,
   learnerBattle,
+  corpusNeighbors,
+  dnaRewrites,
   learnerDiff,
   learnerEvaluation,
   learnerExportPack,
+  learnerRecipes,
   learnerText,
   learningProfiles,
+  samplePrompts,
+  savedLearnerSessions,
+  targetExportPresets,
   onCopy,
   onCopyImproved,
   onExportLearnerPack,
   onSaveBattleWinner,
   onSaveCompiledPrompt,
   onSaveImproved,
+  onSaveLearnerSession,
   onSaveReviewedDiff,
+  onUseSamplePrompt,
   profile,
   selectedAnalysis,
   selectedPrompt,
@@ -291,18 +333,26 @@ export function LearnView({
   dnaScore: number;
   improvedPrompt: string;
   learnerBattle: PromptBattle;
+  corpusNeighbors: CorpusNeighbor[];
+  dnaRewrites: DnaRewrite[];
   learnerDiff?: PromptDiff;
   learnerEvaluation: Evaluation;
   learnerExportPack: LearnerExportPack;
+  learnerRecipes: LearnerRecipe[];
   learnerText: string;
   learningProfiles: LearningProfile[];
+  samplePrompts: LearnerSamplePrompt[];
+  savedLearnerSessions: LearnerSession[];
+  targetExportPresets: TargetExportPreset[];
   onCopy: (value: string, key: string) => void;
   onCopyImproved: () => void;
   onExportLearnerPack: () => void;
   onSaveBattleWinner: () => void;
   onSaveCompiledPrompt: () => void;
   onSaveImproved: () => void;
+  onSaveLearnerSession: (reviewedPrompt: string, acceptedDiffs: string[], rejectedDiffs: string[]) => void;
   onSaveReviewedDiff: (text: string) => void;
+  onUseSamplePrompt: (text: string) => void;
   profile: PromptProfile;
   selectedAnalysis?: PromptAnalysis;
   selectedPrompt?: PromptExample;
@@ -313,6 +363,8 @@ export function LearnView({
   const [diffDecisions, setDiffDecisions] = useState<Record<string, "accepted" | "rejected">>({});
   const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
   const diffCategories = learnerDiff?.categories.slice(0, 10) ?? [];
+  const acceptedDiffLabels = diffCategories.filter((category) => diffDecisions[String(category.key)] === "accepted").map((category) => category.label);
+  const rejectedDiffLabels = diffCategories.filter((category) => diffDecisions[String(category.key)] === "rejected").map((category) => category.label);
   const reviewedPrompt = useMemo(() => {
     const accepted = diffCategories
       .filter((category) => diffDecisions[String(category.key)] === "accepted")
@@ -336,6 +388,13 @@ export function LearnView({
     { label: "Prove", ready: /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: "Proof checklist is present." },
     { label: "Export", ready: Boolean(improvedPrompt.trim()), detail: "Copy or save the improved prompt." },
   ];
+  const interactionChecks = [
+    { label: "Profile switching", ready: Boolean(activeLearningProfile.id), detail: `${activeLearningProfile.label} is active.` },
+    { label: "Diff decisions", ready: acceptedDiffLabels.length > 0 || rejectedDiffLabels.length > 0, detail: `${acceptedDiffLabels.length} accepted / ${rejectedDiffLabels.length} rejected.` },
+    { label: "Export pack", ready: learnerExportPack.files.filter((file) => file.ready).length >= 4, detail: `${learnerExportPack.files.filter((file) => file.ready).length}/${learnerExportPack.files.length} files ready.` },
+    { label: "Session save", ready: savedLearnerSessions.length > 0, detail: savedLearnerSessions.length ? `${savedLearnerSessions.length} saved session(s).` : "Save this learner session." },
+  ];
+  const quarantineItems = batchAudit.items.filter((item) => item.decision === "quarantine").slice(0, 5);
   return (
     <div className="learn-grid">
       <section className="panel public-learner-panel" data-train-section="public-learner">
@@ -343,7 +402,7 @@ export function LearnView({
           <div>
             <p className="eyebrow">Prompt Learner</p>
             <h2>Paste, score, improve, prove, export.</h2>
-            <p>Start with one excellent website prompt and turn the learned DNA into a stronger build prompt without opening the lab.</p>
+            <p>Start with one excellent website prompt and turn the learned patterns into a stronger build prompt without opening the lab.</p>
           </div>
           <ScoreRing score={learnerEvaluation.score || dnaScore} label="Prompt score" />
         </div>
@@ -380,15 +439,27 @@ export function LearnView({
                 </article>
               ))}
             </div>
+            <div className="sample-gallery">
+              <div className="output-header">
+                <h3>Try sample prompts</h3>
+                <span className="selected-meta">Public gallery</span>
+              </div>
+              {samplePrompts.slice(0, 4).map((sample) => (
+                <button className="sample-card" key={sample.id} type="button" onClick={() => onUseSamplePrompt(sample.prompt)}>
+                  <strong>{sample.title}</strong>
+                  <span>{sample.archetype} / {sample.score}%</span>
+                  <small>{sample.tags.slice(0, 3).join(" / ")}</small>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="learner-output-card">
             <div className="output-header">
-              <h3>One-click better prompt</h3>
+              <h3>Prompt revision</h3>
               <div className="button-row">
                 <button className="primary-button compact-button" type="button" onClick={onSaveImproved}>
-                  <Wand2 size={15} />
-                  Make me a better prompt
+                  Revise prompt
                 </button>
                 <button className="ghost-button compact-button" type="button" onClick={onCopyImproved}>
                   {copied === "learner-improved" ? <Check size={15} /> : <Copy size={15} />}
@@ -408,10 +479,10 @@ export function LearnView({
         <div className="self-serve-grid">
           <article className="learner-mini-panel">
             <div className="output-header">
-              <h3>DNA explanation</h3>
-              <ScoreRing score={dnaExplanation.overall} label="DNA" />
+              <h3>Quality explanation</h3>
+              <ScoreRing score={dnaExplanation.overall} label="Quality" />
             </div>
-            <FeedbackList title="Why this score" items={dnaExplanation.summary} empty="No DNA explanation." />
+            <FeedbackList title="Why this score" items={dnaExplanation.summary} empty="No quality explanation." />
             <div className="mini-stat-row">
               {dnaExplanation.dimensions.slice(0, 4).map((dimension) => (
                 <span key={dimension.key}>{dimension.label}: {dimension.score}</span>
@@ -428,6 +499,41 @@ export function LearnView({
             <div className="chips">
               {activeLearningProfile.rules.slice(0, 5).map((rule) => (
                 <span key={rule}>{rule}</span>
+              ))}
+            </div>
+          </article>
+        </div>
+
+        <div className="self-serve-grid">
+          <article className="learner-mini-panel" data-train-section="dna-rewrite-plan">
+            <div className="output-header">
+              <h3>Why not 100</h3>
+              <span className="selected-meta">Exact rewrite moves</span>
+            </div>
+            <div className="version-list compact-list">
+              {dnaRewrites.map((rewrite) => (
+                <article className="version-card" key={rewrite.key}>
+                  <strong>{rewrite.label}: {rewrite.score}/100</strong>
+                  <p>{rewrite.why}</p>
+                  <small>{rewrite.rewrite}</small>
+                </article>
+              ))}
+            </div>
+          </article>
+
+          <article className="learner-mini-panel" data-train-section="corpus-neighbors">
+            <div className="output-header">
+              <h3>Learned from similar prompts</h3>
+              <span className="selected-meta">{corpusNeighbors.length} matches</span>
+            </div>
+            <div className="version-list compact-list">
+              {corpusNeighbors.slice(0, 4).map((neighbor) => (
+                <article className="version-card" key={neighbor.id}>
+                  <strong>{neighbor.title}</strong>
+                  <span>{neighbor.score}% / {neighbor.words} words</span>
+                  <p>{neighbor.reasons.slice(0, 2).join(" / ")}</p>
+                  <small>{neighbor.tags.slice(0, 4).join(" / ")}</small>
+                </article>
               ))}
             </div>
           </article>
@@ -462,6 +568,10 @@ export function LearnView({
             <button className="primary-button compact-button" type="button" onClick={() => onSaveReviewedDiff(reviewedPrompt)}>
               <Save size={15} />
               Save reviewed prompt
+            </button>
+            <button className="primary-button compact-button" data-learner-action="save-session" type="button" onClick={() => onSaveLearnerSession(reviewedPrompt, acceptedDiffLabels, rejectedDiffLabels)}>
+              <Save size={15} />
+              Save learner session
             </button>
           </div>
         </section>
@@ -508,6 +618,49 @@ export function LearnView({
         </div>
 
         <div className="self-serve-grid">
+          <article className="learner-mini-panel" data-train-section="recipe-builder">
+            <div className="output-header">
+              <h3>Prompt recipe builder</h3>
+              <span className="selected-meta">Learned archetypes</span>
+            </div>
+            <div className="recipe-grid">
+              {learnerRecipes.slice(0, 4).map((recipe) => (
+                <article className="recipe-card" key={recipe.id}>
+                  <strong>{recipe.label}</strong>
+                  <span>{recipe.score}% recipe</span>
+                  <p>{recipe.traits.slice(0, 3).join(" / ") || "General website prompt recipe."}</p>
+                  <div className="button-row compact-row">
+                    <button className="ghost-button compact-button" type="button" onClick={() => onCopy(recipe.prompt, `recipe-${recipe.id}`)}>
+                      {copied === `recipe-${recipe.id}` ? <Check size={15} /> : <Copy size={15} />}
+                      Copy
+                    </button>
+                    <button className="ghost-button compact-button" type="button" onClick={() => onUseSamplePrompt(recipe.prompt)}>
+                      Use
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </article>
+
+          <article className="learner-mini-panel" data-train-section="target-export-presets">
+            <div className="output-header">
+              <h3>Target export presets</h3>
+              <span className="selected-meta">Codex / Claude / v0 / GPT</span>
+            </div>
+            <div className="preset-grid">
+              {targetExportPresets.map((preset) => (
+                <button className="preset-card" key={preset.id} type="button" onClick={() => onCopy(preset.content, `target-${preset.id}`)}>
+                  <strong>{preset.label}</strong>
+                  <span>{preset.filename}</span>
+                  <small>{preset.detail}</small>
+                </button>
+              ))}
+            </div>
+          </article>
+        </div>
+
+        <div className="self-serve-grid">
           <article className="learner-mini-panel" data-train-section="batch-training-review">
             <div className="output-header">
               <h3>Batch training review</h3>
@@ -546,6 +699,52 @@ export function LearnView({
           </article>
         </div>
 
+        <div className="self-serve-grid">
+          <article className="learner-mini-panel" data-train-section="corpus-quarantine">
+            <div className="output-header">
+              <h3>Corpus quarantine queue</h3>
+              <span className="selected-meta">{quarantineItems.length} flagged</span>
+            </div>
+            {quarantineItems.length ? (
+              <div className="version-list compact-list">
+                {quarantineItems.map((item) => (
+                  <article className="version-card" key={item.candidate.id}>
+                    <strong>{item.candidate.title}</strong>
+                    <p>{item.reasons.slice(0, 3).join(" / ")}</p>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p>No pasted prompts currently look like unrelated project material.</p>
+            )}
+          </article>
+
+          <article className="learner-mini-panel" data-train-section="learner-session-history">
+            <div className="output-header">
+              <h3>Saved learner sessions</h3>
+              <span className="selected-meta">Hosted sync ready, no provider keys</span>
+            </div>
+            <div className="safe-check-grid learner-step-grid">
+              {interactionChecks.map((check) => (
+                <article className="safe-check" data-ready={check.ready ? "true" : "false"} key={check.label}>
+                  <strong>{check.ready ? "Ready" : "Next"}</strong>
+                  <span>{check.label}</span>
+                  <p>{check.detail}</p>
+                </article>
+              ))}
+            </div>
+            <div className="version-list compact-list">
+              {savedLearnerSessions.slice(0, 4).map((session) => (
+                <article className="version-card" key={session.id}>
+                  <strong>{session.title}</strong>
+                  <span>{session.profileLabel} / Quality {session.dnaScore}</span>
+                  <p>{session.benchmarkWinner.title} won at {session.benchmarkWinner.score}/100.</p>
+                </article>
+              ))}
+            </div>
+          </article>
+        </div>
+
         <button className="ghost-button wide-button" type="button" onClick={() => setAdvancedOpen((open) => !open)}>
           <SlidersHorizontal size={15} />
           {advancedOpen ? "Hide advanced corpus analysis" : "Show advanced corpus analysis"}
@@ -558,7 +757,7 @@ export function LearnView({
             <div className="panel category-panel">
               <div className="panel-header">
                 <BarChart3 size={18} />
-                <h2>Prompt DNA</h2>
+                <h2>Prompt signals</h2>
               </div>
               {selectedAnalysis ? <DnaList dna={selectedAnalysis.dna} /> : null}
             </div>
@@ -592,7 +791,7 @@ export function LearnView({
 
           <section className="panel category-panel">
             <div className="panel-header">
-              <Sparkles size={18} />
+              <BarChart3 size={18} />
               <h2>Archetype clustering</h2>
             </div>
             <div className="cluster-list">

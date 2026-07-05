@@ -1,13 +1,19 @@
 import {
   analyzePrompt,
+  buildRecipePrompt,
+  evaluatePrompt,
+  searchSimilarPrompts,
   type ArchetypeCluster,
   type CompiledPrompt,
   type DnaScoreExplanation,
+  type OutcomeRecord,
   type PromptDiff,
   type PromptExample,
   type PromptProfile,
   type ProjectExportPack,
+  type RecipeOptions,
   type ScreenshotRecord,
+  type SearchResult,
 } from "./promptEngine";
 import { type LearningMemoryV2Report, type SavedProjectSpaceInput } from "./productEvolution";
 
@@ -37,6 +43,78 @@ export type LearnerExportPack = {
   json: string;
   files: { label: string; filename: string; ready: boolean; detail: string }[];
   scorecard: { label: string; score: number; detail: string }[];
+};
+
+export type LearnerSession = {
+  id: string;
+  createdAt: string;
+  title: string;
+  profileId: string;
+  profileLabel: string;
+  sourcePrompt: string;
+  improvedPrompt: string;
+  reviewedPrompt: string;
+  promptScore: number;
+  dnaScore: number;
+  acceptedDiffs: string[];
+  rejectedDiffs: string[];
+  benchmarkWinner: {
+    title: string;
+    score: number;
+    prompt: string;
+  };
+  exportFilesReady: number;
+};
+
+export type CorpusNeighbor = {
+  id: string;
+  title: string;
+  score: number;
+  words: number;
+  source: PromptExample["source"];
+  reasons: string[];
+  tags: string[];
+  preview: string;
+};
+
+export type DnaRewrite = {
+  key: string;
+  label: string;
+  score: number;
+  why: string;
+  rewrite: string;
+  evidence: string[];
+};
+
+export type LearnerRecipe = {
+  id: string;
+  label: string;
+  score: number;
+  prompt: string;
+  traits: string[];
+};
+
+export type LearnerSamplePrompt = {
+  id: string;
+  title: string;
+  archetype: string;
+  score: number;
+  prompt: string;
+  tags: string[];
+};
+
+export type TargetExportPreset = {
+  id: "codex" | "claude" | "v0" | "gpt";
+  label: string;
+  filename: string;
+  detail: string;
+  content: string;
+};
+
+export type LearnerInteractionChecklist = {
+  label: string;
+  ready: boolean;
+  detail: string;
 };
 
 function normalizeDnaScore(score: number) {
@@ -126,6 +204,243 @@ export function buildCompilerHouseFormatText(compiled: CompiledPrompt) {
   ].join("\n\n");
 }
 
+export function buildCorpusNeighbors(source: string, examples: PromptExample[], outcomes: OutcomeRecord[] = []): CorpusNeighbor[] {
+  const query = source.trim();
+  const fallback = examples
+    .map((example) => {
+      const analysis = analyzePrompt(example.text);
+      return {
+        example,
+        score: evaluatePrompt(example.text).score,
+        reasons: [analysis.archetypes[0] ? `Archetype: ${analysis.archetypes[0].label}` : "Strong corpus example"],
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+  const rows: (SearchResult | { example: PromptExample; score: number; reasons: string[] })[] = query ? searchSimilarPrompts(query, examples, outcomes).slice(0, 5) : fallback;
+  return rows.map((row) => {
+    const analysis = analyzePrompt(row.example.text);
+    return {
+      id: row.example.id,
+      title: row.example.title,
+      score: row.score,
+      words: row.example.text.split(/\s+/).filter(Boolean).length,
+      source: row.example.source,
+      reasons: row.reasons.length ? row.reasons : [analysis.archetypes[0] ? `Archetype: ${analysis.archetypes[0].label}` : "Shared implementation structure"],
+      tags: analysis.tags.slice(0, 5),
+      preview: row.example.text.slice(0, 280),
+    };
+  });
+}
+
+function rewriteForDnaLabel(label: string, source: string, improvedPrompt: string) {
+  const lower = label.toLowerCase();
+  const base = improvedPrompt.trim() || source.trim();
+  if (lower.includes("asset")) {
+    return "Add an Assets and Media section with exact URLs, object-fit, focal position, looping/preload behavior, z-index, overlay rules, and fallback behavior.";
+  }
+  if (lower.includes("motion") || lower.includes("state")) {
+    return "Add a Motion and State section naming refs, event listeners, timings, easing, delays, cleanup, hover/open/loading states, and prefers-reduced-motion behavior.";
+  }
+  if (lower.includes("responsive")) {
+    return "Add mobile, tablet, desktop, and wide rules with concrete breakpoints, text wrapping expectations, fixed-format dimensions, and screenshot checks.";
+  }
+  if (lower.includes("constraint")) {
+    return "Add no-go rules that ban unlisted libraries, generic stock imagery, decorative blobs, unwanted overlays, text overlap, and unrelated sections.";
+  }
+  if (lower.includes("technical") || lower.includes("build")) {
+    return "Start with the exact stack, dependency boundaries, file placement, component structure, accessible controls, and verification commands.";
+  }
+  if (lower.includes("visual")) {
+    return "Name the visual signature in the first paragraph, then lock typography, colors, spacing, layout layers, media treatment, and first-viewport composition.";
+  }
+  return base
+    ? `Tighten this dimension by turning implied direction into exact implementation specs. Keep this source intent: ${base.slice(0, 180)}`
+    : "Turn the weak dimension into explicit implementation rules with exact values, copy, states, and QA checks.";
+}
+
+export function buildDnaRewritePlan({
+  dnaExplanation,
+  improvedPrompt,
+  source,
+}: {
+  dnaExplanation: DnaScoreExplanation;
+  improvedPrompt: string;
+  source: string;
+}): DnaRewrite[] {
+  return [...dnaExplanation.dimensions]
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 5)
+    .map((dimension) => ({
+      key: dimension.key,
+      label: dimension.label,
+      score: dimension.score,
+      why: dimension.why,
+      evidence: dimension.evidence.slice(0, 3),
+      rewrite: rewriteForDnaLabel(dimension.label, source, improvedPrompt),
+    }));
+}
+
+export function buildLearnerRecipes({
+  clusters,
+  profile,
+}: {
+  clusters: ArchetypeCluster[];
+  profile: PromptProfile;
+}): LearnerRecipe[] {
+  const topClusters = clusters.slice(0, 6);
+  const fallbacks = [
+    { label: "Cinematic video hero", traits: ["fullscreen video", "exact focal point", "copy hierarchy"] },
+    { label: "Liquid glass SaaS", traits: ["glass navbar", "dark palette", "CTA system"] },
+    { label: "Dashboard hero", traits: ["metrics", "workflow proof", "dense UI"] },
+  ];
+  const recipeSource = topClusters.length
+    ? topClusters.map((cluster) => ({ label: cluster.label, score: cluster.score, traits: cluster.signals.slice(0, 5) }))
+    : fallbacks.map((item) => ({ ...item, score: 80 }));
+  return recipeSource.map((item, index) => {
+    const options: RecipeOptions = {
+      brandName: item.label.replace(/[^a-z0-9]+/gi, " ").trim() || "Recipe Brand",
+      industry: item.label,
+      stack: "React + TypeScript + Vite + Tailwind CSS",
+      audience: "builders who need a high-fidelity website prompt",
+      layout: "first-viewport website experience with a clear visual signature",
+      nav: "responsive navigation with desktop links, primary CTA, and mobile menu rules",
+      motion: item.traits.find((trait) => /motion|video|scroll|animation|gsap|fade/i.test(trait)) || "staggered reveal with reduced-motion fallback",
+      assets: item.traits.find((trait) => /video|image|asset|screenshot|logo/i.test(trait)) || "exact media URLs, object-fit, focal point, and fallback handling",
+      strictness: 9,
+    };
+    return {
+      id: `recipe-${index}-${item.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      label: item.label,
+      score: item.score,
+      prompt: buildRecipePrompt(profile, options),
+      traits: item.traits,
+    };
+  });
+}
+
+export function buildSamplePromptGallery(examples: PromptExample[]): LearnerSamplePrompt[] {
+  return examples
+    .map((example) => {
+      const analysis = analyzePrompt(example.text);
+      return {
+        id: example.id,
+        title: example.title,
+        archetype: analysis.archetypes[0]?.label || "High-fidelity website prompt",
+        score: evaluatePrompt(example.text).score,
+        prompt: example.text,
+        tags: analysis.tags.slice(0, 5),
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+    .slice(0, 8);
+}
+
+export function buildTargetExportPresets({
+  activeProfile,
+  compiledPrompt,
+  improvedPrompt,
+  learnerExportPack,
+}: {
+  activeProfile: LearningProfile;
+  compiledPrompt: string;
+  improvedPrompt: string;
+  learnerExportPack: LearnerExportPack;
+}): TargetExportPreset[] {
+  const base = improvedPrompt.trim() || compiledPrompt.trim();
+  return [
+    {
+      id: "codex",
+      label: "Codex",
+      filename: "codex-build-prompt.md",
+      detail: "Implementation-first prompt with constraints and verification ladder.",
+      content: `${compiledPrompt}\n\nCODEX EXECUTION NOTES\n- Build exactly from the prompt above.\n- Verify desktop and mobile screenshots.\n- Run lint/build and report any caveats.\n- Do not introduce provider keys or unrelated project material.`,
+    },
+    {
+      id: "claude",
+      label: "Claude",
+      filename: "claude-design-prompt.md",
+      detail: "Design-review framing with explicit success criteria.",
+      content: `You are reviewing and improving a website build prompt for the "${activeProfile.label}" learning profile.\n\n${base}\n\nReturn only a tightened implementation prompt, then a short checklist of changed requirements.`,
+    },
+    {
+      id: "v0",
+      label: "v0",
+      filename: "v0-website-prompt.md",
+      detail: "Concise but exact UI-generation prompt.",
+      content: `${base}\n\nKeep the first screen as the usable product experience. Use exact copy, responsive behavior, accessible controls, and no placeholder assets.`,
+    },
+    {
+      id: "gpt",
+      label: "GPT",
+      filename: "gpt-prompt-rewrite.md",
+      detail: "General assistant format with learned patterns and export context.",
+      content: `${base}\n\nUse this export context when helpful:\n${learnerExportPack.markdown.slice(0, 1800)}`,
+    },
+  ];
+}
+
+export function buildLearnerInteractionChecklist({
+  acceptedDiffs,
+  activeProfile,
+  learnerExportPack,
+  savedSessions,
+}: {
+  acceptedDiffs: string[];
+  activeProfile: LearningProfile;
+  learnerExportPack: LearnerExportPack;
+  savedSessions: LearnerSession[];
+}): LearnerInteractionChecklist[] {
+  return [
+    { label: "Profile switching", ready: Boolean(activeProfile.id), detail: `${activeProfile.label} is active.` },
+    { label: "Diff decisions", ready: acceptedDiffs.length > 0, detail: acceptedDiffs.length ? `${acceptedDiffs.length} accepted section(s).` : "Accept at least one gained section." },
+    { label: "Export pack", ready: learnerExportPack.files.filter((file) => file.ready).length >= 4, detail: `${learnerExportPack.files.filter((file) => file.ready).length}/${learnerExportPack.files.length} files ready.` },
+    { label: "Session history", ready: savedSessions.length > 0, detail: savedSessions.length ? `${savedSessions.length} saved session(s).` : "Save one learner session." },
+  ];
+}
+
+export function createLearnerSession({
+  acceptedDiffs,
+  activeProfile,
+  benchmarkWinner,
+  dnaScore,
+  exportFilesReady,
+  improvedPrompt,
+  promptScore,
+  rejectedDiffs,
+  reviewedPrompt,
+  sourcePrompt,
+}: {
+  acceptedDiffs: string[];
+  activeProfile: LearningProfile;
+  benchmarkWinner: { title: string; score: number; prompt: string };
+  dnaScore: number;
+  exportFilesReady: number;
+  improvedPrompt: string;
+  promptScore: number;
+  rejectedDiffs: string[];
+  reviewedPrompt: string;
+  sourcePrompt: string;
+}): LearnerSession {
+  const title = sourcePrompt.trim().split(/\n+/)[0]?.slice(0, 90) || activeProfile.label || "Learner session";
+  return {
+    id: `learner-session-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    title,
+    profileId: activeProfile.id,
+    profileLabel: activeProfile.label,
+    sourcePrompt,
+    improvedPrompt,
+    reviewedPrompt,
+    promptScore,
+    dnaScore,
+    acceptedDiffs,
+    rejectedDiffs,
+    benchmarkWinner,
+    exportFilesReady,
+  };
+}
+
 export function buildLearnerExportPack({
   activeProfile,
   diff,
@@ -146,7 +461,7 @@ export function buildLearnerExportPack({
   screenshots: ScreenshotRecord[];
 }): LearnerExportPack {
   const scorecard = [
-    { label: "DNA", score: dnaExplanation.overall, detail: dnaExplanation.summary[0] || "DNA score blends static prompt traits with proof evidence." },
+    { label: "Quality", score: dnaExplanation.overall, detail: dnaExplanation.summary[0] || "Quality score blends static prompt traits with proof evidence." },
     { label: "Memory", score: learningMemory.score, detail: `${learningMemory.rules.length} rule(s), ${learningMemory.rules.filter((rule) => rule.decision === "pinned").length} pinned.` },
     { label: "Diff", score: diff?.similarity ?? 0, detail: diff ? `${diff.categories.filter((category) => category.rightOnly.length).length} section(s) gained explicit signals.` : "No diff available." },
   ];
@@ -199,7 +514,7 @@ ${projectExportPack.markdown.slice(0, 2500)}
     scorecard,
     files: [
       { label: "Prompt markdown", filename: "improved-website-prompt.md", ready: Boolean(improvedPrompt.trim()), detail: "Improved prompt in readable Markdown." },
-      { label: "JSON training record", filename: "prompt-learner-record.json", ready: Boolean(json), detail: "Structured source, result, DNA, memory, and proof fields." },
+      { label: "JSON training record", filename: "prompt-learner-record.json", ready: Boolean(json), detail: "Structured source, result, quality, memory, and proof fields." },
       { label: "Scorecard", filename: "prompt-scorecard.md", ready: scorecard.some((item) => item.score > 0), detail: `${scorecard.length} scorecard dimension(s).` },
       { label: "Memory patch", filename: "learning-memory-v2.patch.md", ready: Boolean(learningMemory.memoryPatch), detail: `${learningMemory.rules.length} memory rule(s).` },
       { label: "Screenshot proof refs", filename: "screenshot-proof.md", ready: screenshots.length > 0, detail: `${screenshots.length} screenshot reference(s).` },
