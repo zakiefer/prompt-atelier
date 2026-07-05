@@ -125,8 +125,10 @@ import {
   buildSpeedLabelingReport,
   answerLearnerQuestion,
   comparePromptImprovement,
+  compilePromptFromBrief,
   createDatasetVersionSnapshot,
   curatePromptCorpus,
+  diffPrompts,
   evaluatePrompt,
   normalizeModelEvaluationResult,
   redactSensitiveText,
@@ -160,6 +162,7 @@ import {
   buildPublicDemoExperienceReport,
   buildResultReviewerReport,
 } from "../src/productEvolution";
+import { buildCompilerHouseFormatText, buildLearnerExportPack, buildLearningProfiles } from "../src/learnerProduct";
 
 function readCuratedSeedPrompts() {
   return readdirSync("src/prompts")
@@ -444,6 +447,60 @@ const projectPack = buildProjectExportPack({
 });
 assert.ok(projectPack.markdown.includes("Prompt Atelier Project Export"), "Project pack should be markdown-exportable.");
 assert.ok(JSON.parse(projectPack.json), "Project pack JSON should parse.");
+
+const learningProfiles = buildLearningProfiles({
+  clusters,
+  examples,
+  presets: [
+    { key: "all", label: "All prompts", description: "Full corpus", query: [] },
+    { key: "hero", label: "Hero systems", description: "Hero prompts", query: ["hero", "video"] },
+  ],
+  profile,
+  savedSpaces: [{ id: "hero-space", label: "Saved hero profile", query: ["hero"], createdAt: "2026-07-05T00:00:00.000Z" }],
+});
+assert.ok(learningProfiles.length >= 3, "Learning profiles should include presets, archetypes, and saved spaces.");
+assert.ok(learningProfiles.some((item) => item.id === "saved-hero-space"), "Learning profiles should expose saved project spaces.");
+
+const houseCompiledPrompt = buildCompilerHouseFormatText(
+  compilePromptFromBrief(
+    {
+      roughIdea: exactPrompt,
+      brandName: "Test Brand",
+      siteType: "landing page",
+      audience: "builders",
+      visualDirection: "cinematic exact hero",
+      stack: "React + TypeScript + Vite + Tailwind CSS",
+      assets: "https://example.com/hero.mp4",
+      constraints: "No blobs; include QA.",
+    },
+    profile,
+    outcomes,
+    resultArtifact,
+  ),
+);
+assert.ok(houseCompiledPrompt.includes("HOUSE-FORMAT COMPILED WEBSITE PROMPT"), "House compiler should expose the product prompt format.");
+assert.ok(houseCompiledPrompt.includes("Constraints and QA"), "House compiler should include constraints and QA.");
+
+const learnerPack = buildLearnerExportPack({
+  activeProfile: learningProfiles[0],
+  diff: diffPrompts(exactPrompt, comparePromptImprovement(exactPrompt, profile, outcomes, resultArtifact).improvedPrompt),
+  dnaExplanation,
+  improvedPrompt: comparePromptImprovement(exactPrompt, profile, outcomes, resultArtifact).improvedPrompt,
+  learnerSource: exactPrompt,
+  learningMemory: {
+    score: 88,
+    status: "ready",
+    rules: [{ id: "exact-assets", label: "Exact assets", confidence: 90, decision: "pinned", evidenceCount: 3, promptPatch: "Keep exact URLs." }],
+    memoryPatch: "LEARNING MEMORY V2 PATCH\n- PINNED: Exact assets: Keep exact URLs.",
+    notes: [],
+  },
+  projectExportPack: projectPack,
+  screenshots,
+});
+assert.equal(learnerPack.files.length, 5, "Learner export pack should expose five file targets.");
+assert.ok(learnerPack.markdown.includes("Screenshot Proof References"), "Learner export pack should include screenshot proof references.");
+assert.equal(JSON.parse(learnerPack.json).sourcePrompt, exactPrompt, "Learner export JSON should preserve the source prompt.");
+assert.equal(learnerPack.scorecard.length, 3, "Learner export pack should include a compact scorecard.");
 
 const codexBuildPack = buildCodexBuildPack({
   prompt: examples[0],
@@ -1536,4 +1593,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 315, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 323, score: score.score, snapshot: snapshot.label }, null, 2));

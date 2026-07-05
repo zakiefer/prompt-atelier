@@ -20,11 +20,15 @@ for (let index = 2; index < process.argv.length; index += 1) {
 const url = args.get("url") || "http://127.0.0.1:4173";
 const outDir = resolve(args.get("out") || "output/playwright/hosted-smoke");
 const shouldOpenTrain = args.get("train") === "true";
+const shouldOpenDemo = args.get("demo") === "true";
 const targetUrl = new URL(url);
 if (shouldOpenTrain) {
   targetUrl.searchParams.set("tab", "train");
 }
-const expectedHeadings = [
+if (shouldOpenDemo) {
+  targetUrl.searchParams.set("mode", "demo");
+}
+const trainHeadings = [
   "Product evolution roadmap",
   "Prompt Learner mode",
   "Learning Memory v2",
@@ -55,6 +59,23 @@ const expectedHeadings = [
   "Public proof checklist",
   "Credential boundary audit",
 ];
+const learnerHeadings = [
+  "Paste, score, improve, prove, export.",
+  "One-click better prompt",
+  "Prompt diff editor",
+  "House-format compiler",
+  "Benchmark battle",
+  "Batch training review",
+  "Export pack",
+];
+const demoHeadings = [
+  "Website prompt learner",
+  "Learn its DNA, then make it sharper.",
+  "Better prompt",
+  "Guided path",
+  "Export pack",
+];
+const expectedHeadings = shouldOpenTrain ? trainHeadings : shouldOpenDemo ? demoHeadings : learnerHeadings;
 
 await mkdir(outDir, { recursive: true });
 
@@ -94,20 +115,29 @@ try {
   const missing = expectedHeadings.filter((heading) => !bodyText.includes(heading));
   const screenshotPath = join(outDir, "hosted-smoke.png");
   await page.screenshot({ path: screenshotPath, fullPage: true });
-  const panelState = shouldOpenTrain
+  const panelState = shouldOpenTrain || !shouldOpenDemo
     ? await page.evaluate(() => {
-        const requiredSections = [
-          "product-evolution",
-          "learner-mode",
-          "memory-v2",
-          "result-reviewer",
-          "holdout",
-          "editor-studio",
-          "project-spaces",
-          "architecture",
-          "public-experience",
-        ];
         const pageDocument = globalThis.document;
+        const requiredSections = new URL(globalThis.location.href).searchParams.get("tab") === "train"
+          ? [
+              "product-evolution",
+              "learner-mode",
+              "memory-v2",
+              "result-reviewer",
+              "holdout",
+              "editor-studio",
+              "project-spaces",
+              "architecture",
+              "public-experience",
+            ]
+          : [
+              "public-learner",
+              "prompt-diff-editor",
+              "house-compiler",
+              "benchmark-battle",
+              "batch-training-review",
+              "learner-export-pack",
+            ];
         return {
           missingSections: requiredSections.filter((section) => !pageDocument.querySelector(`[data-train-section="${section}"]`)),
           horizontalOverflow: pageDocument.documentElement.scrollWidth > pageDocument.documentElement.clientWidth + 4,
@@ -135,6 +165,7 @@ try {
   console.log(JSON.stringify({
     ok: true,
     url: targetUrl.toString(),
+    demo: shouldOpenDemo,
     train: shouldOpenTrain,
     checked: expectedHeadings,
     visual: panelState,

@@ -662,6 +662,147 @@ button:disabled {
   min-height: 280px;
 }
 
+.profile-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.profile-chip {
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 56px;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.profile-chip strong {
+  font-size: 0.82rem;
+}
+
+.profile-chip span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.profile-chip.active {
+  background: var(--ink);
+  color: white;
+}
+
+.profile-chip.active span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.self-serve-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.learner-mini-panel {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.learner-mini-panel > h3,
+.learner-mini-panel .output-header h3 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.diff-action-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.diff-card[data-decision="accepted"] {
+  border-color: rgba(26, 125, 92, 0.42);
+}
+
+.diff-card[data-decision="rejected"] {
+  border-color: rgba(181, 72, 72, 0.42);
+  opacity: 0.78;
+}
+
+.demo-shell {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(30, 132, 113, 0.14), transparent 34%),
+    var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.demo-topbar {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 0 auto 18px;
+  max-width: 1180px;
+}
+
+.demo-topbar h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 0.9;
+  margin: 0;
+}
+
+.demo-main {
+  display: grid;
+  gap: 14px;
+  margin: 0 auto;
+  max-width: 1180px;
+}
+
+.demo-hero {
+  align-items: end;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.demo-hero h2 {
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 7vw, 6rem);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 0.86;
+  margin: 0 0 12px;
+}
+
+.demo-hero p {
+  color: var(--muted);
+  max-width: 720px;
+}
+
+.demo-score-row {
+  display: flex;
+  gap: 10px;
+}
+
+.demo-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+}
+
 .compact-row {
   gap: 6px;
   margin-top: 8px;
@@ -3591,6 +3732,10 @@ button.preset-card {
   .compose-grid,
   .evaluate-grid,
   .learner-flow-grid,
+  .self-serve-grid,
+  .diff-action-grid,
+  .demo-hero,
+  .demo-grid,
   .lab-columns,
   .train-columns,
   .train-section-nav,

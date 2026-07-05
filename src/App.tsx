@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties, type Dispatch, type DragEvent, type ReactNode, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type CSSProperties, type Dispatch, type DragEvent, type SetStateAction } from "react";
 import {
   Activity,
   Archive,
@@ -189,7 +189,6 @@ import {
   detectStyleDrift,
   diffPrompts,
   distillGoldenRecipes,
-  dnaLabels,
   evaluatePrompt,
   extractReusablePatterns,
   explainDnaScore,
@@ -251,7 +250,6 @@ import {
   type DatasetVersion,
   type DatasetVersionComparison,
   type DnaCalibrationReport,
-  type DnaKey,
   type DnaScoreExplanation,
   type DriftReport,
   type Evaluation,
@@ -407,6 +405,13 @@ import {
   type SavedProjectSpaceInput,
 } from "./productEvolution";
 import {
+  buildCompilerHouseFormatText,
+  buildLearnerExportPack,
+  buildLearningProfiles,
+} from "./learnerProduct";
+import { LearnView, PublicDemoRoute } from "./LearnerExperience";
+import { Field, Metric, SliderField, TabButton, Toggle } from "./AppChrome";
+import {
   analyzeScreenshots,
   analyzeCorpusViaApi,
   captureResult,
@@ -452,6 +457,7 @@ const PAIRWISE_REVIEW_KEY = "prompt-atelier-pairwise-reviews";
 const BACKUP_KEY = "prompt-atelier-backup-snapshots";
 const MEMORY_RULE_DECISIONS_KEY = "prompt-atelier-memory-rule-decisions";
 const PROJECT_SPACES_KEY = "prompt-atelier-project-spaces";
+const LEARNING_PROFILE_KEY = "prompt-atelier-active-learning-profile";
 const ONBOARDING_KEY = "prompt-atelier-onboarding-mode";
 const WORKSPACE_KEY = "prompt-atelier-active-workspace";
 const CLOSED_LOOP_KEY = "prompt-atelier-closed-loop-runs";
@@ -473,7 +479,6 @@ const HOSTED_SETUP_CHECK_KEY = "prompt-atelier-hosted-setup-checks";
 const PROOF_ARTIFACT_KEY = "prompt-atelier-proof-artifacts";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
-const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
 
 const defaultComposeOptions: ComposeOptions = {
   brief:
@@ -891,6 +896,11 @@ function readStoredWorkspace(): WorkspaceKey {
   if (typeof window === "undefined") return "all";
   const value = window.localStorage.getItem(WORKSPACE_KEY);
   return isWorkspaceKey(value) ? value : "all";
+}
+
+function readStoredLearningProfileId() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(LEARNING_PROFILE_KEY) || "";
 }
 
 function isWorkspaceKey(value: unknown): value is WorkspaceKey {
@@ -2257,6 +2267,7 @@ export default function App() {
   const [backupSnapshots, setBackupSnapshots] = useState<TrainingBackupSnapshot[]>(() => readStoredBackupSnapshots());
   const [onboardingMode, setOnboardingMode] = useState<OnboardingMode>(() => readStoredOnboardingMode());
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceKey>(() => readStoredWorkspace());
+  const [activeLearningProfileId, setActiveLearningProfileId] = useState(() => readStoredLearningProfileId());
   const [closedLoopRuns, setClosedLoopRuns] = useState<ClosedLoopRun[]>(() => readStoredClosedLoopRuns());
   const [benchmarkRuns, setBenchmarkRuns] = useState<BenchmarkRun[]>(() => readStoredBenchmarkRuns());
   const [claudeHealthChecks, setClaudeHealthChecks] = useState<HostedClaudeHealthCheck[]>(() => readStoredClaudeHealthChecks());
@@ -2345,6 +2356,14 @@ export default function App() {
   const profile = useMemo(() => analyzeCorpus(learningExamples), [learningExamples]);
   const dnaScore = normalizeDnaScore(profile.detailScore);
   const clusters = useMemo(() => analyzeArchetypeClusters(learningExamples), [learningExamples]);
+  const learningProfiles = useMemo(
+    () => buildLearningProfiles({ clusters, examples: learningExamples, presets: workspacePresets, profile, savedSpaces: savedProjectSpaces }),
+    [clusters, learningExamples, profile, savedProjectSpaces],
+  );
+  const activeLearningProfile = useMemo(
+    () => learningProfiles.find((item) => item.id === activeLearningProfileId) ?? learningProfiles[0],
+    [activeLearningProfileId, learningProfiles],
+  );
   const health = useMemo(() => analyzeCorpusHealth(learningExamples, clusters, profile), [clusters, learningExamples, profile]);
   const outcomeSummary = useMemo(() => buildOutcomeSummary(outcomes, examples), [examples, outcomes]);
   const templates = useMemo(() => buildPromptTemplates(profile), [profile]);
@@ -2462,14 +2481,44 @@ export default function App() {
     () => buildFailureMemory(outcomes, buildRuns, screenshots),
     [buildRuns, outcomes, screenshots],
   );
+  const learnerSource = improveText.trim() || selectedPrompt?.text || generatedPrompt;
+  const learnerEvaluation = useMemo(() => evaluatePrompt(learnerSource), [learnerSource]);
   const mutationSourceText = mutationSource.trim() || selectedPrompt?.text || generatedPrompt;
   const promptMutations = useMemo(
     () => mutatePromptVariants(mutationSourceText, profile, outcomes),
     [mutationSourceText, outcomes, profile],
   );
   const improvedPrompt = useMemo(
-    () => improvePromptWithLearning(improveText.trim() || selectedPrompt?.text || generatedPrompt, profile, outcomes, resultScore),
-    [generatedPrompt, improveText, outcomes, profile, resultScore, selectedPrompt],
+    () => improvePromptWithLearning(learnerSource, profile, outcomes, resultScore),
+    [learnerSource, outcomes, profile, resultScore],
+  );
+  const learnerPromptDiff = useMemo(
+    () => (learnerSource.trim() && improvedPrompt.trim() ? diffPrompts(learnerSource, improvedPrompt) : undefined),
+    [improvedPrompt, learnerSource],
+  );
+  const learnerCompiledPrompt = useMemo(
+    () =>
+      compilePromptFromBrief(
+        {
+          roughIdea: learnerSource.slice(0, 1400),
+          brandName: activeLearningProfile?.label || compilerInput.brandName,
+          siteType: activeLearningProfile?.label || compilerInput.siteType,
+          audience: compilerInput.audience,
+          visualDirection: activeLearningProfile?.description || compilerInput.visualDirection,
+          stack: compilerInput.stack,
+          assets: "Preserve every exact URL, image, video, logo, and file path from the source prompt.",
+          constraints: "Use the house format: stack, fonts, colors, assets, layout, motion, responsive behavior, constraints, and QA.",
+        },
+        profile,
+        outcomes,
+        resultScore,
+      ),
+    [activeLearningProfile, compilerInput, learnerSource, outcomes, profile, resultScore],
+  );
+  const learnerHousePrompt = useMemo(() => buildCompilerHouseFormatText(learnerCompiledPrompt), [learnerCompiledPrompt]);
+  const learnerBattle = useMemo(
+    () => buildPromptBattle(improvedPrompt, profile, outcomes, resultScore),
+    [improvedPrompt, outcomes, profile, resultScore],
   );
   const compiledPrompt = useMemo(
     () => compilePromptFromBrief(compilerInput, profile, outcomes, resultScore),
@@ -3570,6 +3619,20 @@ export default function App() {
       }),
     [buildRuns, learningExamples, memoryRuleDecisions, outcomes, promptQualityDna, screenshots, templateCompiler],
   );
+  const learnerExportPack = useMemo(
+    () =>
+      buildLearnerExportPack({
+        activeProfile: activeLearningProfile,
+        diff: learnerPromptDiff,
+        dnaExplanation,
+        improvedPrompt,
+        learnerSource,
+        learningMemory: learningMemoryV2,
+        projectExportPack,
+        screenshots: selectedScreenshots,
+      }),
+    [activeLearningProfile, dnaExplanation, improvedPrompt, learnerPromptDiff, learnerSource, learningMemoryV2, projectExportPack, selectedScreenshots],
+  );
   const resultReviewer = useMemo(
     () =>
       buildResultReviewerReport({
@@ -3924,6 +3987,10 @@ export default function App() {
     window.localStorage.setItem(WORKSPACE_KEY, activeWorkspace);
     if (dbReady) void writeCollection("activeWorkspace", activeWorkspace);
   }, [activeWorkspace, dbReady]);
+
+  useEffect(() => {
+    window.localStorage.setItem(LEARNING_PROFILE_KEY, activeLearningProfile?.id || activeLearningProfileId);
+  }, [activeLearningProfile?.id, activeLearningProfileId]);
 
   useEffect(() => {
     if (!dbReady) return;
@@ -5861,6 +5928,13 @@ export default function App() {
     setApiNotice("Exported project pack as markdown and JSON.");
   }
 
+  function exportLearnerPack() {
+    const stamp = Date.now();
+    downloadText(`prompt-learner-export-${stamp}.md`, learnerExportPack.markdown, "text/markdown");
+    downloadText(`prompt-learner-export-${stamp}.json`, learnerExportPack.json, "application/json");
+    setApiNotice("Exported learner pack with prompt markdown, JSON training record, scorecard, memory patch, and screenshot proof refs.");
+  }
+
   function exportCodexBuildPack() {
     downloadText(`codex-build-pack-${Date.now()}.md`, codexBuildPack.markdown, "text/markdown");
     downloadText(`codex-build-pack-${Date.now()}.json`, codexBuildPack.json, "application/json");
@@ -7337,6 +7411,32 @@ export default function App() {
     window.setTimeout(() => setCopied(""), 1200);
   }
 
+  const isPublicDemoRoute =
+    typeof window !== "undefined" &&
+    (/\/demo\/?$/.test(window.location.pathname) || new URLSearchParams(window.location.search).get("mode") === "demo");
+
+  if (isPublicDemoRoute) {
+    return (
+      <PublicDemoRoute
+        activeLearningProfile={activeLearningProfile}
+        copied={copied}
+        dnaExplanation={dnaExplanation}
+        improvedPrompt={improvedPrompt}
+        learnerEvaluation={learnerEvaluation}
+        learnerExportPack={learnerExportPack}
+        learnerText={improveText}
+        learningProfiles={learningProfiles}
+        onCopy={(value, key) => void copyText(value, key)}
+        onExportLearnerPack={exportLearnerPack}
+        onSaveImproved={() => saveVersion("improved", "Demo improved prompt", improvedPrompt, evaluatePrompt(improvedPrompt).score)}
+        profile={profile}
+        selectedPrompt={selectedPrompt}
+        setActiveLearningProfileId={setActiveLearningProfileId}
+        setLearnerText={setImproveText}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -7527,16 +7627,32 @@ export default function App() {
 
           {tab === "learn" ? (
             <LearnView
+              activeLearningProfile={activeLearningProfile}
+              batchAudit={draftImportAudit}
+              batchCandidateCount={draftBatchCandidates.length}
               clusters={clusters}
+              compiledPrompt={learnerHousePrompt}
               copied={copied}
+              dnaExplanation={dnaExplanation}
               dnaScore={dnaScore}
               improvedPrompt={improvedPrompt}
+              learnerBattle={learnerBattle}
+              learnerDiff={learnerPromptDiff}
+              learnerEvaluation={learnerEvaluation}
+              learnerExportPack={learnerExportPack}
               learnerText={improveText}
+              learningProfiles={learningProfiles}
+              onCopy={(value, key) => void copyText(value, key)}
               onCopyImproved={() => void copyText(improvedPrompt, "learner-improved")}
+              onExportLearnerPack={exportLearnerPack}
+              onSaveBattleWinner={() => saveVersion("tournament", learnerBattle.winner.title, learnerBattle.winner.prompt, learnerBattle.winner.score)}
+              onSaveCompiledPrompt={() => saveVersion("compiled", "House-format compiled prompt", learnerHousePrompt, evaluatePrompt(learnerHousePrompt).score)}
               onSaveImproved={() => saveVersion("improved", "One-click improved prompt", improvedPrompt, evaluatePrompt(improvedPrompt).score)}
+              onSaveReviewedDiff={(text) => saveVersion("merged", "Reviewed learner diff", text, evaluatePrompt(text).score)}
               profile={profile}
               selectedAnalysis={selectedAnalysis}
               selectedPrompt={selectedPrompt}
+              setActiveLearningProfileId={setActiveLearningProfileId}
               setLearnerText={setImproveText}
             />
           ) : tab === "compose" ? (
@@ -7976,34 +8092,6 @@ export default function App() {
   );
 }
 
-function Metric({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="metric">
-      <strong>{value}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function TabButton({
-  active,
-  children,
-  icon,
-  onClick,
-}: {
-  active: boolean;
-  children: string;
-  icon: ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button className={`tab ${active ? "active" : ""}`} type="button" onClick={onClick}>
-      {icon}
-      {children}
-    </button>
-  );
-}
-
 function DraftIngestionPreflight({ report }: { report: DraftContaminationReport }) {
   if (report.status === "clean" && !report.warnings.length) return null;
   return (
@@ -8087,171 +8175,6 @@ function BatchIngestionPreview({ audit, candidates }: { audit: PromptImportAudit
             )),
         )}
       </div>
-    </div>
-  );
-}
-
-function LearnView({
-  clusters,
-  copied,
-  dnaScore,
-  improvedPrompt,
-  learnerText,
-  onCopyImproved,
-  onSaveImproved,
-  profile,
-  selectedAnalysis,
-  selectedPrompt,
-  setLearnerText,
-}: {
-  clusters: ArchetypeCluster[];
-  copied: string;
-  dnaScore: number;
-  improvedPrompt: string;
-  learnerText: string;
-  onCopyImproved: () => void;
-  onSaveImproved: () => void;
-  profile: PromptProfile;
-  selectedAnalysis?: PromptAnalysis;
-  selectedPrompt?: PromptExample;
-  setLearnerText: (value: string) => void;
-}) {
-  const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
-  const learnerEvaluation = evaluatePrompt(learnerSource);
-  const flowSteps = [
-    { label: "Paste", ready: Boolean(learnerSource.trim()), detail: "Bring in one website prompt." },
-    { label: "Score", ready: learnerEvaluation.score >= 20, detail: `${learnerEvaluation.score}/100 local score.` },
-    { label: "Improve", ready: improvedPrompt.length > learnerSource.length, detail: "One-click stronger prompt is ready." },
-    { label: "Battle", ready: learnerEvaluation.categoryScores.constraints >= 40, detail: "Constraints are strong enough to compare variants." },
-    { label: "Prove", ready: /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: "Proof checklist is present." },
-    { label: "Export", ready: Boolean(improvedPrompt.trim()), detail: "Copy or save the improved prompt." },
-  ];
-  return (
-    <div className="learn-grid">
-      <section className="panel public-learner-panel" data-train-section="public-learner">
-        <div className="output-header">
-          <div>
-            <p className="eyebrow">Prompt Learner</p>
-            <h2>Paste, score, improve, prove, export.</h2>
-            <p>Start with one excellent website prompt and turn the learned DNA into a stronger build prompt.</p>
-          </div>
-          <ScoreRing score={learnerEvaluation.score || dnaScore} label="Prompt score" />
-        </div>
-
-        <div className="learner-flow-grid">
-          <div className="learner-input-card">
-            <Field label="Prompt to learn from">
-              <textarea
-                value={learnerText}
-                onChange={(event) => setLearnerText(event.target.value)}
-                placeholder={selectedPrompt?.text || "Paste a website prompt here..."}
-              />
-            </Field>
-            <div className="safe-check-grid learner-step-grid">
-              {flowSteps.map((step) => (
-                <article className="safe-check" key={step.label} data-ready={step.ready ? "true" : "false"}>
-                  <strong>{step.ready ? "Ready" : "Next"}</strong>
-                  <span>{step.label}</span>
-                  <p>{step.detail}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="learner-output-card">
-            <div className="output-header">
-              <h3>One-click better prompt</h3>
-              <div className="button-row">
-                <button className="ghost-button compact-button" type="button" onClick={onCopyImproved}>
-                  {copied === "learner-improved" ? <Check size={15} /> : <Copy size={15} />}
-                  Copy
-                </button>
-                <button className="primary-button compact-button" type="button" onClick={onSaveImproved}>
-                  <Save size={15} />
-                  Save
-                </button>
-              </div>
-            </div>
-            <textarea className="generated-output learner-output" readOnly value={improvedPrompt} />
-            <FeedbackList title="What just happened" items={[
-              "Scored the prompt against the learned website-prompt corpus.",
-              "Kept exact assets, implementation stack, responsive details, and proof instructions explicit.",
-              "Produced a prompt you can copy, save, battle, or send to a builder.",
-            ]} empty="No explanation yet." />
-          </div>
-        </div>
-      </section>
-
-      <section className="insight-grid">
-        <div className="panel category-panel">
-          <div className="panel-header">
-            <BarChart3 size={18} />
-            <h2>Prompt DNA</h2>
-          </div>
-          {selectedAnalysis ? <DnaList dna={selectedAnalysis.dna} /> : null}
-        </div>
-        <div className="panel category-panel">
-          <div className="panel-header">
-            <Tags size={18} />
-            <h2>Selected fingerprint</h2>
-          </div>
-          {selectedAnalysis ? (
-            <>
-              <div className="chips">
-                {selectedAnalysis.tags.map((tag) => (
-                  <span key={tag}>{tag}</span>
-                ))}
-              </div>
-              <p className="selected-meta">
-                {selectedAnalysis.stack.join(" + ") || "No explicit stack"} / {selectedAnalysis.fonts.join(" + ") || "No explicit fonts"}
-              </p>
-            </>
-          ) : null}
-        </div>
-      </section>
-
-      <section className="panel category-panel">
-        <div className="panel-header">
-          <BarChart3 size={18} />
-          <h2>Category coverage</h2>
-        </div>
-        <ScoreList scores={profile.categoryScores} />
-      </section>
-
-      <section className="panel category-panel">
-        <div className="panel-header">
-          <Sparkles size={18} />
-          <h2>Archetype clustering</h2>
-        </div>
-        <div className="cluster-list">
-          {clusters.map((cluster) => (
-            <ClusterCard cluster={cluster} key={cluster.key} />
-          ))}
-        </div>
-      </section>
-
-      <section className="feature-grid">
-        {categoryOrder.slice(0, 8).map((key) => (
-          <div className="panel feature-card" key={key}>
-            <h3>{categoryLabels[key]}</h3>
-            <FeaturePills features={profile.features[key]} empty="Still learning this signal." />
-          </div>
-        ))}
-      </section>
-
-      <section className="panel selected-panel">
-        <h3>Selected example</h3>
-        {selectedPrompt ? (
-          <>
-            <p className="selected-meta">
-              {selectedPrompt.title} - {countWords(selectedPrompt.text)} words - {selectedPrompt.source}
-            </p>
-            <pre>{selectedPrompt.text}</pre>
-          </>
-        ) : (
-          <p className="selected-meta">No prompt selected.</p>
-        )}
-      </section>
     </div>
   );
 }
@@ -20764,25 +20687,6 @@ function ScoreRing({ label, score }: { label: string; score: number }) {
   );
 }
 
-function DnaList({ dna }: { dna: Record<DnaKey, number> }) {
-  return (
-    <div className="score-list compact">
-      {dnaOrder.map((key) => {
-        const score = dna[key];
-        return (
-          <div className="score-row" key={key}>
-            <span>{dnaLabels[key]}</span>
-            <div className="bar">
-              <i data-tone={scoreTone(score)} style={{ width: `${score}%` }} />
-            </div>
-            <strong>{score}</strong>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function ScoreList({ compact = false, scores }: { compact?: boolean; scores: Record<CategoryKey, number> }) {
   return (
     <div className={`score-list ${compact ? "compact" : ""}`}>
@@ -20826,58 +20730,6 @@ function FeaturePills({ empty, features }: { empty: string; features: Feature[] 
         </span>
       ))}
     </div>
-  );
-}
-
-function Field({ children, label }: { children: ReactNode; label: string }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function SliderField({
-  label,
-  onChange,
-  value,
-}: {
-  label: string;
-  onChange: (value: number) => void;
-  value: number;
-}) {
-  return (
-    <label className="slider-field">
-      <span>
-        {label}
-        <strong>{value}</strong>
-      </span>
-      <input
-        min={1}
-        max={10}
-        type="range"
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
-function Toggle({
-  checked,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="toggle">
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-      <span>{label}</span>
-    </label>
   );
 }
 

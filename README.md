@@ -69,6 +69,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Next product sprint layer that adds one guided training run, corpus cleanup mode, prompt battle autopilot, template compiler, real result feedback loop, public demo simplification, and no-key local mode polish
 - Product evolution layer that simplifies the main Prompt Learner mode, upgrades Learning Memory v2, adds side-by-side result review, holdout regression, prompt editor studio, project spaces, modular report logic, and public demo experience polish
 - Actionable learner controls for pinning/rejecting memory rules, promoting/repairing/excluding result reviews, saving editor-section patches, persisting project spaces, and running holdout regression from the CLI
+- Self-serve learner experience with saved learning profiles, prompt diff review, house-format compiler output, benchmark battles, batch review, public demo routing, learner export packs, and split learner/app chrome chunks that keep the main bundle under the Vite warning line
 
 ## Development
 
@@ -123,7 +124,9 @@ npm run check:corpus-safety
 npm run check:quality-gate
 npm run check:holdout -- --out output/holdout-regression
 npm run verify:hosted-api -- --url http://127.0.0.1:8787
+npm run smoke:hosted -- --url http://127.0.0.1:4173 --out output/playwright/prompt-learner-local
 npm run smoke:hosted -- --url http://127.0.0.1:4173 --train --out output/playwright/learning-machine-local
+npm run smoke:hosted -- --url http://127.0.0.1:4173 --demo --out output/playwright/demo-local
 npm run deploy:hosted-api -- --out output/hosted-api-deploy
 npm run proof:seed -- --out output/proof-seed-runway
 npm run export:regression -- --out output/regression-timeline
@@ -190,6 +193,7 @@ The Train tab now starts with:
 31. A Next Product Sprint layer that turns the next upgrades into product controls: guided run, cleanup mode, battle autopilot, template compiler, result feedback, demo simplification, and local fallback polish without changing Claude or provider keys.
 32. A Product Evolution layer that makes the app feel like a prompt learner first: paste, score, improve, battle, prove, and export, with Learning Memory v2, result review, holdout regression, editor sections, isolated project spaces, modular report logic, and public demo polish.
 33. Actionable product controls: memory rules can be accepted, pinned, or rejected; result reviews can promote, repair, or exclude examples; editor sections can be saved as scoped patches; project spaces persist across browser/API snapshots; and `check:holdout` guards memory/template changes.
+34. A self-serve learner front door that lets someone paste a website prompt, pick a saved learning profile, see an explainable DNA score, accept/reject exact prompt diffs, compile the result into the house format, run benchmark battles, review batch training readiness, open a public demo route, and export a complete training pack without changing Claude or provider keys.
 
 The tightest improvement cycle is:
 
