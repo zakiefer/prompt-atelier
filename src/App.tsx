@@ -9594,24 +9594,26 @@ function TrainView({
 
   return (
     <div className="train-grid">
-      <section className="panel hero-panel train-hero" data-train-section="workflow">
-        <div>
-          <p className="eyebrow">Outcome training</p>
-          <h2>Closed-loop prompt learning command center.</h2>
-          <p>
-            Run prompts, capture screenshots, calibrate prompt strength against actual results, clean the corpus, remember failures,
-            compile rough ideas, and tournament-test variants.
-          </p>
-        </div>
-        <div className="outcome-scoreboard">
-          <Metric value={formatNumber(dnaCalibration.calibratedScore)} label="Calibrated strength" />
-          <Metric value={formatNumber(outcomeSummary.counts.gold)} label="Gold" />
-          <Metric value={formatNumber(outcomeSummary.counts.great)} label="Great" />
-          <Metric value={formatNumber(outcomeSummary.counts.avoid)} label="Avoid" />
-        </div>
-      </section>
+      <section className="train-command-suite" aria-label="Train command center">
+        <section className="panel hero-panel train-hero" data-train-section="workflow">
+          <div>
+            <p className="eyebrow">Outcome training</p>
+            <h2>Closed-loop prompt learning command center.</h2>
+            <p>
+              Run prompts, capture screenshots, calibrate prompt strength against actual results, clean the corpus, remember failures,
+              compile rough ideas, and tournament-test variants.
+            </p>
+          </div>
+          <div className="outcome-scoreboard">
+            <Metric value={formatNumber(dnaCalibration.calibratedScore)} label="Calibrated strength" />
+            <Metric value={formatNumber(outcomeSummary.counts.gold)} label="Gold" />
+            <Metric value={formatNumber(outcomeSummary.counts.great)} label="Great" />
+            <Metric value={formatNumber(outcomeSummary.counts.avoid)} label="Avoid" />
+          </div>
+        </section>
 
-      <TrainFocusSummaryPanel report={trainFocusSummary} onSelect={scrollToTrainSection} />
+        <TrainFocusSummaryPanel report={trainFocusSummary} onSelect={scrollToTrainSection} />
+      </section>
 
       <details className="train-jump-drawer">
         <summary>
@@ -10771,7 +10773,7 @@ function TrainFocusSummaryPanel({ onSelect, report }: { onSelect: (id: string) =
         <div>
           <p className="eyebrow">Train focus summary</p>
           <h2>{report.headline}</h2>
-          <p>Default Train now shows only the operating path. Open Advanced when you need the full diagnostics.</p>
+          <p>Training is organized around the operating path, with the full diagnostic wall tucked into Advanced when you need it.</p>
         </div>
         <ScoreRing score={report.score} label="focus" />
       </div>
@@ -19276,8 +19278,8 @@ function RunTimelinePanel({
       </div>
       <div className="timeline-list">
         {events.length ? (
-          events.map((event) => (
-            <article className="timeline-card" key={`${event.time}-${event.title}-${event.status}`}>
+          events.map((event, index) => (
+            <article className="timeline-card" key={`${event.time}-${event.title}-${event.status}-${index}`}>
               <span>{event.status}</span>
               <div>
                 <strong>{event.title}</strong>
@@ -20788,8 +20790,8 @@ function FeedbackList({ empty, items, title }: { empty: string; items: string[];
     <div className="feedback-list">
       <h3>{title}</h3>
       {items.length ? (
-        items.map((item) => (
-          <p key={item}>
+        items.map((item, index) => (
+          <p key={`${item}-${index}`}>
             <Check size={14} />
             {item}
           </p>
