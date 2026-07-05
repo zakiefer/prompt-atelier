@@ -450,6 +450,7 @@ import {
   getApiHealth,
   getModelSettings,
   getTrainingSnapshot,
+  hasExplicitApiBase,
   importResult,
   installSkill,
   runClosedLoopProofViaApi,
@@ -3773,25 +3774,29 @@ export default function App() {
     };
 
     async function hydrate() {
-      try {
-        const [healthResult, collectionResult] = await Promise.all([getApiHealth(), getApiCollections()]);
-        if (cancelled) return;
-        setApiHealth(healthResult);
-        const hasSqliteData = Object.values(collectionResult.collections).some((value) => {
-          if (Array.isArray(value)) return value.length > 0;
-          if (typeof value === "string") return value.length > 0;
-          return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
-        });
-        if (hasSqliteData) {
-          applyCollections(collectionResult.collections as Partial<Record<keyof StoredCollections, unknown>>);
-          setDbReady(true);
-          setDbStatus("SQLite source of truth ready");
-          setApiNotice(`Loaded from SQLite: ${healthResult.sqlitePath}`);
-          return;
+      if (hasExplicitApiBase()) {
+        try {
+          const [healthResult, collectionResult] = await Promise.all([getApiHealth(), getApiCollections()]);
+          if (cancelled) return;
+          setApiHealth(healthResult);
+          const hasSqliteData = Object.values(collectionResult.collections).some((value) => {
+            if (Array.isArray(value)) return value.length > 0;
+            if (typeof value === "string") return value.length > 0;
+            return Boolean(value && typeof value === "object" && Object.keys(value).length > 0);
+          });
+          if (hasSqliteData) {
+            applyCollections(collectionResult.collections as Partial<Record<keyof StoredCollections, unknown>>);
+            setDbReady(true);
+            setDbStatus("SQLite source of truth ready");
+            setApiNotice(`Loaded from SQLite: ${healthResult.sqlitePath}`);
+            return;
+          }
+          setApiNotice("SQLite online but empty; using browser fallback until first autosync.");
+        } catch (error) {
+          if (!cancelled) setApiNotice(`API offline; using browser fallback. ${error instanceof Error ? error.message : ""}`.trim());
         }
-        setApiNotice("SQLite online but empty; using browser fallback until first autosync.");
-      } catch (error) {
-        if (!cancelled) setApiNotice(`API offline; using browser fallback. ${error instanceof Error ? error.message : ""}`.trim());
+      } else {
+        setApiNotice("Browser fallback active; set an API base or use Connect hosted brain when you want sync.");
       }
 
       const stored = await readAllCollections(fallback);
@@ -4077,6 +4082,10 @@ export default function App() {
   }, [examples, selectedPrompt]);
 
   useEffect(() => {
+    if (!hasExplicitApiBase()) {
+      setModelEnvStatus(undefined);
+      return;
+    }
     void getModelSettings()
       .then((settings) => setModelEnvStatus(settings as Record<string, boolean>))
       .catch(() => setModelEnvStatus(undefined));

@@ -19,6 +19,13 @@ export function getApiBase() {
   return isLoopbackHost(window.location.hostname) ? LOCAL_API_BASE : "";
 }
 
+export function hasExplicitApiBase() {
+  const envBase = normalizeApiBase(import.meta.env.VITE_PROMPT_ATELIER_API_BASE);
+  if (envBase) return true;
+  if (typeof window === "undefined") return false;
+  return Boolean(normalizeApiBase(window.localStorage.getItem(API_BASE_KEY) || ""));
+}
+
 export function setApiBase(value: string) {
   if (typeof window === "undefined") return;
   const normalized = normalizeApiBase(value);
