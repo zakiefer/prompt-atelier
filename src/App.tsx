@@ -29,6 +29,7 @@ import {
   Trophy,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import {
   analyzeArchetypeClusters,
@@ -2132,6 +2133,7 @@ export default function App() {
     const requested = new URLSearchParams(window.location.search).get("tab") || window.location.hash.replace(/^#/, "");
     return ["learn", "compose", "critic", "templates", "lab", "train"].includes(requested) ? requested as TabKey : "learn";
   });
+  const [openInspector, setOpenInspector] = useState<"corpus" | "rules" | null>(null);
   const [composeOptions, setComposeOptions] = useState<ComposeOptions>(defaultComposeOptions);
   const [evaluationText, setEvaluationText] = useState("");
   const [copied, setCopied] = useState("");
@@ -7465,15 +7467,31 @@ export default function App() {
         <div className="topbar-actions" aria-label="Corpus metrics">
           <Metric value={formatNumber(profile.exampleCount)} label="Examples" />
           <Metric value={formatNumber(clusters.length)} label="Archetypes" />
-          <Metric value={addPercent(dnaScore)} label="Quality score" />
+          <Metric value={addPercent(dnaScore)} label="Prompt strength" />
         </div>
       </header>
 
       <main className="workspace">
-        <aside className="panel left-panel">
+        <div className="workspace-actions" aria-label="Workspace inspectors">
+          <button className="ghost-button compact-button" type="button" onClick={() => setOpenInspector("corpus")}>
+            <BookOpen size={15} />
+            Corpus
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => setOpenInspector("rules")}>
+            <Lightbulb size={15} />
+            Rules
+          </button>
+        </div>
+
+        {openInspector ? <button className="drawer-scrim" type="button" aria-label="Close inspector" onClick={() => setOpenInspector(null)} /> : null}
+
+        <aside className={`panel left-panel side-drawer ${openInspector === "corpus" ? "open" : ""}`} data-inspector="corpus">
           <div className="panel-header">
             <BookOpen size={18} />
             <h2>Training corpus</h2>
+            <button className="icon-button drawer-close" type="button" aria-label="Close corpus inspector" onClick={() => setOpenInspector(null)}>
+              <X size={15} />
+            </button>
           </div>
 
           <div className="import-box">
@@ -8089,10 +8107,13 @@ export default function App() {
           )}
         </section>
 
-        <aside className="panel right-panel">
+        <aside className={`panel right-panel side-drawer ${openInspector === "rules" ? "open" : ""}`} data-inspector="rules">
           <div className="panel-header">
             <Lightbulb size={18} />
             <h2>Learned rules</h2>
+            <button className="icon-button drawer-close" type="button" aria-label="Close rules inspector" onClick={() => setOpenInspector(null)}>
+              <X size={15} />
+            </button>
           </div>
           <div className="rule-list">
             {profile.learnedRules.map((rule, index) => (

@@ -63,6 +63,7 @@ const trainHeadings = [
 const learnerHeadings = [
   "Paste, score, improve, prove, export.",
   "Brief builder",
+  "One prompt run",
   "Try sample prompts",
   "Prompt revision",
   "Why not 100",
@@ -156,6 +157,7 @@ try {
           : [
               "public-learner",
               "guided-first-run",
+              "one-prompt-run",
               "brief-builder",
               "dna-rewrite-plan",
               "corpus-neighbors",
@@ -256,6 +258,22 @@ async function runLearnerInteractions(page) {
     checked.push("profile switched");
   }
 
+  await openAppInspector(page, "Corpus");
+  const corpusTextarea = page.locator(".import-box textarea").first();
+  if (await corpusTextarea.count()) {
+    await corpusTextarea.fill([
+      "Build a React + TypeScript + Vite + Tailwind CSS fullscreen video hero for a design studio with exact fonts, colors, CTA states, mobile menu, and desktop/mobile QA.",
+      "",
+      "Build a product dashboard hero with exact charts, empty/loading states, responsive grid, keyboard focus, no placeholder assets, and screenshot verification.",
+    ].join("\\n"));
+    checked.push("corpus drawer opened");
+  }
+  const closeCorpusButton = page.locator('[aria-label="Close inspector"]').first();
+  if (await closeCorpusButton.count()) {
+    await closeCorpusButton.click();
+    await page.waitForFunction(() => !globalThis.document.querySelector('[data-inspector="corpus"]')?.classList.contains("open"), null, { timeout: 5000 });
+  }
+
   await openLearnerTab(page, "Review");
 
   const acceptButton = page.locator('[data-train-section="prompt-diff-editor"] button').filter({ hasText: /^Accept$/ }).first();
@@ -283,20 +301,17 @@ async function runLearnerInteractions(page) {
   }
 
   await openLearnerTab(page, "Export");
+  const exportCenterButton = page.locator('[data-learner-action="open-export-modal"]').first();
+  if (await exportCenterButton.count()) {
+    await exportCenterButton.click();
+    checked.push("export center opened");
+  }
 
-  const corpusTextarea = page.locator(".import-box textarea").first();
-  if (await corpusTextarea.count()) {
-    await corpusTextarea.fill([
-      "Build a React + TypeScript + Vite + Tailwind CSS fullscreen video hero for a design studio with exact fonts, colors, CTA states, mobile menu, and desktop/mobile QA.",
-      "",
-      "Build a product dashboard hero with exact charts, empty/loading states, responsive grid, keyboard focus, no placeholder assets, and screenshot verification.",
-    ].join("\\n"));
-    await page.waitForFunction("document.body.textContent.includes('candidate') || document.body.textContent.includes('Corpus review queue')", null, { timeout: 5000 }).catch(() => undefined);
-    const goldButton = page.locator('[data-train-section="corpus-review-queue"] button').filter({ hasText: /^Gold$/ }).first();
-    if (await goldButton.count()) {
-      await goldButton.click();
-      checked.push("corpus candidate marked gold");
-    }
+  await page.waitForFunction("document.body.textContent.includes('candidate') || document.body.textContent.includes('Corpus review queue')", null, { timeout: 5000 }).catch(() => undefined);
+  const goldButton = page.locator('[data-train-section="corpus-review-queue"] button').filter({ hasText: /^Gold$/ }).first();
+  if (await goldButton.count()) {
+    await goldButton.click();
+    checked.push("corpus candidate marked gold");
   }
 
   const saveCompiledButton = page.locator('[data-train-section="house-compiler"] button').filter({ hasText: /^Save$/ }).first();
@@ -368,6 +383,17 @@ async function openLearnerTab(page, label) {
     await page.waitForFunction((tabLabel) => {
       const buttons = [...globalThis.document.querySelectorAll('[data-train-section="guided-first-run"] button')];
       return buttons.some((button) => button.textContent?.includes(String(tabLabel)) && button.getAttribute("data-active") === "true");
+    }, label, { timeout: 5000 });
+  }
+}
+
+async function openAppInspector(page, label) {
+  const inspectorButton = page.locator(".workspace-actions button").filter({ hasText: label }).first();
+  if (await inspectorButton.count()) {
+    await inspectorButton.click();
+    await page.waitForFunction((inspectorLabel) => {
+      const selector = String(inspectorLabel).toLowerCase().includes("corpus") ? '[data-inspector="corpus"]' : '[data-inspector="rules"]';
+      return globalThis.document.querySelector(selector)?.classList.contains("open");
     }, label, { timeout: 5000 });
   }
 }

@@ -377,6 +377,7 @@ export function LearnView({
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"compose" | "review" | "export">("compose");
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [diffDecisions, setDiffDecisions] = useState<Record<string, "accepted" | "rejected">>({});
   const [briefInput, setBriefInput] = useState<LearnerBriefInput>(() => createEmptyLearnerBriefInput(activeLearningProfile));
   const [outcomeRating, setOutcomeRating] = useState<OutcomeRating>("great");
@@ -419,6 +420,9 @@ export function LearnView({
     { id: "review", label: "Review", detail: "Diff, feedback, decisions" },
     { id: "export", label: "Export", detail: "Presets, sessions, proof" },
   ];
+  const activeStepIndex = workspaceTabs.findIndex((tab) => tab.id === activeWorkspaceTab);
+  const nextWorkspaceTab = workspaceTabs[Math.min(workspaceTabs.length - 1, activeStepIndex + 1)]?.id ?? "export";
+  const promptStrengthReasons = (dnaExplanation.summary.length ? dnaExplanation.summary : learnerEvaluation.upgrades).slice(0, 3);
   const interactionChecks = [
     { label: "Profile switching", ready: Boolean(activeLearningProfile.id), detail: `${activeLearningProfile.label} is active.` },
     { label: "Diff decisions", ready: acceptedDiffLabels.length > 0 || rejectedDiffLabels.length > 0, detail: `${acceptedDiffLabels.length} accepted / ${rejectedDiffLabels.length} rejected.` },
@@ -431,12 +435,29 @@ export function LearnView({
       <section className="panel public-learner-panel" data-train-section="public-learner">
         <div className="output-header">
           <div>
-            <p className="eyebrow">Prompt Learner</p>
+            <p className="eyebrow">Prompt workspace</p>
             <h2>Paste, score, improve, prove, export.</h2>
             <p>Start with one excellent website prompt and turn the learned patterns into a stronger build prompt without opening the lab.</p>
           </div>
-          <ScoreRing score={learnerEvaluation.score || dnaScore} label="Prompt score" />
+          <ScoreRing score={learnerEvaluation.score || dnaScore} label="Strength" />
         </div>
+
+        <section className="learner-session-home" aria-label="Session home">
+          <div>
+            <strong>{savedLearnerSessions[0]?.title ?? "Start a fresh prompt run"}</strong>
+            <p>{savedLearnerSessions[0] ? `${savedLearnerSessions.length} saved run(s). Reopen the latest or make a new prompt from a brief.` : "Paste a prompt, choose a brief, then review and export from one compact path."}</p>
+          </div>
+          <div className="button-row compact-row">
+            {savedLearnerSessions[0] ? (
+              <button className="ghost-button compact-button" type="button" onClick={() => onOpenLearnerSession(savedLearnerSessions[0])}>
+                Reopen latest
+              </button>
+            ) : null}
+            <button className="primary-button compact-button" type="button" onClick={() => setActiveWorkspaceTab("compose")}>
+              New run
+            </button>
+          </div>
+        </section>
 
         <div className="profile-strip" aria-label="Learning profiles">
           {learningProfiles.slice(0, 8).map((learningProfile) => (
@@ -466,6 +487,25 @@ export function LearnView({
             </button>
           ))}
         </nav>
+
+        <section className="learner-run-guide" data-train-section="one-prompt-run">
+          <div>
+            <strong>One prompt run</strong>
+            <p>{workspaceTabs[activeStepIndex]?.detail ?? "Move through the prompt workflow."}</p>
+          </div>
+          <div className="run-step-track" aria-label="Prompt run progress">
+            {workspaceTabs.map((tab, index) => (
+              <span data-active={index <= activeStepIndex ? "true" : "false"} key={tab.id}>{tab.label}</span>
+            ))}
+          </div>
+          <button
+            className="primary-button compact-button"
+            type="button"
+            onClick={() => activeWorkspaceTab === "export" ? setExportModalOpen(true) : setActiveWorkspaceTab(nextWorkspaceTab)}
+          >
+            {activeWorkspaceTab === "export" ? "Export center" : `Next: ${workspaceTabs[activeStepIndex + 1]?.label ?? "Export"}`}
+          </button>
+        </section>
 
         <div className="learner-tab-panel" data-active={activeWorkspaceTab === "compose" ? "true" : "false"} hidden={activeWorkspaceTab !== "compose"}>
         <div className="learner-flow-grid" id="learner-paste">
@@ -526,7 +566,8 @@ export function LearnView({
         <section className="learner-mini-panel" data-train-section="brief-builder" id="learner-score">
           <div className="output-header">
             <div>
-              <h3>Brief builder</h3>
+              <h3>Make me a prompt</h3>
+              <span className="selected-meta">Brief builder</span>
               <p>Generate a fresh implementation-ready prompt from structured choices instead of a blank textarea.</p>
             </div>
             <button className="primary-button compact-button" type="button" onClick={() => onUseSamplePrompt(briefPrompt)}>
@@ -573,10 +614,10 @@ export function LearnView({
         <div className="self-serve-grid">
           <article className="learner-mini-panel">
             <div className="output-header">
-              <h3>Quality explanation</h3>
-              <ScoreRing score={dnaExplanation.overall} label="Quality" />
+              <h3>Prompt strength</h3>
+              <ScoreRing score={dnaExplanation.overall} label="Strength" />
             </div>
-            <FeedbackList title="Why this score" items={dnaExplanation.summary} empty="No quality explanation." />
+            <FeedbackList title="Top reasons" items={promptStrengthReasons} empty="No strength explanation." />
             <div className="mini-stat-row">
               {dnaExplanation.dimensions.slice(0, 4).map((dimension) => (
                 <span key={dimension.key}>{dimension.label}: {dimension.score}</span>
@@ -676,7 +717,7 @@ export function LearnView({
           <div className="output-header">
             <div>
               <h3>Outcome feedback loop</h3>
-              <p>Record how the built result performed so prompt quality learns from actual output, not only static text.</p>
+              <p>Record how the built result performed so prompt strength learns from actual output, not only static text.</p>
             </div>
             <button
               className="primary-button compact-button"
@@ -709,6 +750,42 @@ export function LearnView({
         </div>
 
         <div className="learner-tab-panel" data-active={activeWorkspaceTab === "export" ? "true" : "false"} hidden={activeWorkspaceTab !== "export"}>
+        <section className="learner-mini-panel export-hub">
+          <div className="output-header">
+            <div>
+              <h3>Export center</h3>
+              <p>Presets, sessions, corpus review, and proof live in one focused dialog instead of stretching the workspace.</p>
+            </div>
+            <button className="primary-button compact-button" data-learner-action="open-export-modal" type="button" onClick={() => setExportModalOpen(true)}>
+              <Download size={15} />
+              Open export center
+            </button>
+          </div>
+          <div className="export-summary-grid">
+            <article>
+              <strong>{targetExportPresets.length}</strong>
+              <span>target presets</span>
+            </article>
+            <article>
+              <strong>{savedLearnerSessions.length}</strong>
+              <span>saved sessions</span>
+            </article>
+            <article>
+              <strong>{learnerProofGallery.length}</strong>
+              <span>proof items</span>
+            </article>
+          </div>
+        </section>
+        <div className="modal-layer" hidden={!exportModalOpen}>
+          <button className="modal-scrim" type="button" aria-label="Close export center" onClick={() => setExportModalOpen(false)} />
+          <section className="export-modal panel" role="dialog" aria-modal="true" aria-label="Export center">
+            <div className="output-header modal-header">
+              <div>
+                <h3>Export center</h3>
+                <p>Copy presets, save sessions, review corpus candidates, and attach proof.</p>
+              </div>
+              <button className="icon-button" type="button" aria-label="Close export center" onClick={() => setExportModalOpen(false)}>x</button>
+            </div>
         <div className="self-serve-grid">
           <article className="learner-mini-panel" data-train-section="house-compiler">
             <div className="output-header">
@@ -900,7 +977,7 @@ export function LearnView({
               {savedLearnerSessions.slice(0, 4).map((session) => (
                 <article className="version-card" key={session.id}>
                   <strong>{session.title}</strong>
-                  <span>{session.profileLabel} / Quality {session.dnaScore}</span>
+                  <span>{session.profileLabel} / Strength {session.dnaScore}</span>
                   <p>{session.benchmarkWinner.title} won at {session.benchmarkWinner.score}/100.</p>
                   <div className="button-row compact-row">
                     <button className="ghost-button compact-button" type="button" onClick={() => setSelectedSessionId(session.id)}>Details</button>
@@ -912,7 +989,7 @@ export function LearnView({
             {selectedSession ? (
               <article className="session-detail-card">
                 <strong>{selectedSession.title}</strong>
-                <span>{selectedSession.profileLabel} / prompt {selectedSession.promptScore} / quality {selectedSession.dnaScore}</span>
+                <span>{selectedSession.profileLabel} / prompt {selectedSession.promptScore} / strength {selectedSession.dnaScore}</span>
                 <p>Accepted: {selectedSession.acceptedDiffs.join(", ") || "none"}.</p>
                 <p>Rejected: {selectedSession.rejectedDiffs.join(", ") || "none"}.</p>
                 <div className="button-row compact-row">
@@ -935,6 +1012,9 @@ export function LearnView({
           <div className="proof-gallery-grid">
             {learnerProofGallery.map((item) => (
               <article className="proof-card" key={item.id} data-kind={item.kind}>
+                <div className="proof-thumb" data-kind={item.kind}>
+                  {item.url ? <img src={item.url} alt="" /> : <span>{item.score}%</span>}
+                </div>
                 <strong>{item.title}</strong>
                 <span>{item.kind} / {item.score}% / {item.meta}</span>
                 <p>{item.detail}</p>
@@ -943,6 +1023,8 @@ export function LearnView({
             ))}
           </div>
         </section>
+          </section>
+        </div>
         </div>
 
         <button className="ghost-button wide-button" type="button" onClick={() => setAdvancedOpen((open) => !open)}>
