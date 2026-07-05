@@ -25,6 +25,15 @@ if (shouldOpenTrain) {
   targetUrl.searchParams.set("tab", "train");
 }
 const expectedHeadings = [
+  "Product evolution roadmap",
+  "Prompt Learner mode",
+  "Learning Memory v2",
+  "Side-by-side result reviewer",
+  "Holdout benchmark regression",
+  "Prompt editor studio",
+  "Project spaces",
+  "Modular architecture cleanup",
+  "Public demo experience",
   "Next product sprint",
   "Prompt Atelier Product OS",
   "Accessibility and QA scoring",

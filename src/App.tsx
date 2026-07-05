@@ -385,6 +385,26 @@ import {
   type WorkerSandboxReport,
 } from "./promptEngine";
 import {
+  buildHoldoutBenchmarkReport,
+  buildLearningMemoryV2Report,
+  buildModularArchitectureReport,
+  buildProductEvolutionReport,
+  buildProjectSpacesReport,
+  buildPromptEditorStudioReport,
+  buildPromptLearnerModeReport,
+  buildPublicDemoExperienceReport,
+  buildResultReviewerReport,
+  type HoldoutBenchmarkReport,
+  type LearningMemoryV2Report,
+  type ModularArchitectureReport,
+  type ProductEvolutionReport,
+  type ProjectSpacesReport,
+  type PromptEditorStudioReport,
+  type PromptLearnerModeReport,
+  type PublicDemoExperienceReport,
+  type ResultReviewerReport,
+} from "./productEvolution";
+import {
   analyzeScreenshots,
   analyzeCorpusViaApi,
   captureResult,
@@ -3214,6 +3234,15 @@ export default function App() {
     () =>
       buildHostedCiSmokeReport({
         expectedHeadings: [
+          "Product evolution roadmap",
+          "Prompt Learner mode",
+          "Learning Memory v2",
+          "Side-by-side result reviewer",
+          "Holdout benchmark regression",
+          "Prompt editor studio",
+          "Project spaces",
+          "Modular architecture cleanup",
+          "Public demo experience",
           "Next product sprint",
           "Prompt Atelier Product OS",
           "Accessibility and QA scoring",
@@ -3482,8 +3511,110 @@ export default function App() {
         publicDemo: publicDemoSimplification,
         resultFeedback: resultFeedbackLoop,
         templateCompiler,
-      }),
+    }),
     [corpusCleanupMode, guidedProductRun, localModePolish, promptBattleAutopilot, publicDemoSimplification, resultFeedbackLoop, templateCompiler],
+  );
+  const promptLearnerMode = useMemo(
+    () =>
+      buildPromptLearnerModeReport({
+        guidedRun: guidedProductRun,
+        localMode: localModePolish,
+        productOs,
+        productSprint,
+        publicDemo: publicDemoSimplification,
+        resultFeedback: resultFeedbackLoop,
+      }),
+    [guidedProductRun, localModePolish, productOs, productSprint, publicDemoSimplification, resultFeedbackLoop],
+  );
+  const learningMemoryV2 = useMemo(
+    () =>
+      buildLearningMemoryV2Report({
+        buildRuns,
+        examples: learningExamples,
+        outcomes,
+        promptQualityDna,
+        screenshots,
+        templateCompiler,
+      }),
+    [buildRuns, learningExamples, outcomes, promptQualityDna, screenshots, templateCompiler],
+  );
+  const resultReviewer = useMemo(
+    () =>
+      buildResultReviewerReport({
+        buildRuns,
+        promptQualityDna,
+        resultFeedback: resultFeedbackLoop,
+        screenshots,
+      }),
+    [buildRuns, promptQualityDna, resultFeedbackLoop, screenshots],
+  );
+  const holdoutBenchmark = useMemo(
+    () =>
+      buildHoldoutBenchmarkReport({
+        benchmarkLibrary,
+        benchmarkV2: benchmarkV2Report,
+        learningMemory: learningMemoryV2,
+        qualityGate: qualityRegressionGate,
+      }),
+    [benchmarkLibrary, benchmarkV2Report, learningMemoryV2, qualityRegressionGate],
+  );
+  const promptEditorStudio = useMemo(
+    () =>
+      buildPromptEditorStudioReport({
+        editorGuidance: promptEditorGuidance,
+        qualityGate: qualityRegressionGate,
+        templateCompiler,
+      }),
+    [promptEditorGuidance, qualityRegressionGate, templateCompiler],
+  );
+  const projectSpaces = useMemo(
+    () =>
+      buildProjectSpacesReport({
+        cleanupMode: corpusCleanupMode,
+        examples: learningExamples,
+      }),
+    [corpusCleanupMode, learningExamples],
+  );
+  const modularArchitecture = useMemo(
+    () =>
+      buildModularArchitectureReport({
+        moduleNames: ["promptEngine", "productEvolution", "App panels", "engine tests", "README"],
+        productReportCount: 9,
+      }),
+    [],
+  );
+  const publicDemoExperience = useMemo(
+    () =>
+      buildPublicDemoExperienceReport({
+        learnerMode: promptLearnerMode,
+        localMode: localModePolish,
+        publicDemo: publicDemoSimplification,
+        resultReviewer,
+      }),
+    [localModePolish, promptLearnerMode, publicDemoSimplification, resultReviewer],
+  );
+  const productEvolution = useMemo(
+    () =>
+      buildProductEvolutionReport({
+        architecture: modularArchitecture,
+        editorStudio: promptEditorStudio,
+        holdout: holdoutBenchmark,
+        learnerMode: promptLearnerMode,
+        memoryV2: learningMemoryV2,
+        projectSpaces,
+        publicExperience: publicDemoExperience,
+        resultReviewer,
+      }),
+    [
+      holdoutBenchmark,
+      learningMemoryV2,
+      modularArchitecture,
+      promptEditorStudio,
+      projectSpaces,
+      promptLearnerMode,
+      publicDemoExperience,
+      resultReviewer,
+    ],
   );
   const proofSeedingRunway = useMemo(
     () =>
@@ -7418,6 +7549,15 @@ export default function App() {
               qualityRegressionGate={qualityRegressionGate}
               accessibilityQaScore={accessibilityQaScore}
               productOs={productOs}
+              productEvolution={productEvolution}
+              promptLearnerMode={promptLearnerMode}
+              learningMemoryV2={learningMemoryV2}
+              resultReviewer={resultReviewer}
+              holdoutBenchmark={holdoutBenchmark}
+              promptEditorStudio={promptEditorStudio}
+              projectSpaces={projectSpaces}
+              modularArchitecture={modularArchitecture}
+              publicDemoExperience={publicDemoExperience}
               productSprint={productSprint}
               guidedProductRun={guidedProductRun}
               corpusCleanupMode={corpusCleanupMode}
@@ -8636,6 +8776,15 @@ function TrainView({
   qualityRegressionGate,
   accessibilityQaScore,
   productOs,
+  productEvolution,
+  promptLearnerMode,
+  learningMemoryV2,
+  resultReviewer,
+  holdoutBenchmark,
+  promptEditorStudio,
+  projectSpaces,
+  modularArchitecture,
+  publicDemoExperience,
   productSprint,
   guidedProductRun,
   corpusCleanupMode,
@@ -8975,6 +9124,15 @@ function TrainView({
   qualityRegressionGate: QualityRegressionGateReport;
   accessibilityQaScore: AccessibilityQaScoreReport;
   productOs: PromptProductOsReport;
+  productEvolution: ProductEvolutionReport;
+  promptLearnerMode: PromptLearnerModeReport;
+  learningMemoryV2: LearningMemoryV2Report;
+  resultReviewer: ResultReviewerReport;
+  holdoutBenchmark: HoldoutBenchmarkReport;
+  promptEditorStudio: PromptEditorStudioReport;
+  projectSpaces: ProjectSpacesReport;
+  modularArchitecture: ModularArchitectureReport;
+  publicDemoExperience: PublicDemoExperienceReport;
   productSprint: ProductSprintReport;
   guidedProductRun: GuidedProductRunReport;
   corpusCleanupMode: CorpusCleanupModeReport;
@@ -9216,6 +9374,15 @@ function TrainView({
 }) {
   const [sectionQuery, setSectionQuery] = useState("");
   const trainSections = [
+    { id: "product-evolution", label: "Evolution" },
+    { id: "learner-mode", label: "Learner mode" },
+    { id: "memory-v2", label: "Memory v2" },
+    { id: "result-reviewer", label: "Reviewer" },
+    { id: "holdout", label: "Holdout" },
+    { id: "editor-studio", label: "Editor" },
+    { id: "project-spaces", label: "Spaces" },
+    { id: "architecture", label: "Architecture" },
+    { id: "public-experience", label: "Public experience" },
     { id: "product-sprint", label: "Sprint" },
     { id: "product-os", label: "Product OS" },
     { id: "guided-run", label: "Guided run" },
@@ -9301,6 +9468,28 @@ function TrainView({
       />
 
       <PromptProductOsPanel report={productOs} onSelect={scrollToTrainSection} />
+
+      <ProductEvolutionPanel report={productEvolution} onSelect={scrollToTrainSection} />
+
+      <section className="train-columns">
+        <PromptLearnerModePanel report={promptLearnerMode} onSelect={scrollToTrainSection} />
+        <PublicDemoExperiencePanel report={publicDemoExperience} />
+      </section>
+
+      <section className="train-columns">
+        <LearningMemoryV2Panel copied={copied} onCopy={onCopy} report={learningMemoryV2} />
+        <ResultReviewerPanel report={resultReviewer} />
+      </section>
+
+      <section className="train-columns">
+        <HoldoutBenchmarkPanel report={holdoutBenchmark} />
+        <PromptEditorStudioPanel report={promptEditorStudio} />
+      </section>
+
+      <section className="train-columns">
+        <ProjectSpacesPanel report={projectSpaces} />
+        <ModularArchitecturePanel report={modularArchitecture} />
+      </section>
 
       <AccessibilityQaScorePanel report={accessibilityQaScore} onSelect={scrollToTrainSection} />
 
@@ -10530,6 +10719,287 @@ function MeasuredQualitySprintPanel({ report }: { report: MeasuredQualitySprintR
         ))}
       </div>
       <FeedbackList title="Sprint notes" items={report.notes} empty="No sprint notes." />
+    </section>
+  );
+}
+
+function ProductEvolutionPanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: ProductEvolutionReport;
+}) {
+  return (
+    <section className="panel lab-panel product-sprint-panel" data-readiness={report.status} data-train-section="product-evolution">
+      <div className="output-header">
+        <div className="panel-header">
+          <Sparkles size={18} />
+          <h2>{report.headline}</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta">
+        The next product layer simplifies the learner path, strengthens memory, adds review/holdout/editor/spaces, splits logic into a module, and polishes the public demo.
+      </p>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.items.filter((item) => item.status === "ready").length}/${report.items.length}`} label="Ready upgrades" />
+        <Metric value={formatNumber(report.blockers.length)} label="Blockers" />
+        <Metric value={formatNumber(report.score)} label="Evolution score" />
+      </div>
+      <div className="safe-check-grid product-os-grid">
+        {report.items.map((item) => (
+          <button
+            className="safe-check product-command-card"
+            key={item.id}
+            type="button"
+            data-ready={item.status === "ready" ? "true" : "false"}
+            onClick={() => onSelect(item.target)}
+          >
+            <strong>{item.score}</strong>
+            <span>{item.label}</span>
+            <p>{item.evidence}</p>
+            <small>{item.nextAction}</small>
+          </button>
+        ))}
+      </div>
+      <p className="selected-meta"><strong>Next:</strong> {report.nextAction}</p>
+      <FeedbackList title="Evolution summary" items={report.summary} empty="No evolution summary." />
+      {report.blockers.length ? <FeedbackList title="Evolution blockers" items={report.blockers} empty="No blockers." /> : null}
+    </section>
+  );
+}
+
+function PromptLearnerModePanel({
+  onSelect,
+  report,
+}: {
+  onSelect: (id: string) => void;
+  report: PromptLearnerModeReport;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="learner-mode">
+      <div className="output-header">
+        <div className="panel-header">
+          <BookOpen size={18} />
+          <h2>Prompt Learner mode</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta">{report.valueStory}</p>
+      <div className="safe-check-grid">
+        {report.steps.map((step) => (
+          <button className="safe-check product-command-card" key={step.id} type="button" data-ready={step.ready ? "true" : "false"} onClick={() => onSelect(step.target)}>
+            <strong>{step.score}</strong>
+            <span>{step.label}</span>
+            <p>{step.detail}</p>
+            <small>{step.action}</small>
+          </button>
+        ))}
+      </div>
+      <FeedbackList title="Learner notes" items={report.notes} empty="No learner notes." />
+    </section>
+  );
+}
+
+function LearningMemoryV2Panel({
+  copied,
+  onCopy,
+  report,
+}: {
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  report: LearningMemoryV2Report;
+}) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="memory-v2">
+      <div className="output-header">
+        <div className="panel-header">
+          <Archive size={18} />
+          <h2>Learning Memory v2</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.rules.map((rule) => (
+          <article className="safe-check" key={rule.label} data-ready={rule.confidence >= 70 ? "true" : "false"}>
+            <strong>{rule.confidence}</strong>
+            <span>{rule.label}</span>
+            <p>{rule.promptPatch}</p>
+            <small>{rule.evidenceCount} evidence item(s)</small>
+          </article>
+        ))}
+      </div>
+      <div className="button-row">
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(report.memoryPatch, "learning-memory-v2")}>
+          {copied === "learning-memory-v2" ? <Check size={15} /> : <Copy size={15} />}
+          Copy memory patch
+        </button>
+      </div>
+      <FeedbackList title="Memory notes" items={report.notes} empty="No memory notes." />
+    </section>
+  );
+}
+
+function ResultReviewerPanel({ report }: { report: ResultReviewerReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="result-reviewer">
+      <div className="output-header">
+        <div className="panel-header">
+          <MonitorSmartphone size={18} />
+          <h2>Side-by-side result reviewer</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      {report.rows.length ? (
+        <div className="safe-check-grid">
+          {report.rows.map((row) => (
+            <article className="safe-check" key={row.promptId} data-ready={row.verdict === "promote" ? "true" : "false"}>
+              <strong>{row.buildScore}/{row.visualScore}</strong>
+              <span>{row.title}</span>
+              <p>{row.action}</p>
+              <small>{row.verdict} / delta {row.delta}</small>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="selected-meta">No paired build and screenshot rows yet. Run proof or import a result to review side by side.</p>
+      )}
+      <FeedbackList title="Reviewer actions" items={report.reviewActions} empty="No reviewer actions." />
+      <FeedbackList title="Reviewer notes" items={report.notes} empty="No reviewer notes." />
+    </section>
+  );
+}
+
+function HoldoutBenchmarkPanel({ report }: { report: HoldoutBenchmarkReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="holdout">
+      <div className="output-header">
+        <div className="panel-header">
+          <Gauge size={18} />
+          <h2>Holdout benchmark regression</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="metric-grid compact-metrics">
+        <Metric value={`${report.lockedCount}/${report.rows.length}`} label="Locked holdouts" />
+        <Metric value={formatNumber(report.score)} label="Regression score" />
+      </div>
+      <div className="safe-check-grid">
+        {report.rows.slice(0, 6).map((row) => (
+          <article className="safe-check" key={row.id} data-ready={row.locked ? "true" : "false"}>
+            <strong>{row.localScore}</strong>
+            <span>{row.title}</span>
+            <p>{row.policy}</p>
+            <small>{row.missingTraits.length ? row.missingTraits.slice(0, 3).join(" / ") : "No missing traits"}</small>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Regression policy" items={report.regressionPolicy} empty="No regression policy." />
+      <FeedbackList title="Holdout notes" items={report.notes} empty="No holdout notes." />
+    </section>
+  );
+}
+
+function PromptEditorStudioPanel({ report }: { report: PromptEditorStudioReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="editor-studio">
+      <div className="output-header">
+        <div className="panel-header">
+          <SlidersHorizontal size={18} />
+          <h2>Prompt editor studio</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.cards.map((card) => (
+          <article className="safe-check" key={card.label} data-ready={card.ready ? "true" : "false"}>
+            <strong>{card.ready ? "Ready" : "Edit"}</strong>
+            <span>{card.label}</span>
+            <p>{card.detail}</p>
+            <small>{card.rewriteHint}</small>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Edit recipe" items={report.editRecipe} empty="No edit recipe." />
+      <FeedbackList title="Editor notes" items={report.notes} empty="No editor notes." />
+    </section>
+  );
+}
+
+function ProjectSpacesPanel({ report }: { report: ProjectSpacesReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="project-spaces">
+      <div className="output-header">
+        <div className="panel-header">
+          <PackageOpen size={18} />
+          <h2>Project spaces</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.spaces.map((space) => (
+          <article className="safe-check" key={space.id} data-ready={space.isolation !== "blocked" ? "true" : "false"}>
+            <strong>{space.count}</strong>
+            <span>{space.label}</span>
+            <p>{space.detail}</p>
+            <small>{space.isolation}</small>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Space policy" items={report.activePolicy} empty="No space policy." />
+      <FeedbackList title="Space notes" items={report.notes} empty="No space notes." />
+    </section>
+  );
+}
+
+function ModularArchitecturePanel({ report }: { report: ModularArchitectureReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="architecture">
+      <div className="output-header">
+        <div className="panel-header">
+          <Hammer size={18} />
+          <h2>Modular architecture cleanup</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <div className="safe-check-grid">
+        {report.checks.map((check) => (
+          <article className="safe-check" key={check.label} data-ready={check.ready ? "true" : "false"}>
+            <strong>{check.ready ? "Ready" : "Watch"}</strong>
+            <span>{check.label}</span>
+            <p>{check.detail}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Module plan" items={report.modulePlan} empty="No module plan." />
+      <FeedbackList title="Architecture notes" items={report.notes} empty="No architecture notes." />
+    </section>
+  );
+}
+
+function PublicDemoExperiencePanel({ report }: { report: PublicDemoExperienceReport }) {
+  return (
+    <section className="panel lab-panel" data-readiness={report.status} data-train-section="public-experience">
+      <div className="output-header">
+        <div className="panel-header">
+          <Laptop size={18} />
+          <h2>Public demo experience</h2>
+        </div>
+        <ScoreRing score={report.score} label={report.status} />
+      </div>
+      <p className="selected-meta">{report.headline}</p>
+      <div className="safe-check-grid">
+        {report.rows.map((row) => (
+          <article className="safe-check" key={row.label} data-ready={row.ready ? "true" : "false"}>
+            <strong>{row.ready ? "Ready" : "Polish"}</strong>
+            <span>{row.label}</span>
+            <p>{row.detail}</p>
+          </article>
+        ))}
+      </div>
+      <FeedbackList title="Public demo script" items={report.demoScript} empty="No demo script." />
+      <FeedbackList title="Public demo notes" items={report.notes} empty="No public demo notes." />
     </section>
   );
 }

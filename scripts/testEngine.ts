@@ -149,6 +149,17 @@ import {
   type ScreenshotRecord,
   type TrainingRunRecord,
 } from "../src/promptEngine";
+import {
+  buildHoldoutBenchmarkReport,
+  buildLearningMemoryV2Report,
+  buildModularArchitectureReport,
+  buildProductEvolutionReport,
+  buildProjectSpacesReport,
+  buildPromptEditorStudioReport,
+  buildPromptLearnerModeReport,
+  buildPublicDemoExperienceReport,
+  buildResultReviewerReport,
+} from "../src/productEvolution";
 
 function readCuratedSeedPrompts() {
   return readdirSync("src/prompts")
@@ -1390,6 +1401,85 @@ const productSprint = buildProductSprintReport({
 assert.equal(productSprint.items.length, 7, "Product sprint should track all seven next upgrades.");
 assert.ok(productSprint.summary.some((item) => /guided run, cleanup, battle, templates/i.test(item)), "Product sprint should summarize the complete next product batch.");
 
+const promptLearnerMode = buildPromptLearnerModeReport({
+  guidedRun: guidedProductRun,
+  localMode: localModePolish,
+  productOs,
+  productSprint,
+  publicDemo: publicDemoSimplification,
+  resultFeedback: resultFeedbackLoop,
+});
+assert.equal(promptLearnerMode.steps.length, 6, "Prompt Learner mode should reduce the app to six obvious steps.");
+assert.ok(promptLearnerMode.valueStory.includes("Paste a great website prompt"), "Prompt Learner mode should explain the public product path.");
+
+const learningMemoryV2 = buildLearningMemoryV2Report({
+  buildRuns,
+  examples,
+  outcomes,
+  promptQualityDna,
+  screenshots,
+  templateCompiler,
+});
+assert.ok(learningMemoryV2.rules.length >= 7, "Learning Memory v2 should expose evidence-backed rules.");
+assert.ok(learningMemoryV2.memoryPatch.includes("Never require provider key changes"), "Learning Memory v2 should preserve provider-key boundaries.");
+
+const resultReviewer = buildResultReviewerReport({
+  buildRuns,
+  promptQualityDna,
+  resultFeedback: resultFeedbackLoop,
+  screenshots,
+});
+assert.ok(resultReviewer.rows.length > 0, "Result reviewer should pair build and screenshot evidence.");
+assert.notEqual(resultReviewer.status, "needs-proof", "Result reviewer should be reviewable with paired fixture proof.");
+
+const holdoutBenchmark = buildHoldoutBenchmarkReport({
+  benchmarkLibrary,
+  benchmarkV2,
+  learningMemory: learningMemoryV2,
+  qualityGate: qualityRegressionGate,
+});
+assert.ok(holdoutBenchmark.rows.length > 0, "Holdout benchmark should expose regression rows.");
+assert.ok(holdoutBenchmark.regressionPolicy.some((item) => /holdout/i.test(item)), "Holdout benchmark should document holdout policy.");
+
+const promptEditorStudio = buildPromptEditorStudioReport({
+  editorGuidance,
+  qualityGate: qualityRegressionGate,
+  templateCompiler,
+});
+assert.equal(promptEditorStudio.cards.length, 6, "Prompt editor studio should cover the six editable prompt sections.");
+
+const projectSpaces = buildProjectSpacesReport({ cleanupMode: corpusCleanupMode, examples });
+assert.ok(projectSpaces.spaces.some((space) => space.id === "seed"), "Project spaces should isolate the seed corpus.");
+assert.ok(projectSpaces.activePolicy.some((item) => /unrelated repo/i.test(item)), "Project spaces should protect against unrelated repo contamination.");
+
+const modularArchitecture = buildModularArchitectureReport({
+  moduleNames: ["promptEngine", "productEvolution", "App panels", "engine tests", "README"],
+  productReportCount: 9,
+});
+assert.equal(modularArchitecture.status, "ready", "Modular architecture report should recognize the product evolution split.");
+
+const publicDemoExperience = buildPublicDemoExperienceReport({
+  learnerMode: promptLearnerMode,
+  localMode: localModePolish,
+  publicDemo: publicDemoSimplification,
+  resultReviewer,
+});
+assert.equal(publicDemoExperience.demoScript.length, 4, "Public demo experience should define a four-step demo script.");
+
+const productEvolution = buildProductEvolutionReport({
+  architecture: modularArchitecture,
+  editorStudio: promptEditorStudio,
+  holdout: holdoutBenchmark,
+  learnerMode: promptLearnerMode,
+  memoryV2: learningMemoryV2,
+  projectSpaces,
+  publicExperience: publicDemoExperience,
+  resultReviewer,
+});
+assert.equal(productEvolution.items.length, 8, "Product evolution roadmap should track all eight requested upgrades.");
+assert.ok(productEvolution.summary.some((item) => /simplifies the product path/i.test(item)), "Product evolution roadmap should summarize the full upgrade layer.");
+assert.ok(productEvolution.items.some((item) => item.id === "architecture"), "Product evolution roadmap should include modular cleanup.");
+
 const proofSeedingRunway = buildProofSeedingRunwayReport({
   exampleCount: examples.length,
   hostedWorker: hostedWorkerOps,
@@ -1439,4 +1529,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 297, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 313, score: score.score, snapshot: snapshot.label }, null, 2));

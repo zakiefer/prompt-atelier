@@ -67,6 +67,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - CLI automation for offline proof seeding, regression timeline artifacts, and credential-boundary reports that do not change provider keys or deploy secrets
 - Product OS layer that unifies command center, dataset inbox, generator modes, proof gallery, accessibility QA, demo polish, regression history, exports, and plain-English learning explanations
 - Next product sprint layer that adds one guided training run, corpus cleanup mode, prompt battle autopilot, template compiler, real result feedback loop, public demo simplification, and no-key local mode polish
+- Product evolution layer that simplifies the main Prompt Learner mode, upgrades Learning Memory v2, adds side-by-side result review, holdout regression, prompt editor studio, project spaces, modular report logic, and public demo experience polish
 
 ## Development
 
@@ -185,6 +186,7 @@ The Train tab now starts with:
 29. A proof-seeding and operator-proof layer that creates offline or hosted proof queues, speeds pairwise preference review, checks generator brief completeness, exports regression timeline evidence, and audits credential boundaries without changing provider keys.
 30. A Product OS layer that turns the major product upgrades into one scored operating surface: command center, dataset inbox, generator, proof gallery, accessibility QA, public demo, regression dashboard, export packs, and learning explanations.
 31. A Next Product Sprint layer that turns the next upgrades into product controls: guided run, cleanup mode, battle autopilot, template compiler, result feedback, demo simplification, and local fallback polish without changing Claude or provider keys.
+32. A Product Evolution layer that makes the app feel like a prompt learner first: paste, score, improve, battle, prove, and export, with Learning Memory v2, result review, holdout regression, editor sections, isolated project spaces, modular report logic, and public demo polish.
 
 The tightest improvement cycle is:
 
