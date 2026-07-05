@@ -376,6 +376,7 @@ export function LearnView({
   setLearnerText: (value: string) => void;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<"compose" | "review" | "export">("compose");
   const [diffDecisions, setDiffDecisions] = useState<Record<string, "accepted" | "rejected">>({});
   const [briefInput, setBriefInput] = useState<LearnerBriefInput>(() => createEmptyLearnerBriefInput(activeLearningProfile));
   const [outcomeRating, setOutcomeRating] = useState<OutcomeRating>("great");
@@ -413,13 +414,10 @@ export function LearnView({
     { label: "Prove", ready: /screenshot|verify|build|test|qa/i.test(improvedPrompt), detail: "Proof checklist is present." },
     { label: "Export", ready: Boolean(improvedPrompt.trim()), detail: "Copy or save the improved prompt." },
   ];
-  const guidedSections = [
-    "Paste",
-    "Score",
-    "Revise",
-    "Compare",
-    "Feedback",
-    "Export",
+  const workspaceTabs: { id: "compose" | "review" | "export"; label: string; detail: string }[] = [
+    { id: "compose", label: "Compose", detail: "Paste, score, brief, revise" },
+    { id: "review", label: "Review", detail: "Diff, feedback, decisions" },
+    { id: "export", label: "Export", detail: "Presets, sessions, proof" },
   ];
   const interactionChecks = [
     { label: "Profile switching", ready: Boolean(activeLearningProfile.id), detail: `${activeLearningProfile.label} is active.` },
@@ -455,14 +453,21 @@ export function LearnView({
         </div>
 
         <nav className="learner-jump-nav" aria-label="Guided learner sections" data-train-section="guided-first-run">
-          {guidedSections.map((section, index) => (
-            <a href={`#learner-${section.toLowerCase()}`} key={section}>
+          {workspaceTabs.map((tab, index) => (
+            <button
+              data-active={activeWorkspaceTab === tab.id ? "true" : "false"}
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveWorkspaceTab(tab.id)}
+            >
               <span>{index + 1}</span>
-              {section}
-            </a>
+              <strong>{tab.label}</strong>
+              <small>{tab.detail}</small>
+            </button>
           ))}
         </nav>
 
+        <div className="learner-tab-panel" data-active={activeWorkspaceTab === "compose" ? "true" : "false"} hidden={activeWorkspaceTab !== "compose"}>
         <div className="learner-flow-grid" id="learner-paste">
           <div className="learner-input-card">
             <Field label="Prompt to learn from">
@@ -627,7 +632,9 @@ export function LearnView({
             </div>
           </article>
         </div>
+        </div>
 
+        <div className="learner-tab-panel" data-active={activeWorkspaceTab === "review" ? "true" : "false"} hidden={activeWorkspaceTab !== "review"}>
         <section className="learner-mini-panel" data-train-section="prompt-diff-editor" id="learner-compare">
           <div className="output-header">
             <div>
@@ -699,7 +706,9 @@ export function LearnView({
             </Field>
           </div>
         </section>
+        </div>
 
+        <div className="learner-tab-panel" data-active={activeWorkspaceTab === "export" ? "true" : "false"} hidden={activeWorkspaceTab !== "export"}>
         <div className="self-serve-grid">
           <article className="learner-mini-panel" data-train-section="house-compiler">
             <div className="output-header">
@@ -934,6 +943,7 @@ export function LearnView({
             ))}
           </div>
         </section>
+        </div>
 
         <button className="ghost-button wide-button" type="button" onClick={() => setAdvancedOpen((open) => !open)}>
           <SlidersHorizontal size={15} />

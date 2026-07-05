@@ -621,7 +621,7 @@ button:disabled {
 
 .public-learner-panel h2 {
   font-family: var(--font-display);
-  font-size: clamp(2.4rem, 5vw, 4.6rem);
+  font-size: clamp(2rem, 4.2vw, 3.8rem);
   font-weight: 400;
   letter-spacing: 0;
   line-height: 0.9;
@@ -640,40 +640,66 @@ button:disabled {
 }
 
 .learner-flow-grid {
+  align-items: start;
   display: grid;
   gap: 14px;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
 }
 
+.learner-tab-panel {
+  display: grid;
+  gap: 14px;
+  max-height: min(900px, calc(100vh - 290px));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-right: 3px;
+  scrollbar-gutter: stable;
+}
+
+.learner-tab-panel[hidden] {
+  display: none;
+}
+
 .learner-jump-nav {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 18px;
   display: grid;
   gap: 6px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 6px;
   position: sticky;
   top: 12px;
   z-index: 5;
 }
 
-.learner-jump-nav a {
+.learner-jump-nav button {
   align-items: center;
-  border-radius: 999px;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
   color: var(--muted);
-  display: inline-flex;
+  cursor: pointer;
+  display: grid;
   font-size: 0.74rem;
   font-weight: 800;
   gap: 6px;
-  justify-content: center;
-  min-height: 32px;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: start;
+  min-height: 48px;
+  padding: 7px 10px;
+  text-align: left;
   text-decoration: none;
 }
 
-.learner-jump-nav a:hover {
+.learner-jump-nav button:hover,
+.learner-jump-nav button[data-active="true"] {
   background: var(--panel-soft);
   color: var(--ink);
+}
+
+.learner-jump-nav button[data-active="true"] {
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .learner-jump-nav span {
@@ -685,7 +711,20 @@ button:disabled {
   font-size: 0.64rem;
   height: 18px;
   justify-content: center;
+  grid-row: span 2;
   width: 18px;
+}
+
+.learner-jump-nav strong {
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.learner-jump-nav small {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .learner-input-card,
@@ -700,7 +739,8 @@ button:disabled {
 }
 
 .learner-input-card textarea {
-  min-height: 190px;
+  max-height: 220px;
+  min-height: 132px;
 }
 
 .learner-step-grid {
@@ -708,7 +748,8 @@ button:disabled {
 }
 
 .learner-output {
-  min-height: 280px;
+  max-height: 360px;
+  min-height: 230px;
 }
 
 .profile-strip {
@@ -776,16 +817,29 @@ button:disabled {
 .proof-gallery-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.brief-builder-grid .field:nth-child(n + 5),
 .feedback-form-grid .field:nth-child(n + 3) {
   grid-column: 1 / -1;
 }
 
 .compact-textarea {
-  min-height: 78px;
+  min-height: 56px;
+}
+
+.learner-mini-panel .mini-output {
+  max-height: 170px;
+  min-height: 110px;
+}
+
+.learner-mini-panel .compact-list {
+  max-height: 300px;
+}
+
+.learner-input-card .sample-gallery {
+  max-height: 260px;
+  overflow: auto;
 }
 
 .proof-card,
@@ -3922,6 +3976,24 @@ button.preset-card {
     width: 100%;
   }
 
+  .center-panel {
+    order: 1;
+  }
+
+  .left-panel {
+    max-height: 360px;
+    order: 2;
+    overflow: auto;
+    position: static;
+  }
+
+  .right-panel {
+    max-height: 520px;
+    order: 3;
+    overflow: auto;
+    position: static;
+  }
+
   .train-section-nav {
     position: static;
   }
@@ -3975,7 +4047,8 @@ button.preset-card {
   }
 
   .left-panel {
-    max-height: none;
+    max-height: 360px;
+    overflow: auto;
     position: static;
   }
 
@@ -4053,7 +4126,31 @@ button.preset-card {
   }
 
   .tabs {
-    grid-template-columns: 1fr;
+    display: flex;
+    overflow-x: auto;
+    padding: 5px;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+    min-width: 112px;
+  }
+
+  .learner-tab-panel {
+    max-height: 520px;
+  }
+
+  .left-panel {
+    max-height: 280px;
+  }
+
+  .right-panel {
+    max-height: 360px;
   }
 
   .choice-grid,

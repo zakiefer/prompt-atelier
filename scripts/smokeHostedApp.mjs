@@ -256,6 +256,8 @@ async function runLearnerInteractions(page) {
     checked.push("profile switched");
   }
 
+  await openLearnerTab(page, "Review");
+
   const acceptButton = page.locator('[data-train-section="prompt-diff-editor"] button').filter({ hasText: /^Accept$/ }).first();
   if (await acceptButton.count()) {
     await acceptButton.click();
@@ -267,6 +269,20 @@ async function runLearnerInteractions(page) {
     await rejectButton.click();
     checked.push("diff rejected");
   }
+
+  const saveFeedbackButton = page.locator('[data-train-section="outcome-feedback-loop"] button').filter({ hasText: /Save feedback/ }).first();
+  if (await saveFeedbackButton.count()) {
+    await saveFeedbackButton.click();
+    checked.push("outcome feedback saved");
+  }
+
+  const saveSessionButton = page.locator('[data-learner-action="save-session"]').first();
+  if (await saveSessionButton.count()) {
+    await saveSessionButton.click();
+    checked.push("learner session saved");
+  }
+
+  await openLearnerTab(page, "Export");
 
   const corpusTextarea = page.locator(".import-box textarea").first();
   if (await corpusTextarea.count()) {
@@ -293,18 +309,6 @@ async function runLearnerInteractions(page) {
   if (await saveWinnerButton.count()) {
     await saveWinnerButton.click();
     checked.push("benchmark winner saved");
-  }
-
-  const saveFeedbackButton = page.locator('[data-train-section="outcome-feedback-loop"] button').filter({ hasText: /Save feedback/ }).first();
-  if (await saveFeedbackButton.count()) {
-    await saveFeedbackButton.click();
-    checked.push("outcome feedback saved");
-  }
-
-  const saveSessionButton = page.locator('[data-learner-action="save-session"]').first();
-  if (await saveSessionButton.count()) {
-    await saveSessionButton.click();
-    checked.push("learner session saved");
   }
 
   const detailsButton = page.locator('[data-train-section="learner-session-history"] button').filter({ hasText: /^Details$/ }).first();
@@ -355,4 +359,15 @@ async function runLearnerInteractions(page) {
     throw new Error("Learner interaction smoke did not persist saved prompt history.");
   }
   return { ...state, checked };
+}
+
+async function openLearnerTab(page, label) {
+  const tabButton = page.locator('[data-train-section="guided-first-run"] button').filter({ hasText: label }).first();
+  if (await tabButton.count()) {
+    await tabButton.click();
+    await page.waitForFunction((tabLabel) => {
+      const buttons = [...globalThis.document.querySelectorAll('[data-train-section="guided-first-run"] button')];
+      return buttons.some((button) => button.textContent?.includes(String(tabLabel)) && button.getAttribute("data-active") === "true");
+    }, label, { timeout: 5000 });
+  }
 }
