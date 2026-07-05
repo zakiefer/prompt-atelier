@@ -48,7 +48,7 @@ Demo target after Pages is enabled: `https://zakiefer.github.io/prompt-atelier/`
 - Workspace prompt packs and format adapters for Codex, Claude, v0, Cursor, JSON training sets, OpenAI fine-tune JSONL, Claude project memory, Codex skill bundles, evaluator schema JSON, and Markdown packs
 - One-click full training export pack with golden dataset, JSONL, prompt memory, quality grader, benchmark trend, project boundary report, reusable memory pack, and Codex build pack
 - Guided AI training workflow with durable run history, cached model/local agreement, candidate prompt quality loops, corpus intelligence, benchmark v2, safe-to-train checks, and evaluation artifacts
-- Best-next-action guidance, one-click training stepper, corpus provenance firewall, build-result learning loop, Claude/local/result comparison, prompt recipe distiller, section editor coaching, explainable Prompt Quality DNA, and benchmark-library coverage
+- Best-next-action guidance, one-click training stepper, corpus provenance firewall, build-result learning loop, Claude/local/result comparison, prompt recipe distiller, section editor coaching, explainable prompt strength profile, and benchmark-library coverage
 - Beginner/expert operator mode, large-paste import wizard, golden/bad speed labeling, training-run replay, benchmark battles, score calibration, and hosted hardening panels
 - True closed-loop runner that can generate, build-queue, screenshot-proof, judge, rewrite, and save the winning prompt through the hosted API when available
 - Hosted proof worker that chains closed-loop judging into scaffold/build/capture queue execution through `/api/closed-loop/prove`
@@ -177,8 +177,8 @@ The Train tab now starts with:
 11. A structured generator front door and locked Golden Dataset v1 path for turning good examples into train/test JSONL.
 12. A production-hardening checklist, hosted brain connector, and Claude readiness panel covering API health, token posture, server-side model key visibility, restore points, dataset versions, and proof history.
 13. A collapsible training map, Train from this corpus button, queue progress ledger, memory diff, and visual proof gallery for operating the whole learner from one screen.
-14. A guided training product layer that records durable training runs, compares cached model judgment against local DNA, picks prompt candidates before spending build time, analyzes corpus gaps, runs benchmark v2, checks hosted safe-to-train posture, and packages evaluation artifacts.
-15. A best-next-action assistant, one-click stepper, provenance firewall, real build-result learning report, Claude/local/result comparison dashboard, distilled prompt recipes, generated-prompt editor guidance, explainable DNA dimensions, and benchmark-library coverage so the Train tab tells you what to do next instead of only showing raw scores.
+14. A guided training product layer that records durable training runs, compares cached model judgment against local strength scoring, picks prompt candidates before spending build time, analyzes corpus gaps, runs benchmark v2, checks hosted safe-to-train posture, and packages evaluation artifacts.
+15. A best-next-action assistant, one-click stepper, provenance firewall, real build-result learning report, Claude/local/result comparison dashboard, distilled prompt recipes, generated-prompt editor guidance, explainable strength dimensions, and benchmark-library coverage so the Train tab tells you what to do next instead of only showing raw scores.
 16. A beginner/expert operator layer that turns the noisy training workspace into import, label, prove, rewrite, and export cards.
 17. A true closed-loop runway that connects prompt generation, build queue creation, screenshot proof, server-side Claude/local judging, section regeneration, winner saving, and artifact export.
 18. Calibration, benchmark battle, replay, and hosted-hardening panels that show whether model scores, labels, API posture, backups, and real build proof are strong enough to keep learning.
@@ -215,11 +215,11 @@ Use the project isolation guard before running calibration or exporting training
 
 Use the one-click export pack when handing the learner to another agent or model. It bundles the locked dataset, JSONL rows, learned memory, benchmark trend, project boundary state, quality grader, reusable memory pack, and Codex build pack in one JSON artifact.
 
-Use the Train from this corpus button after curation looks clean. It locks the current golden dataset, runs the benchmark suite, calibrates DNA against outcomes, and exports the model-training pack. The API and export paths redact recognized API keys, bearer tokens, and generic secrets before they are persisted or logged.
+Use the Train from this corpus button after curation looks clean. It locks the current golden dataset, runs the benchmark suite, calibrates prompt strength against outcomes, and exports the model-training pack. The API and export paths redact recognized API keys, bearer tokens, and generic secrets before they are persisted or logged.
 
 Use Run guided train when you want the product workflow rather than the expert ladder. It writes a training run immediately, then syncs to `/api/training/run` when the API is available. Cache eval uses `/api/model/evaluate-cached` without sending browser secrets. Analyze, Run v2, and Create artifact call `/api/corpus/analyze`, `/api/benchmark/v2`, and `/api/artifact/create` while keeping deterministic browser fallbacks.
 
-Use the best-next-action panel when the system feels noisy. It prioritizes the next move from curation status, safe-to-train posture, model agreement, proof history, benchmark coverage, and available build evidence. The provenance firewall and Prompt Quality DNA panels explain why a prompt is safe, risky, thin, or ready so you can correct the corpus before spending another build run.
+Use the best-next-action panel when the system feels noisy. It prioritizes the next move from curation status, safe-to-train posture, model agreement, proof history, benchmark coverage, and available build evidence. The provenance firewall and prompt strength panels explain why a prompt is safe, risky, thin, or ready so you can correct the corpus before spending another build run.
 
 Use Run true closed loop when you want the product path. It creates a local proof ledger entry, tries `/api/closed-loop/run` for server-side Claude/local judging, saves the rewritten winner as a user prompt, and queues the winner for real build proof. Use Run server judge when you only want the hosted evaluator to rewrite and persist a winner without creating a queue job.
 

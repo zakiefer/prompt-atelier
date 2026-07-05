@@ -3600,7 +3600,7 @@ export function buildStyleGuide(profile: PromptProfile, clusters: ArchetypeClust
 
 Generated from ${profile.exampleCount} website prompts.
 
-## Taste DNA
+## Taste Profile
 
 - Average prompt length: ${profile.averageWords} words.
 - Detail score: ${profile.detailScore}/100.
@@ -4160,7 +4160,7 @@ export function scorePromptDnaV2(
   return { overall, dimensions };
 }
 
-const DNA_NEXT_ACTIONS: Record<DnaKey, string> = {
+const STRENGTH_NEXT_ACTIONS: Record<DnaKey, string> = {
   visualSpecificity: "Name the signature visual mechanic and the exact first-viewport composition.",
   technicalCompleteness: "Declare framework, language, styling, icon, animation, and no-extra-library boundaries.",
   assetPrecision: "Add exact media URLs, dimensions, focal points, object-fit rules, and fallbacks.",
@@ -4213,17 +4213,17 @@ export function explainDnaScore(
             ? "Partial because some useful signals exist, but the implementation contract could be tighter."
             : "Weak because the prompt leaves too much to taste or inference in this area.",
       evidence: evidence.length ? evidence : ["No explicit evidence detected."],
-      nextAction: DNA_NEXT_ACTIONS[key],
+      nextAction: STRENGTH_NEXT_ACTIONS[key],
     };
   });
 
   return {
     overall,
     summary: [
-      `DNA averages ${overall}/100 across the classic seven prompt-quality dimensions.`,
+      `Prompt strength averages ${overall}/100 across the classic seven prompt-quality dimensions.`,
       strongest ? `Strongest dimension: ${dnaLabels[strongest[0]]} at ${strongest[1]}.` : "No strong dimension detected yet.",
       weakest ? `Next lift: ${dnaLabels[weakest[0]]} at ${weakest[1]}.` : "No weak dimension detected yet.",
-      `DNA v2 is ${v2.overall}/100 after adding result and screenshot-readiness signals.`,
+      `Strength v2 is ${v2.overall}/100 after adding result and screenshot-readiness signals.`,
     ],
     dimensions,
   };
@@ -4442,7 +4442,7 @@ export function buildGoldReviewReport({
     ].filter(Boolean),
     notes: [
       left && right ? `Left ${left.score} vs right ${right.score}.` : "Select two prompts for a stronger review pair.",
-      "Review actions reuse the existing outcome table, so recipes, DNA calibration, and memory exports update immediately.",
+      "Review actions reuse the existing outcome table, so recipes, strength calibration, and memory exports update immediately.",
     ],
   };
 }
@@ -6198,7 +6198,7 @@ export function buildModelEvaluationCacheReport(records: ModelEvaluationCacheRec
     averageDelta,
     notes: [
       records.length ? `${records.length} cached model evaluation(s) are available.` : "No cached model evaluations yet.",
-      averageDelta <= 7 ? "Model and local DNA scoring are mostly aligned." : "Review model/local disagreement before trusting automated promotion.",
+      averageDelta <= 7 ? "Model and local strength scoring are mostly aligned." : "Review model/local disagreement before trusting automated promotion.",
     ],
   };
 }
@@ -6275,7 +6275,7 @@ export function buildCorpusIntelligenceReport(examples: PromptExample[], outcome
   const weakExamples = scored
     .filter((item) => item.score < 55 || item.outcome?.status === "avoid")
     .slice(0, 8)
-    .map((item) => ({ id: item.example.id, title: item.example.title, score: item.score, reason: item.outcome?.notes || "Low local prompt DNA score." }));
+    .map((item) => ({ id: item.example.id, title: item.example.title, score: item.score, reason: item.outcome?.notes || "Low local prompt strength score." }));
   return {
     score: Math.max(0, Math.min(100, 100 - gaps.length * 5 - weakExamples.length * 3 + clusters.length * 2)),
     clusters,
@@ -6589,8 +6589,8 @@ export function buildPromptQualityDnaReport({
     label: score >= 80 ? "training-grade" : score >= 60 ? "needs proof" : "repair first",
     dimensions,
     summary: [
-      `Prompt Quality DNA is ${score}/100.`,
-      dnaExplanation.summary[0] || "Static DNA, proof readiness, result evidence, and screenshots are blended.",
+      `Prompt strength profile is ${score}/100.`,
+      dnaExplanation.summary[0] || "Static strength, proof readiness, result evidence, and screenshots are blended.",
       dimensions.filter((dimension) => dimension.score < 65).length ? "Low dimensions should become the next prompt patch." : "No major weak dimensions detected.",
     ],
   };
@@ -6649,7 +6649,7 @@ export function buildModelJudgeComparisonReport({
   const modelScore = latest?.score ?? 0;
   const rows = [
     { label: "Model judge", score: modelScore, detail: latest ? `${latest.provider} says ${latest.readiness}.` : "No cached model evaluation yet." },
-    { label: "Local DNA", score: latest?.localScore ?? qualityGate.score, detail: latest ? `${latest.agreement} with model.` : "Local quality gate is the current fallback." },
+    { label: "Local strength", score: latest?.localScore ?? qualityGate.score, detail: latest ? `${latest.agreement} with model.` : "Local quality gate is the current fallback." },
     { label: "Actual result", score: resultScore.score, detail: resultScore.recommendations[0] || "No imported build result yet." },
     { label: "Quality gate", score: qualityGate.score, detail: qualityGate.ready ? "Ready" : qualityGate.blocking[0] || "Needs proof." },
   ];
@@ -6796,8 +6796,8 @@ export function buildBestNextActionReport({
     promptDna.score < 75
       ? {
           priority: "medium" as const,
-          title: "Patch weak Prompt Quality DNA",
-          target: "Prompt DNA",
+          title: "Patch weak prompt strength",
+          target: "Prompt strength",
           detail: promptDna.summary[2],
           checklist: promptDna.dimensions.filter((dimension) => dimension.score < 65).slice(0, 4).map((dimension) => `${dimension.label}: ${dimension.fix}`),
         }
@@ -8216,7 +8216,7 @@ export function buildCalibrationProductReport({
   resultQuality: ResultQualityDashboardReport;
 }): CalibrationProductReport {
   const modelRow = modelComparison.rows.find((row) => /model/i.test(row.label)) || modelComparison.rows[0];
-  const localRow = modelComparison.rows.find((row) => /local|DNA/i.test(row.label)) || modelComparison.rows[1] || modelRow;
+  const localRow = modelComparison.rows.find((row) => /local|strength/i.test(row.label)) || modelComparison.rows[1] || modelRow;
   const resultRow = resultQuality.stages.find((stage) => /Build|Screenshot/i.test(stage.label));
   const rows = [
     {
@@ -8722,7 +8722,7 @@ export function buildNarrativePolishReport({
 }): NarrativePolishReport {
   const beats = [
     { label: "Learn", ready: corpusCount > 0, detail: `${corpusCount} prompt(s) feed the corpus.` },
-    { label: "Extract DNA", ready: commandCenter.cards.some((card) => card.id === "review" && card.status !== "blocked"), detail: commandCenter.cards.find((card) => card.id === "review")?.reason || "Review dataset before extracting DNA." },
+    { label: "Extract patterns", ready: commandCenter.cards.some((card) => card.id === "review" && card.status !== "blocked"), detail: commandCenter.cards.find((card) => card.id === "review")?.reason || "Review dataset before extracting patterns." },
     { label: "Generate", ready: generator.readiness === "ready", detail: generator.notes[0] },
     { label: "Prove", ready: proof.status === "ready" || proof.status === "running", detail: proof.primaryAction },
     { label: "Calibrate", ready: commandCenter.cards.some((card) => card.id === "calibrate" && card.status !== "blocked"), detail: commandCenter.cards.find((card) => card.id === "calibrate")?.reason || "Calibrate the evaluator." },
@@ -8733,10 +8733,10 @@ export function buildNarrativePolishReport({
     score,
     status: score >= 80 ? "clear" : "needs-story",
     headline: "Learn from great prompts. Generate build-ready website briefs. Prove the result.",
-    subhead: "Prompt Atelier turns a curated corpus into prompt DNA, one-click proof runs, evaluator calibration, and exportable training packs.",
+    subhead: "Prompt Atelier turns a curated corpus into prompt patterns, one-click proof runs, evaluator calibration, and exportable training packs.",
     beats,
     notes: [
-      "The product story now follows the visible workflow: corpus, DNA, generation, proof, calibration, export.",
+      "The product story now follows the visible workflow: corpus, patterns, generation, proof, calibration, export.",
       score >= 80 ? "Narrative is coherent enough for the public demo." : "Tighten weak beats before treating the page as self-explanatory.",
     ],
   };
@@ -8964,7 +8964,7 @@ export function buildLearningExplanationReport({
     status: !selectedPrompt ? "empty" : score >= 70 ? "clear" : "needs-proof",
     cards,
     plainEnglish: selectedPrompt
-      ? `${selectedPrompt.title} is being explained through DNA, coach feedback, memory drift, and win/loss reasoning.`
+      ? `${selectedPrompt.title} is being explained through strength, coach feedback, memory drift, and win/loss reasoning.`
       : "Select a prompt to see why the learner thinks it is strong, weak, or ready for proof.",
     notes: [
       "Learning explanations convert scores into plain-language reasons and next actions.",
@@ -10983,7 +10983,7 @@ export function rankPromptExamples(examples: PromptExample[], outcomes: OutcomeR
       const score = Math.max(0, Math.min(100, Math.round(dnaScore * 0.58 + originality * 0.18 + outcomeBoost * 0.24)));
       const reasons = [
         `${analysis.archetypes[0]?.label ?? "Unclustered"} archetype`,
-        `${dnaScore} DNA`,
+        `${dnaScore} strength`,
         `${originality} originality`,
         outcome?.status === "gold" ? "Gold set" : "",
         outcome?.rating === "great" ? "Great result" : "",
@@ -11240,14 +11240,14 @@ export function calibrateDnaScores(
     calibratedScore,
     rows,
     insights: [
-      rows.length < 5 ? "Add at least five rated builds for meaningful DNA calibration." : `${rows.length} rated builds are feeding calibration.`,
+      rows.length < 5 ? "Add at least five rated builds for meaningful strength calibration." : `${rows.length} rated builds are feeding calibration.`,
       correlation >= 45
-        ? "DNA score is becoming predictive of actual build quality."
+        ? "Strength score is becoming predictive of actual build quality."
         : correlation <= -20
-          ? "DNA score is inverted against outcomes; review what you are marking gold."
-          : "DNA score is descriptive more than predictive right now.",
+          ? "Strength score is inverted against outcomes; review what you are marking gold."
+          : "Strength score is descriptive more than predictive right now.",
       actualAverage > predictedAverage + 8
-        ? "Your prompts are building better than their static DNA suggests; outcome weighting should boost them."
+        ? "Your prompts are building better than their static strength suggests; outcome weighting should boost them."
         : predictedAverage > actualAverage + 8
           ? "Prompts look strong on paper but need more result-proof constraints."
           : "Static prompt quality and actual results are broadly aligned.",
@@ -11685,7 +11685,7 @@ export function scorePromptModel(
     finalScore,
     notes: [
       "Prompt quality is the static evaluator score.",
-      "Predicted build blends static quality, visual QA, screenshot coverage, and DNA calibration.",
+      "Predicted build blends static quality, visual QA, screenshot coverage, and strength calibration.",
       "Actual result comes from recorded build/screenshot outcomes.",
       `Active weights: ${weightedEntries.map(([key, weight]) => `${key} ${weight}`).join(" / ")}.`,
       failureRisk > 45 ? "Failure risk is elevated; apply the failure-memory patch before running another build." : "Failure risk is under control.",

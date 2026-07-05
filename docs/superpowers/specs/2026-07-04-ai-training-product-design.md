@@ -13,7 +13,7 @@ Ingest -> Curate -> Train -> Generate -> Prove -> Export
 ## Success Criteria
 
 - A user can start a durable training run from the current corpus and see its status, stage, score, artifacts, benchmark delta, memory diff, and errors.
-- Model-backed scoring feels first-class: model output is cached, normalized, comparable against local DNA scoring, and safe from browser-secret exposure.
+- Model-backed scoring feels first-class: model output is cached, normalized, comparable against local strength scoring, and safe from browser-secret exposure.
 - The app can generate multiple prompt candidates, score them, explain the winner, mutate weaker candidates, and produce a final best prompt.
 - Corpus intelligence shows clusters, archetype gaps, strongest prompt families, weak examples, and recommended prompt examples to add next.
 - The Train tab has a guided top-level workflow while retaining advanced panels below.
@@ -141,7 +141,7 @@ The UI should show:
 - readiness
 - model mode
 - cache hit/miss
-- local DNA score
+- local strength score
 - delta
 - explanation
 - recommended next mutation

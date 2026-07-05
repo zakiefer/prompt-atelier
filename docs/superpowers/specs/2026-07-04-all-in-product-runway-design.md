@@ -17,7 +17,7 @@ The app should feel useful even when the user does not understand every scoring 
 - A user can create a high-quality website prompt from a short brief without opening advanced panels.
 - Imported prompts enter a dataset inbox where each row can be accepted, marked gold, rejected, or quarantined with reasons.
 - A proof run can connect generated prompt text to build output, screenshots, visual judgment, repair patches, and winner selection.
-- Claude calibration compares server-side model scores against local DNA scoring and flags disagreement.
+- Claude calibration compares server-side model scores against local strength scoring and flags disagreement.
 - The Train tab starts with a simplified command center and hides advanced detail behind clear sections.
 - Hosted API setup is actionable enough to run persistent server-side evaluation and guarded worker proof.
 - CI can detect quality regressions in corpus safety, benchmark coverage, generator output, and API contracts.
@@ -117,7 +117,7 @@ It should not run arbitrary commands from the browser. Worker execution remains 
 
 Add a calibration surface that compares:
 
-- local DNA score
+- local strength score
 - cached model score
 - screenshot judge score
 - result/build score

@@ -332,8 +332,8 @@ assert.ok(visualRegression.checks.every((check) => check.detail), "Visual regres
 const resultArtifact = scoreResultArtifact(examples[0], screenshots[0], buildRuns[0]);
 const screenshotSet = scoreScreenshotSet(examples[0], screenshots, buildRuns[0]);
 const dnaExplanation = explainDnaScore(examples[0], resultArtifact, screenshotSet);
-assert.ok(dnaExplanation.summary.length >= 3, "DNA explanation should include summary bullets.");
-assert.ok(dnaExplanation.dimensions.every((dimension) => dimension.nextAction), "DNA explanation should include next actions.");
+assert.ok(dnaExplanation.summary.length >= 3, "Strength explanation should include summary bullets.");
+assert.ok(dnaExplanation.dimensions.every((dimension) => dimension.nextAction), "Strength explanation should include next actions.");
 const buildFeedback = buildBuildFeedbackReport(examples[0], resultArtifact, screenshotSet);
 assert.ok(buildFeedback.nextActions.length > 0, "Build feedback should recommend next actions.");
 assert.ok(buildFeedback.checks.length >= resultArtifact.checks.length, "Build feedback should include result and screenshot checks.");
@@ -519,8 +519,8 @@ const corpusNeighbors = buildCorpusNeighbors(exactPrompt, examples, outcomes);
 assert.ok(corpusNeighbors.length >= 3, "Learner should surface nearest-neighbor corpus examples.");
 assert.ok(corpusNeighbors.every((neighbor) => neighbor.reasons.length), "Corpus neighbors should explain why they matched.");
 const dnaRewritePlan = buildDnaRewritePlan({ dnaExplanation, improvedPrompt: JSON.parse(learnerPack.json).improvedPrompt, source: exactPrompt });
-assert.equal(dnaRewritePlan.length, 5, "DNA rewrite plan should focus the weakest five dimensions.");
-assert.ok(dnaRewritePlan.every((rewrite) => rewrite.rewrite.length > 20), "DNA rewrite plan should include exact rewrite moves.");
+assert.equal(dnaRewritePlan.length, 5, "Strength rewrite plan should focus the weakest five dimensions.");
+assert.ok(dnaRewritePlan.every((rewrite) => rewrite.rewrite.length > 20), "Strength rewrite plan should include exact rewrite moves.");
 const learnerRecipes = buildLearnerRecipes({ clusters, profile });
 assert.ok(learnerRecipes.length >= 3, "Learner recipe builder should emit archetype recipes.");
 assert.ok(learnerRecipes[0].prompt.includes("RESPONSIVE AND BUILD RULES"), "Learner recipe should use the house prompt recipe shape.");
@@ -740,8 +740,8 @@ assert.ok(buildLearning.score >= 70, "Build result learning should score proven 
 assert.ok(buildLearning.nextActions.length >= 0, "Build result learning should expose next actions array.");
 
 const promptQualityDna = buildPromptQualityDnaReport({ dnaExplanation, qualityGate, resultScore: resultArtifact, screenshotQa: screenshotSet });
-assert.ok(promptQualityDna.dimensions.length > dnaExplanation.dimensions.length, "Prompt Quality DNA should add proof dimensions.");
-assert.ok(promptQualityDna.summary[0].includes("Prompt Quality DNA"), "Prompt Quality DNA should explain the score plainly.");
+assert.ok(promptQualityDna.dimensions.length > dnaExplanation.dimensions.length, "Prompt strength profile should add proof dimensions.");
+assert.ok(promptQualityDna.summary[0].includes("Prompt strength profile"), "Prompt strength profile should explain the score plainly.");
 
 const recipeDistiller = buildPromptRecipeDistillerReport({
   goldenRecipes: [],
@@ -1302,7 +1302,7 @@ const learningExplanation = buildLearningExplanationReport({
   selectedPrompt: examples[0],
   winExplanation,
 });
-assert.ok(learningExplanation.cards.length >= 6, "Learning explanations should include DNA, coach, memory, and win cards.");
+assert.ok(learningExplanation.cards.length >= 6, "Learning explanations should include strength, coach, memory, and win cards.");
 assert.ok(learningExplanation.plainEnglish.includes(examples[0].title), "Learning explanations should name the selected prompt.");
 
 const publicDemoPolish = buildPublicDemoPolishReport({

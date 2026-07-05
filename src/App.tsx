@@ -1345,7 +1345,7 @@ function formatPromptForTarget(prompt: PromptExample | undefined, target: string
       "",
       "Use this when generating or grading website prompts.",
       "",
-      "## Prompt DNA",
+      "## Prompt strength",
       memory.markdown,
       "",
       "## Current Reference Prompt",
@@ -5655,7 +5655,7 @@ export default function App() {
       : "queued";
     const notes = [
       hasEvidence ? "Existing build/screenshot evidence was scored into the learning signal." : "Queued a build proof job; import queue-result.json or attach screenshots to finish learning.",
-      `Prompt ${promptScore}/100, result ${resultScore.score}/100, screenshot ${screenshotQa.score}/100, DNA ${dnaV2.overall}/100.`,
+      `Prompt ${promptScore}/100, result ${resultScore.score}/100, screenshot ${screenshotQa.score}/100, strength ${dnaV2.overall}/100.`,
       ...buildFeedback.nextActions.slice(0, 4),
     ];
     const run: ProofLearningRun = {
@@ -6131,7 +6131,7 @@ export default function App() {
     setGeneratorInput((current) => ({
       ...current,
       ...mode.patch,
-      goal: current.goal || "turn learned prompt DNA into a build-ready, proof-ready website brief",
+      goal: current.goal || "turn learned prompt patterns into a build-ready, proof-ready website brief",
       outputTarget: current.outputTarget || "Codex build prompt",
       strictness: Math.max(current.strictness || 0, 9),
     }));
@@ -9568,12 +9568,12 @@ function TrainView({
           <p className="eyebrow">Outcome training</p>
           <h2>Closed-loop prompt learning command center.</h2>
           <p>
-            Run prompts, capture screenshots, calibrate DNA against actual results, clean the corpus, remember failures,
+            Run prompts, capture screenshots, calibrate prompt strength against actual results, clean the corpus, remember failures,
             compile rough ideas, and tournament-test variants.
           </p>
         </div>
         <div className="outcome-scoreboard">
-          <Metric value={formatNumber(dnaCalibration.calibratedScore)} label="Calibrated DNA" />
+          <Metric value={formatNumber(dnaCalibration.calibratedScore)} label="Calibrated strength" />
           <Metric value={formatNumber(outcomeSummary.counts.gold)} label="Gold" />
           <Metric value={formatNumber(outcomeSummary.counts.great)} label="Great" />
           <Metric value={formatNumber(outcomeSummary.counts.avoid)} label="Avoid" />
@@ -11963,7 +11963,7 @@ function PublicDemoPolishPanel({
       </div>
       <article className="version-card">
         <strong>{report.headline}</strong>
-        <p>Public visitors should understand corpus, DNA, generation, proof, explanations, and exports in one pass.</p>
+        <p>Public visitors should understand corpus, learned patterns, generation, proof, explanations, and exports in one pass.</p>
       </article>
       <div className="safe-check-grid">
         {report.checks.map((check) => (
@@ -13837,7 +13837,7 @@ function BestNextActionPanel({ action, onSelect }: { action: BestNextActionRepor
     "Proof loop": "queue",
     "Model intelligence": "api",
     "Benchmark library": "patterns",
-    "Prompt DNA": "workflow",
+    "Prompt strength": "workflow",
     "Evaluation artifacts": "packs",
     "Guided workflow": "workflow",
   };
@@ -13952,12 +13952,12 @@ function PromptQualityDnaPanel({ report }: { report: PromptQualityDnaReport }) {
       <div className="output-header">
         <div className="panel-header">
           <Gauge size={18} />
-          <h2>Explainable Prompt Quality DNA</h2>
+          <h2>Explainable Prompt Strength Profile</h2>
         </div>
         <span className="workspace-pill">{report.label}</span>
       </div>
       <div className="compact-scoreboard">
-        <Metric value={String(report.score)} label="Quality DNA" />
+        <Metric value={String(report.score)} label="Quality score" />
         <Metric value={String(report.dimensions.filter((dimension) => dimension.score >= 75).length)} label="Strong" />
         <Metric value={String(report.dimensions.filter((dimension) => dimension.score < 65).length)} label="Patch" />
       </div>
@@ -14203,7 +14203,7 @@ function ModelIntelligencePanel({
           Latest cached row: {latest.provider} / {latest.readiness} / <span data-tone={latest.agreement === "agrees" ? "strong" : latest.agreement === "divergent" ? "weak" : "mixed"}>{latest.agreement}</span>.
         </p>
       ) : (
-        <p className="selected-meta">Cache the selected prompt to compare local DNA and model judgment without re-spending calls.</p>
+        <p className="selected-meta">Cache the selected prompt to compare local strength and model judgment without re-spending calls.</p>
       )}
     </section>
   );
@@ -14446,7 +14446,7 @@ function TrainFromCorpusPanel({
         items={[
           "Locks Golden Dataset v1 from the current curated corpus.",
           "Runs the benchmark suite against canonical website prompt fixtures.",
-          "Calibrates predicted DNA against actual outcomes and exports JSON/JSONL training artifacts.",
+          "Calibrates predicted strength against actual outcomes and exports JSON/JSONL training artifacts.",
         ]}
         empty="No corpus training steps."
       />
@@ -14961,7 +14961,7 @@ function TrainModeLauncherPanel({
 }) {
   const modes = [
     { id: "generate", title: "Generate", value: learningExamples.length, detail: "Create, refine, and save build-ready website prompts." },
-    { id: "patterns", title: "Patterns", value: outcomes.filter((outcome) => outcome.status === "gold").length, detail: "Mine gold/good examples for reusable prompt DNA." },
+    { id: "patterns", title: "Patterns", value: outcomes.filter((outcome) => outcome.status === "gold").length, detail: "Mine gold/good examples for reusable prompt patterns." },
     { id: "sync", title: "Sync", value: modelBatchEvaluations.length, detail: "Use Claude and SQLite to keep the corpus portable." },
     { id: "queue", title: "Run", value: queueJobs.length, detail: "Queue prompts for implementation and visual proof." },
     { id: "improve", title: "Review", value: curationReport.counts.review + curationReport.counts.quarantine, detail: "Promote, quarantine, or repair examples from evidence." },
@@ -16249,7 +16249,7 @@ function OneClickExportPackPanel({
         </article>
         <article className="index-card wide-index-card">
           <h3>Included</h3>
-          <p>Golden prompts, JSONL, bad/avoid signals, DNA rules, benchmark trend, project boundary report, reusable memory, and Codex build pack.</p>
+          <p>Golden prompts, JSONL, bad/avoid signals, strength rules, benchmark trend, project boundary report, reusable memory, and Codex build pack.</p>
         </article>
       </div>
       <textarea className="generated-output mini-output" readOnly value={packText.slice(0, 2500)} />
@@ -18533,10 +18533,10 @@ function DnaV2Panel({ dnaV2 }: { dnaV2: PromptDnaV2 }) {
     <section className="panel lab-panel">
       <div className="panel-header">
         <Gauge size={18} />
-        <h2>Prompt DNA v2</h2>
+        <h2>Prompt strength v2</h2>
       </div>
       <div className="qa-score-row">
-        <ScoreRing score={dnaV2.overall} label="DNA v2" />
+        <ScoreRing score={dnaV2.overall} label="Strength v2" />
       </div>
       <div className="dna-v2-list">
         {dnaV2.dimensions.map((dimension) => (
@@ -19656,7 +19656,7 @@ function DnaCalibrationPanel({
     <section className="panel lab-panel">
       <div className="panel-header">
         <Gauge size={18} />
-        <h2>Prompt DNA calibration</h2>
+        <h2>Prompt strength calibration</h2>
       </div>
       <div className="index-grid">
         <article className="index-card">
@@ -19673,7 +19673,7 @@ function DnaCalibrationPanel({
         </article>
         <article className="index-card">
           <strong>{dnaCalibration.calibratedScore || 0}</strong>
-          <span>calibrated DNA</span>
+          <span>calibrated strength</span>
         </article>
       </div>
       <FeedbackList title="Calibration insights" items={dnaCalibration.insights} empty="No calibration insights yet." />
@@ -20408,7 +20408,7 @@ function MutationLabPanel({
               </div>
               <div className="diff-score">
                 <strong>{mutation.score}</strong>
-                <span>DNA</span>
+                <span>Strength</span>
               </div>
             </div>
             <p>{mutation.intent}</p>
@@ -20511,7 +20511,7 @@ function LeaderboardPanel({
     <section className="panel lab-panel">
       <div className="panel-header">
         <Trophy size={18} />
-        <h2>Prompt DNA leaderboard</h2>
+        <h2>Prompt strength leaderboard</h2>
       </div>
       <div className="leaderboard-list">
         {leaderboard.slice(0, 10).map((rank, index) => (
@@ -20521,7 +20521,7 @@ function LeaderboardPanel({
               <strong>{rank.example.title}</strong>
               <p>{rank.reasons.join(" / ")}</p>
               <small>
-                DNA {rank.dnaScore} / Originality {rank.originality} / Outcome {rank.outcomeBoost >= 0 ? "+" : ""}
+                Strength {rank.dnaScore} / Originality {rank.originality} / Outcome {rank.outcomeBoost >= 0 ? "+" : ""}
                 {rank.outcomeBoost}
               </small>
             </div>

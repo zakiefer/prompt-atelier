@@ -219,7 +219,7 @@ export function buildPromptLearnerModeReport({
       label: "Score",
       ready: productSprint.score >= 55,
       score: productSprint.score,
-      detail: "Explain why the prompt works with DNA, archetype, proof, and readiness signals.",
+      detail: "Explain why the prompt works with strength, archetype, proof, and readiness signals.",
       action: productSprint.nextAction,
       target: "product-sprint",
     },
@@ -264,7 +264,7 @@ export function buildPromptLearnerModeReport({
   return {
     score,
     status: steps.some((step) => step.score < 35) ? "blocked" : score >= 80 ? "ready" : "active",
-    valueStory: "Paste a great website prompt, learn the DNA, improve it, compare results, prove the winner, and export the learning.",
+    valueStory: "Paste a great website prompt, learn the patterns, improve it, compare results, prove the winner, and export the learning.",
     steps,
     notes: [
       `${steps.filter((step) => step.ready).length}/${steps.length} learner-mode step(s) are ready.`,
@@ -333,10 +333,10 @@ export function buildLearningMemoryV2Report({
       promptPatch: "Store stack, assets, layout, motion, responsive, accessibility, and QA as independent prompt slots.",
     },
     {
-      label: "DNA dimensions explain what changed",
+      label: "Strength dimensions explain what changed",
       confidence: promptQualityDna.score,
       evidenceCount: promptQualityDna.dimensions.length,
-      promptPatch: "Attach plain-English DNA fixes to every generated improvement.",
+      promptPatch: "Attach plain-English strength fixes to every generated improvement.",
     },
   ].map((rule) => {
     const id = ruleId(rule.label);
@@ -406,7 +406,7 @@ export function buildResultReviewerReport({
     status: !rows.length ? "needs-proof" : rows.some((row) => row.verdict === "needs-proof") ? "needs-proof" : rows.some((row) => row.verdict === "repair") ? "needs-rating" : "ready",
     rows,
     reviewActions: [
-      "Show generated prompt, build output, screenshot, notes, and DNA deltas in one review card.",
+      "Show generated prompt, build output, screenshot, notes, and strength deltas in one review card.",
       "Let the reviewer choose Promote, Repair, or Exclude from learning.",
       "Write accepted deltas into Learning Memory v2 and holdout benchmark notes.",
     ],
@@ -660,7 +660,7 @@ export function buildPublicDemoExperienceReport({
     rows,
     demoScript: [
       "Paste an excellent prompt.",
-      "See the DNA score and the exact traits it learned.",
+      "See the prompt strength score and the exact traits it learned.",
       "Generate a better prompt from those traits.",
       "Review proof side by side, then export the learning pack.",
     ],

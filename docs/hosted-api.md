@@ -90,7 +90,7 @@ If the key is absent, the API falls back to the local evaluator so the app remai
 
 Every model response is normalized to `schemaVersion: prompt-atelier.model-evaluation.v1` with `score`, `readiness`, `findings`, `recommendations`, optional prompt outputs, and a `redactions` array. Prompt text, memory, context, collection syncs, and API event details are redacted server-side before they are stored or logged.
 
-The Claude/local/result comparison panel reads cached model rows, local DNA scoring, and imported build outcomes together. Keep the Claude key server-side only: the browser should never receive `ANTHROPIC_API_KEY`, and the deterministic fallback is used whenever the hosted route cannot score safely.
+The Claude/local/result comparison panel reads cached model rows, local strength scoring, and imported build outcomes together. Keep the Claude key server-side only: the browser should never receive `ANTHROPIC_API_KEY`, and the deterministic fallback is used whenever the hosted route cannot score safely.
 
 The true closed-loop route is `POST /api/closed-loop/run`. It redacts the prompt payload, scores the original prompt, requests or creates a rewritten prompt, scores the rewrite, persists a `closedLoopRuns` row, writes a `closed-loop-run` API event, and returns `{ run, original, improved, winnerPrompt, redactions, collections.closedLoopRuns }`. When `ANTHROPIC_API_KEY` is present on the API host, the route uses Claude through the same normalized schema as `/api/model/evaluate`; when it is absent, it returns a deterministic local fallback without exposing browser secrets.
 
@@ -148,7 +148,7 @@ The export studio also includes model-specific presets:
 - Codex skill bundle
 - model evaluation schema JSON
 
-Use Train from this corpus after curation is clean. It locks Golden Dataset v1, runs the canonical benchmark suite, calibrates DNA, and exports the training pack from the current corpus.
+Use Train from this corpus after curation is clean. It locks Golden Dataset v1, runs the canonical benchmark suite, calibrates prompt strength, and exports the training pack from the current corpus.
 
 ## Guided Training Product Routes
 
