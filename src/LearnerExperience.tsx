@@ -51,22 +51,28 @@ import {
   buildLearnedStyleGenerator,
 } from "./learnerViewModel";
 import {
+  AccessibilityQaPanel,
   BeginnerPromptPath,
   CiProofStatusPanel,
   CoverageIntelligencePanel,
   CorpusTriageToolbar,
+  EmptyStateShelfPanel,
   ExportDeliverablesPanel,
   EvalHistoryCompactPanel,
   ExportStudioPanel,
   ExportPresetPreview,
+  FirstRunStartPanel,
   ImportFrontDoorPanel,
   LearnedPromptSectionEditor,
   LearnerActivityRail,
   LearnerCommandDeck,
   LearnerMobileStepBar,
+  LearnerSurfaceNavPanel,
   LearnerWorkspaceSearchPanel,
+  MobileCommandConsolePanel,
   OneClickProofRail,
   ProjectCockpitPanel,
+  ProjectBundlePanel,
   ProjectHistoryPanel,
   ProjectTimelinePanel,
   ProductionCommandCenterPanel,
@@ -82,6 +88,8 @@ import {
   ProofArtifactVault,
   ProofDeployStatusPanel,
   ProofIntakePanel,
+  ProofRepairStudioPanel,
+  RegressionTrendPanel,
   MobileOperatorPanel,
   TrainingImpactPanel,
   VisualRepairLoopPanel,
@@ -123,6 +131,22 @@ import {
   type TasteProfileVersion,
   type TimelineItem,
 } from "./learnerWorkflowNext";
+import {
+  buildAccessibilityQaReport,
+  buildEmptyStateCards,
+  buildFirstRunGuide,
+  buildGalleryFilters,
+  buildMobileCommandConsole,
+  buildProofRepairDraft,
+  buildRegressionTrendSummary,
+  buildSurfaceNavCards,
+  createProjectBundle,
+  filterResultGalleryItems,
+  parseProjectBundle,
+  ratingFromAccessibilityScore,
+  type GalleryFilter,
+  type ProjectBundle,
+} from "./learnerProductHardening";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -135,6 +159,9 @@ const EVAL_HISTORY_KEY = "prompt-atelier-eval-history-v1";
 const CORPUS_HEALTH_DECISION_KEY = "prompt-atelier-corpus-health-decision-v1";
 const REPAIR_PROMPT_KEY = "prompt-atelier-visual-repair-prompt-v1";
 const TASTE_PROFILE_VERSIONS_KEY = "prompt-atelier-taste-profile-versions-v1";
+const PROJECT_BUNDLES_KEY = "prompt-atelier-project-bundles-v1";
+const RESULT_GALLERY_FILTER_KEY = "prompt-atelier-result-gallery-filter-v1";
+const ACCESSIBILITY_QA_RUN_KEY = "prompt-atelier-accessibility-qa-run-v1";
 
 type GeneratedPromptRecord = {
   id: string;
@@ -227,6 +254,16 @@ function readLocalString(key: string) {
 function writeLocalString(key: string, value: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, value);
+}
+
+function downloadLocalFile(filename: string, text: string, type = "application/json") {
+  if (typeof window === "undefined") return;
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function readCorpusHealthDecision(): CorpusHealthDecision | undefined {
@@ -671,6 +708,12 @@ export function LearnView({
   const [visualRepairPrompt, setVisualRepairPrompt] = useState(() => readLocalString(REPAIR_PROMPT_KEY));
   const [selectedRepairResult, setSelectedRepairResult] = useState<ResultGalleryItem | undefined>();
   const [tasteProfileVersions, setTasteProfileVersions] = useState<TasteProfileVersion[]>(() => readLocalArray<TasteProfileVersion>(TASTE_PROFILE_VERSIONS_KEY, 16));
+  const [projectBundles, setProjectBundles] = useState<ProjectBundle[]>(() => readLocalArray<ProjectBundle>(PROJECT_BUNDLES_KEY, 10));
+  const [resultGalleryFilter, setResultGalleryFilter] = useState<GalleryFilter>(() => {
+    const stored = readLocalString(RESULT_GALLERY_FILTER_KEY);
+    return ["all", "gold", "watch", "weak", "generated", "proof"].includes(stored) ? stored as GalleryFilter : "all";
+  });
+  const [accessibilityQaRunAt, setAccessibilityQaRunAt] = useState(() => readLocalString(ACCESSIBILITY_QA_RUN_KEY));
   const [projectSync, setProjectSync] = useState<ProjectSyncState>({
     status: "browser",
     detail: "Browser storage is active. Sync project when the local or hosted API is reachable.",
@@ -1127,6 +1170,105 @@ export function LearnView({
       target: "export",
     },
   ], [exportTargetMatrix.readyCount, improvedPrompt, learnerProofAction.ready, learnerProofGallery.length, learnerSource, proofVault, BUILD_STATUS.lastSmoke]);
+  const resultGalleryFilters = useMemo(() => buildGalleryFilters(resultGalleryItems), [resultGalleryItems]);
+  const filteredResultGalleryItems = useMemo(
+    () => filterResultGalleryItems(resultGalleryItems, resultGalleryFilter),
+    [resultGalleryItems, resultGalleryFilter],
+  );
+  const accessibilityQaReport = useMemo(
+    () => buildAccessibilityQaReport({
+      lastRunAt: accessibilityQaRunAt,
+      prompt: learnerSource || latestGeneratedPrompt?.prompt || improvedPrompt,
+      proofChecklist,
+    }),
+    [accessibilityQaRunAt, improvedPrompt, latestGeneratedPrompt?.prompt, learnerSource, proofChecklist],
+  );
+  const firstRunGuide = useMemo(
+    () => buildFirstRunGuide({
+      accessibilityScore: accessibilityQaReport.score,
+      corpusDecision: corpusHealthDecision,
+      exportReadyCount: exportTargetMatrix.readyCount,
+      exportTargetCount: exportTargetMatrix.rows.length,
+      latestGenerated: latestGeneratedPrompt,
+      latestProofRun: latestProjectProofRun,
+      projectBundleCount: projectBundles.length,
+      sourcePrompt: learnerSource,
+    }),
+    [
+      accessibilityQaReport.score,
+      corpusHealthDecision,
+      exportTargetMatrix.readyCount,
+      exportTargetMatrix.rows.length,
+      latestGeneratedPrompt,
+      latestProjectProofRun,
+      learnerSource,
+      projectBundles.length,
+    ],
+  );
+  const surfaceNavCards = useMemo(
+    () => buildSurfaceNavCards({
+      exportReadyCount: exportTargetMatrix.readyCount,
+      generatedCount: generatedPrompts.length,
+      proofItems: proofVault.length + learnerProofGallery.length + projectProofRuns.length,
+      proofScore: learnerProofAction.score,
+      sourcePrompt: learnerSource,
+      trainingScore: firstRunGuide.score,
+    }),
+    [
+      exportTargetMatrix.readyCount,
+      firstRunGuide.score,
+      generatedPrompts.length,
+      learnerProofAction.score,
+      learnerProofGallery.length,
+      learnerSource,
+      projectProofRuns.length,
+      proofVault.length,
+    ],
+  );
+  const proofRepairDraft = useMemo(
+    () => buildProofRepairDraft({
+      currentPrompt: learnerSource || latestGeneratedPrompt?.prompt || improvedPrompt,
+      gaps: learnerDiagnosis.gaps,
+      latestResult: selectedRepairResult || resultGalleryItems.find((item) => item.status === "weak") || resultGalleryItems[0],
+      proofRuns: projectProofRuns,
+      proofVault,
+    }),
+    [improvedPrompt, latestGeneratedPrompt?.prompt, learnerDiagnosis.gaps, learnerSource, projectProofRuns, proofVault, resultGalleryItems, selectedRepairResult],
+  );
+  const regressionTrend = useMemo(
+    () => buildRegressionTrendSummary({ evalHistory, generatedPrompts, proofRuns: projectProofRuns }),
+    [evalHistory, generatedPrompts, projectProofRuns],
+  );
+  const emptyStateCards = useMemo(
+    () => buildEmptyStateCards({
+      bundleCount: projectBundles.length,
+      generatedCount: generatedPrompts.length,
+      proofCount: proofVault.length + learnerProofGallery.length + projectProofRuns.length,
+      resultCount: resultGalleryItems.length,
+    }),
+    [generatedPrompts.length, learnerProofGallery.length, projectBundles.length, projectProofRuns.length, proofVault.length, resultGalleryItems.length],
+  );
+  const mobileCommandConsoleActions = useMemo(
+    () => buildMobileCommandConsole({
+      accessibilityScore: accessibilityQaReport.score,
+      bundleCount: projectBundles.length,
+      exportReadyCount: exportTargetMatrix.readyCount,
+      generatedCount: generatedPrompts.length,
+      proofCount: proofVault.length + learnerProofGallery.length + projectProofRuns.length,
+      promptReady: Boolean(learnerSource || latestGeneratedPrompt?.prompt),
+    }),
+    [
+      accessibilityQaReport.score,
+      exportTargetMatrix.readyCount,
+      generatedPrompts.length,
+      latestGeneratedPrompt?.prompt,
+      learnerProofGallery.length,
+      learnerSource,
+      projectBundles.length,
+      projectProofRuns.length,
+      proofVault.length,
+    ],
+  );
   const qualityReportRows = useMemo<PromptQualityReportItem[]>(() => {
     const dimensions: PromptQualityReportItem[] = dnaExplanation.dimensions.slice(0, 4).map((dimension) => ({
       label: dimension.label,
@@ -1386,6 +1528,32 @@ export function LearnView({
     if (target === "export") setExportModalOpen(true);
     recordActivity("Workflow OS", `Opened ${target}.`, "neutral");
   }
+  function handleSetResultGalleryFilter(filter: GalleryFilter) {
+    setResultGalleryFilter(filter);
+    writeLocalString(RESULT_GALLERY_FILTER_KEY, filter);
+    recordActivity("Gallery filter", `${filter} results are now visible.`, "neutral");
+  }
+  function handleUseStarterPrompt() {
+    const starter = samplePrompts[0]?.prompt || briefPrompt;
+    onUseSamplePrompt(starter);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Starter prompt loaded", samplePrompts[0]?.title || "Brief starter prompt", "good");
+  }
+  function handleOpenImportFrontDoor() {
+    setActiveWorkspaceTab("compose");
+    recordActivity("Import front door", "Open Workspace tools to add prompt files safely.", "neutral");
+  }
+  function handleStartFirstRun() {
+    if (!learnerSource && samplePrompts[0]?.prompt) {
+      onUseSamplePrompt(samplePrompts[0].prompt);
+    }
+    handleGenerateGreatPrompt();
+    void handleRunProjectProof();
+    if (!corpusHealthDecision) {
+      handleCurateCurrentPrompt("watch");
+    }
+    recordActivity("First run started", "Generated, queued proof, labeled corpus watch, and opened the guided path.", "good");
+  }
   function handleGenerateVisualRepairPrompt(item?: ResultGalleryItem) {
     const plan = item
       ? buildVisualRepairPrompt({
@@ -1428,6 +1596,101 @@ export function LearnView({
     setSelectedRepairResult(item);
     handleGenerateVisualRepairPrompt(item);
     setActiveWorkspaceTab("compose");
+  }
+  function handleBuildProofRepairDraft() {
+    setVisualRepairPrompt(proofRepairDraft.prompt);
+    writeLocalString(REPAIR_PROMPT_KEY, proofRepairDraft.prompt);
+    addEvalHistoryRecord("Proof repair studio", `Built repair draft from ${proofRepairDraft.source}.`, {
+      proofScore: Math.max(currentProject.proofScore, proofRepairDraft.ready ? 72 : 45),
+    });
+    recordActivity("Proof repair draft", proofRepairDraft.headline, proofRepairDraft.ready ? "good" : "watch");
+  }
+  function handleUseProofRepairDraft() {
+    setVisualRepairPrompt(proofRepairDraft.prompt);
+    writeLocalString(REPAIR_PROMPT_KEY, proofRepairDraft.prompt);
+    setLearnerText(proofRepairDraft.prompt);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Proof repair applied", "Proof repair draft is now the working prompt.", "good");
+  }
+  function persistProjectBundle(bundle: ProjectBundle) {
+    setProjectBundles((current) => {
+      const next = [bundle, ...current.filter((item) => item.id !== bundle.id)].slice(0, 10);
+      writeLocalArray(PROJECT_BUNDLES_KEY, next, 10);
+      return next;
+    });
+  }
+  function handleExportProjectBundle() {
+    const bundle = createProjectBundle({
+      evalHistory,
+      generatedPrompt: latestGeneratedPrompt?.prompt,
+      improvedPrompt,
+      profileId: activeLearningProfile.id,
+      profileLabel: activeLearningProfile.label,
+      projectSnapshot,
+      proofArtifacts: proofVault,
+      proofRuns: projectProofRuns,
+      sourcePrompt: learnerSource,
+      targetExports: targetExportPresets.map((preset) => preset.filename),
+    });
+    persistProjectBundle(bundle);
+    downloadLocalFile(`prompt-atelier-project-bundle-${Date.now()}.json`, JSON.stringify(bundle, null, 2));
+    addEvalHistoryRecord("Project bundle", `${bundle.title} exported as a portable project file.`);
+    recordActivity("Project bundle exported", `${bundle.proofArtifacts.length} proof artifact(s) included.`, "good");
+    return bundle;
+  }
+  function handleRestoreProjectBundle(bundle: ProjectBundle) {
+    setLearnerText(bundle.sourcePrompt || bundle.generatedPrompt || bundle.improvedPrompt || "");
+    setProofVault(bundle.proofArtifacts);
+    writeProofVault(bundle.proofArtifacts);
+    setProjectProofRuns((current) => {
+      const next = [...bundle.proofRuns, ...current].slice(0, 24);
+      writeLocalArray(PROJECT_PROOF_RUNS_KEY, next, 24);
+      return next;
+    });
+    setEvalHistory((current) => {
+      const next = [...bundle.evalHistory, ...current].slice(0, 40);
+      writeLocalArray(EVAL_HISTORY_KEY, next, 40);
+      return next;
+    });
+    if (bundle.projectSnapshot) {
+      writeProjectSnapshot(bundle.projectSnapshot);
+      setProjectSnapshot(bundle.projectSnapshot);
+    }
+    setActiveLearningProfileId(bundle.profileId);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Project bundle restored", bundle.title, "good");
+  }
+  function handleImportProjectBundle(value: string) {
+    const result = parseProjectBundle(value);
+    if (!result.ok) {
+      recordActivity("Bundle import blocked", result.error, "watch");
+      return;
+    }
+    persistProjectBundle(result.bundle);
+    handleRestoreProjectBundle(result.bundle);
+    recordActivity("Project bundle imported", result.bundle.title, "good");
+  }
+  function handleRunAccessibilityQa() {
+    const runAt = new Date().toISOString();
+    setAccessibilityQaRunAt(runAt);
+    writeLocalString(ACCESSIBILITY_QA_RUN_KEY, runAt);
+    addEvalHistoryRecord("Accessibility QA", `${accessibilityQaReport.score}/100 accessibility gate score.`, {
+      proofScore: Math.max(currentProject.proofScore, accessibilityQaReport.score),
+    });
+    handleRecordOutcomeFeedback(
+      ratingFromAccessibilityScore(accessibilityQaReport.score),
+      accessibilityQaReport.headline,
+      "",
+      `Accessibility QA: ${accessibilityQaReport.checks.filter((check) => check.ready).length}/${accessibilityQaReport.checks.length} checks ready.`,
+    );
+    recordActivity("Accessibility QA scored", `${accessibilityQaReport.score}/100 gate score saved.`, accessibilityQaReport.score >= 75 ? "good" : "watch");
+  }
+  function handleApplyAccessibilityPatch(patch: string) {
+    if (!patch.trim()) return;
+    const base = learnerText.trim() || learnedStyleGenerator.prompt || improvedPrompt || briefPrompt;
+    setLearnerText(`${base}\n\n${patch}`);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Accessibility gates applied", "Missing QA gates were appended to the working prompt.", "good");
   }
   function handleSaveTasteProfileVersion() {
     const version = createTasteProfileVersion({
@@ -1661,9 +1924,19 @@ export function LearnView({
           stages={projectStages}
         />
 
+        <FirstRunStartPanel
+          guide={firstRunGuide}
+          onOpenImport={handleOpenImportFrontDoor}
+          onStart={handleStartFirstRun}
+          onUseSample={handleUseStarterPrompt}
+        />
+
+        <LearnerSurfaceNavPanel cards={surfaceNavCards} onSelectTarget={handleSelectWorkflowTarget} onStart={handleStartFirstRun} />
+
         <div className="guided-product-grid workflow-top-grid">
           <WorkflowOsPanel milestones={workflowMilestones} onRunFullPath={handleRunOneClickProofPath} onSelectTarget={handleSelectWorkflowTarget} />
           <MobileOperatorPanel actions={mobileOperatorActions} onSelectTarget={handleSelectWorkflowTarget} />
+          <MobileCommandConsolePanel actions={mobileCommandConsoleActions} onSelectTarget={handleSelectWorkflowTarget} onStart={handleStartFirstRun} />
         </div>
 
         <div className="guided-product-grid production-path-grid">
@@ -1690,7 +1963,10 @@ export function LearnView({
           <div className="learner-tools-stack">
             <div className="self-serve-grid product-intelligence-grid">
               <ResultGalleryPanel
-                items={resultGalleryItems}
+                activeFilter={resultGalleryFilter}
+                filters={resultGalleryFilters}
+                items={filteredResultGalleryItems}
+                onFilterChange={handleSetResultGalleryFilter}
                 onMarkWeak={handleMarkWeakResultGalleryItem}
                 onPromote={handlePromoteResultGalleryItem}
                 onRepair={handleRepairResultGalleryItem}
@@ -1706,6 +1982,33 @@ export function LearnView({
               />
             </div>
             <div className="self-serve-grid product-intelligence-grid">
+              <ProofRepairStudioPanel
+                copied={copied}
+                draft={proofRepairDraft}
+                onBuild={handleBuildProofRepairDraft}
+                onCopy={onCopy}
+                onUse={handleUseProofRepairDraft}
+              />
+              <ProjectBundlePanel
+                bundles={projectBundles}
+                copied={copied}
+                onCopy={onCopy}
+                onExport={handleExportProjectBundle}
+                onImport={handleImportProjectBundle}
+                onRestore={handleRestoreProjectBundle}
+              />
+            </div>
+            <div className="self-serve-grid product-intelligence-grid">
+              <RegressionTrendPanel trend={regressionTrend} />
+              <AccessibilityQaPanel
+                copied={copied}
+                onApplyPatch={handleApplyAccessibilityPatch}
+                onCopy={onCopy}
+                onRun={handleRunAccessibilityQa}
+                report={accessibilityQaReport}
+              />
+            </div>
+            <div className="self-serve-grid product-intelligence-grid">
               <CoverageIntelligencePanel gaps={coverageGaps} />
               <ExportStudioPanel copied={copied} groups={exportStudioGroups} onCopyPreset={handleCopyExportStudioPreset} onOpenExport={() => setExportModalOpen(true)} />
             </div>
@@ -1713,6 +2016,7 @@ export function LearnView({
               <ProjectTimelinePanel items={projectTimelineItems} onSelectItem={handleSelectTimelineItem} />
               <TasteProfileVersionsPanel versions={tasteProfileVersions} onSaveVersion={handleSaveTasteProfileVersion} onUseVersion={handleUseTasteProfileVersion} />
             </div>
+            <EmptyStateShelfPanel cards={emptyStateCards} onSelectTarget={handleSelectWorkflowTarget} />
             <CiProofStatusPanel cards={ciProofCards} />
           </div>
         </details>

@@ -17,6 +17,18 @@ import {
   type TimelineItem,
   type WorkflowMilestone,
 } from "./learnerWorkflowNext";
+import {
+  type AccessibilityQaReport,
+  type EmptyStateCard,
+  type FirstRunGuide,
+  type GalleryFilter,
+  type GalleryFilterOption,
+  type MobileConsoleAction,
+  type ProjectBundle,
+  type ProofRepairDraft,
+  type RegressionTrendSummary,
+  type SurfaceNavCard,
+} from "./learnerProductHardening";
 
 export type LearnerWorkspaceTab = "compose" | "review" | "export";
 
@@ -257,6 +269,87 @@ export function ProjectCockpitPanel({
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+export function FirstRunStartPanel({
+  guide,
+  onOpenImport,
+  onStart,
+  onUseSample,
+}: {
+  guide: FirstRunGuide;
+  onOpenImport: () => void;
+  onStart: () => void;
+  onUseSample: () => void;
+}) {
+  return (
+    <section className="first-run-start-panel" data-train-section="first-run-start">
+      <div className="first-run-copy">
+        <span>Start here</span>
+        <h3>{guide.headline}</h3>
+        <p>{guide.detail}</p>
+        <div className="button-row compact-row">
+          <button className="primary-button compact-button" type="button" onClick={onStart}>
+            Start guided run
+            <ArrowRight size={15} />
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={onUseSample}>
+            Use starter
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={onOpenImport}>
+            <Upload size={15} />
+            Import
+          </button>
+        </div>
+      </div>
+      <div className="first-run-score">
+        <strong>{guide.score}</strong>
+        <span>guided</span>
+      </div>
+      <div className="first-run-step-grid">
+        {guide.steps.map((step) => (
+          <article data-status={step.status} key={step.id}>
+            <span>{step.label}</span>
+            <strong>{step.cta}</strong>
+            <p>{step.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function LearnerSurfaceNavPanel({
+  cards,
+  onSelectTarget,
+  onStart,
+}: {
+  cards: SurfaceNavCard[];
+  onSelectTarget: (target: SurfaceNavCard["target"]) => void;
+  onStart: () => void;
+}) {
+  return (
+    <section className="learner-surface-nav-panel" data-train-section="learner-surface-nav">
+      <div className="surface-nav-copy">
+        <span>Workbench map</span>
+        <strong>Create / Prove / Train</strong>
+        <p>The primary IA is now three clear surfaces. Deeper diagnostics stay tucked behind drawers.</p>
+      </div>
+      <div className="surface-nav-card-row">
+        {cards.map((card) => (
+          <button data-status={card.status} key={card.id} type="button" onClick={() => onSelectTarget(card.target)}>
+            <span>{card.metric}</span>
+            <strong>{card.label}</strong>
+            <p>{card.detail}</p>
+          </button>
+        ))}
+      </div>
+      <button className="ghost-button compact-button" type="button" onClick={onStart}>
+        Run all
+        <ArrowRight size={14} />
+      </button>
     </section>
   );
 }
@@ -517,12 +610,18 @@ export function WorkflowOsPanel({
 }
 
 export function ResultGalleryPanel({
+  activeFilter,
+  filters,
   items,
+  onFilterChange,
   onMarkWeak,
   onPromote,
   onRepair,
 }: {
+  activeFilter: GalleryFilter;
+  filters: GalleryFilterOption[];
   items: ResultGalleryItem[];
+  onFilterChange: (filter: GalleryFilter) => void;
   onMarkWeak: (item: ResultGalleryItem) => void;
   onPromote: (item: ResultGalleryItem) => void;
   onRepair: (item: ResultGalleryItem) => void;
@@ -535,6 +634,21 @@ export function ResultGalleryPanel({
           <p>Generated prompts, proof runs, screenshots, and outcome notes become reviewable evidence cards.</p>
         </div>
         <span className="selected-meta">{items.length} result(s)</span>
+      </div>
+      <div className="result-filter-row" role="tablist" aria-label="Result gallery filters">
+        {filters.map((filter) => (
+          <button
+            aria-selected={activeFilter === filter.id}
+            data-active={activeFilter === filter.id ? "true" : "false"}
+            key={filter.id}
+            role="tab"
+            type="button"
+            onClick={() => onFilterChange(filter.id)}
+          >
+            {filter.label}
+            <span>{filter.count}</span>
+          </button>
+        ))}
       </div>
       <div className="result-gallery-grid">
         {items.length ? items.map((item) => (
@@ -562,8 +676,8 @@ export function ResultGalleryPanel({
               <span>empty</span>
               <strong>0</strong>
             </div>
-            <h4>No result evidence yet</h4>
-            <p>Generate a prompt or save proof feedback to create the first result card.</p>
+            <h4>No matching result evidence</h4>
+            <p>Try another filter, generate a prompt, run proof, or save result feedback to create a reviewable card.</p>
             <small>Proof 0% / watch</small>
           </article>
         )}
@@ -804,6 +918,38 @@ export function MobileOperatorPanel({
         <Smartphone size={18} />
       </div>
       <div className="mobile-operator-grid">
+        {actions.map((action) => (
+          <button data-ready={action.ready ? "true" : "false"} key={action.id} type="button" onClick={() => onSelectTarget(action.target)}>
+            <strong>{action.label}</strong>
+            <span>{action.detail}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function MobileCommandConsolePanel({
+  actions,
+  onSelectTarget,
+  onStart,
+}: {
+  actions: MobileConsoleAction[];
+  onSelectTarget: (target: MobileConsoleAction["target"]) => void;
+  onStart: () => void;
+}) {
+  return (
+    <section className="mobile-command-console-panel" data-train-section="mobile-command-console">
+      <div className="output-header">
+        <div>
+          <h3>Mobile command console</h3>
+          <p>Phone users get one command stack instead of a wall of dense lab panels.</p>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onStart}>
+          Run
+        </button>
+      </div>
+      <div className="mobile-console-grid">
         {actions.map((action) => (
           <button data-ready={action.ready ? "true" : "false"} key={action.id} type="button" onClick={() => onSelectTarget(action.target)}>
             <strong>{action.label}</strong>
@@ -1198,6 +1344,240 @@ export function ProductionHardeningPanel({
         {copied === "production-hardening-checks" ? <Check size={15} /> : <Copy size={15} />}
         Copy readiness notes
       </button>
+    </section>
+  );
+}
+
+export function ProofRepairStudioPanel({
+  copied,
+  draft,
+  onBuild,
+  onCopy,
+  onUse,
+}: {
+  copied: string;
+  draft: ProofRepairDraft;
+  onBuild: () => void;
+  onCopy: (value: string, key: string) => void;
+  onUse: () => void;
+}) {
+  return (
+    <section className="proof-repair-studio-panel" data-train-section="proof-repair-studio" data-ready={draft.ready ? "true" : "false"}>
+      <div className="output-header">
+        <div>
+          <h3>Proof repair studio</h3>
+          <p>{draft.detail}</p>
+        </div>
+        <div className="button-row compact-row">
+          <button className="primary-button compact-button" type="button" onClick={onBuild}>
+            <Wrench size={15} />
+            Build repair
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={onUse} disabled={!draft.ready}>
+            Use repair
+          </button>
+        </div>
+      </div>
+      <div className="proof-repair-layout">
+        <article>
+          <span>{draft.source}</span>
+          <strong>{draft.headline}</strong>
+          <ul>
+            {draft.targets.slice(0, 6).map((target) => (
+              <li key={target}>{target}</li>
+            ))}
+          </ul>
+        </article>
+        <article>
+          <textarea className="generated-output mini-output" readOnly value={draft.prompt} />
+          <button className="ghost-button compact-button" type="button" onClick={() => onCopy(draft.prompt, "proof-repair-draft")} disabled={!draft.prompt}>
+            {copied === "proof-repair-draft" ? <Check size={15} /> : <Copy size={15} />}
+            Copy repair
+          </button>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+export function ProjectBundlePanel({
+  bundles,
+  copied,
+  onCopy,
+  onExport,
+  onImport,
+  onRestore,
+}: {
+  bundles: ProjectBundle[];
+  copied: string;
+  onCopy: (value: string, key: string) => void;
+  onExport: () => ProjectBundle;
+  onImport: (value: string) => void;
+  onRestore: (bundle: ProjectBundle) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const latest = bundles[0];
+  const latestJson = latest ? JSON.stringify(latest, null, 2) : "";
+  return (
+    <section className="project-bundle-panel" data-train-section="project-bundle">
+      <div className="output-header">
+        <div>
+          <h3>Project bundle</h3>
+          <p>Export or import one portable project file with prompts, proof, history, and target handoff context.</p>
+        </div>
+        <div className="button-row compact-row">
+          <button
+            className="primary-button compact-button"
+            type="button"
+            onClick={() => {
+              const bundle = onExport();
+              setDraft(JSON.stringify(bundle, null, 2));
+            }}
+          >
+            <Download size={15} />
+            Export bundle
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={() => latestJson && onCopy(latestJson, "project-bundle-json")} disabled={!latestJson}>
+            {copied === "project-bundle-json" ? <Check size={15} /> : <Copy size={15} />}
+            Copy JSON
+          </button>
+        </div>
+      </div>
+      <div className="project-bundle-layout">
+        <article>
+          <span>{bundles.length} saved</span>
+          <strong>{latest?.title || "No portable bundle yet"}</strong>
+          <p>{latest ? `${latest.proofArtifacts.length} proof artifact(s), ${latest.proofRuns.length} proof run(s), ${latest.targetExports.length} export target(s).` : "Export a bundle before moving work across machines or agents."}</p>
+          <div className="bundle-list">
+            {bundles.slice(0, 3).map((bundle) => (
+              <button key={bundle.id} type="button" onClick={() => onRestore(bundle)}>
+                <ShieldCheck size={14} />
+                <span>{bundle.title}</span>
+              </button>
+            ))}
+          </div>
+        </article>
+        <article>
+          <label className="field">
+            <span>Import bundle JSON</span>
+            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Paste a project bundle JSON file here..." />
+          </label>
+          <button className="ghost-button compact-button" type="button" onClick={() => onImport(draft)} disabled={!draft.trim()}>
+            <Upload size={15} />
+            Import bundle
+          </button>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+export function RegressionTrendPanel({ trend }: { trend: RegressionTrendSummary }) {
+  return (
+    <section className="regression-trend-panel" data-train-section="regression-trends" data-status={trend.status}>
+      <div className="output-header">
+        <div>
+          <h3>Regression trends</h3>
+          <p>Score movement is summarized from eval history so improvements do not quietly regress.</p>
+        </div>
+        <div className="mini-score-badge">
+          <strong>{trend.average}</strong>
+          <span>{trend.status}</span>
+        </div>
+      </div>
+      <div className="trend-row-list">
+        {trend.rows.slice(0, 6).map((row) => (
+          <article data-status={row.status} key={row.id}>
+            <div>
+              <strong>{row.label}</strong>
+              <p>{row.detail}</p>
+            </div>
+            <span>{row.promptScore}/{row.proofScore}</span>
+            <em>{row.delta >= 0 ? `+${row.delta}` : row.delta}</em>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function AccessibilityQaPanel({
+  copied,
+  onApplyPatch,
+  onCopy,
+  onRun,
+  report,
+}: {
+  copied: string;
+  onApplyPatch: (patch: string) => void;
+  onCopy: (value: string, key: string) => void;
+  onRun: () => void;
+  report: AccessibilityQaReport;
+}) {
+  const patchPayload = report.checks.filter((check) => !check.ready).map((check) => check.patch).join("\n");
+  return (
+    <section className="accessibility-qa-panel" data-train-section="accessibility-qa">
+      <div className="output-header">
+        <div>
+          <h3>Accessibility QA</h3>
+          <p>{report.headline}{report.lastRunAt ? ` / last checked ${new Date(report.lastRunAt).toLocaleString()}` : ""}</p>
+        </div>
+        <div className="mini-score-badge">
+          <strong>{report.score}</strong>
+          <span>a11y</span>
+        </div>
+      </div>
+      <div className="accessibility-check-grid">
+        {report.checks.map((check) => (
+          <article data-ready={check.ready ? "true" : "false"} key={check.id}>
+            {check.ready ? <Check size={15} /> : <MonitorCheck size={15} />}
+            <strong>{check.label}</strong>
+            <p>{check.detail}</p>
+          </article>
+        ))}
+      </div>
+      <div className="button-row compact-row">
+        <button className="primary-button compact-button" type="button" onClick={onRun}>
+          Run QA score
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onApplyPatch(patchPayload)} disabled={!patchPayload}>
+          Apply missing gates
+        </button>
+        <button className="ghost-button compact-button" type="button" onClick={() => onCopy(patchPayload || "Accessibility QA checks are currently satisfied.", "accessibility-qa-patch")}>
+          {copied === "accessibility-qa-patch" ? <Check size={15} /> : <Copy size={15} />}
+          Copy gates
+        </button>
+      </div>
+    </section>
+  );
+}
+
+export function EmptyStateShelfPanel({
+  cards,
+  onSelectTarget,
+}: {
+  cards: EmptyStateCard[];
+  onSelectTarget: (target: EmptyStateCard["target"]) => void;
+}) {
+  return (
+    <section className="empty-state-shelf-panel" data-train-section="empty-state-shelf">
+      <div className="output-header">
+        <div>
+          <h3>Empty states</h3>
+          <p>Blank areas now explain what to do next instead of showing raw counters or dead space.</p>
+        </div>
+        <ListChecks size={18} />
+      </div>
+      <div className="empty-state-grid">
+        {cards.map((card) => (
+          <button data-ready={card.ready ? "true" : "false"} key={card.id} type="button" onClick={() => onSelectTarget(card.target)}>
+            <span>{card.ready ? "Ready" : "Empty"}</span>
+            <strong>{card.label}</strong>
+            <p>{card.detail}</p>
+            <small>{card.cta}</small>
+          </button>
+        ))}
+      </div>
     </section>
   );
 }
