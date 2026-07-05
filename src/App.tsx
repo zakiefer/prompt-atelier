@@ -8190,15 +8190,21 @@ function ComposeView({
           <input value={options.siteType} onChange={(event) => update("siteType", event.target.value)} />
         </Field>
         <Field label="Archetype">
-          <select value={options.archetype} onChange={(event) => update("archetype", event.target.value)}>
+          <div className="choice-grid" role="group" aria-label="Archetype">
             {[options.archetype, ...clusters.map((cluster) => cluster.label)]
               .filter((value, index, array) => value && array.indexOf(value) === index)
+              .slice(0, 8)
               .map((value) => (
-                <option key={value} value={value}>
+                <button
+                  className={options.archetype === value ? "active" : ""}
+                  key={value}
+                  type="button"
+                  onClick={() => update("archetype", value)}
+                >
                   {value}
-                </option>
+                </button>
               ))}
-          </select>
+          </div>
         </Field>
         <Field label="Mood">
           <input value={options.mood} onChange={(event) => update("mood", event.target.value)} />

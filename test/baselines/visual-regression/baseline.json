@@ -1,0 +1,45 @@
+{
+  "schema": "prompt-atelier.visual-baseline.v1",
+  "captures": {
+    "learner-compose": {
+      "clientWidth": 1440,
+      "clientHeight": 960,
+      "maxHorizontalOverflow": 4,
+      "minScrollHeight": 960,
+      "maxScrollHeight": 18000,
+      "tolerancePx": 2
+    },
+    "learner-review": {
+      "clientWidth": 1440,
+      "clientHeight": 960,
+      "maxHorizontalOverflow": 4,
+      "minScrollHeight": 960,
+      "maxScrollHeight": 18000,
+      "tolerancePx": 2
+    },
+    "learner-export": {
+      "clientWidth": 1440,
+      "clientHeight": 960,
+      "maxHorizontalOverflow": 4,
+      "minScrollHeight": 960,
+      "maxScrollHeight": 18000,
+      "tolerancePx": 2
+    },
+    "train-first-viewport": {
+      "clientWidth": 1440,
+      "clientHeight": 960,
+      "maxHorizontalOverflow": 4,
+      "minScrollHeight": 960,
+      "maxScrollHeight": 14000,
+      "tolerancePx": 2
+    },
+    "learner-mobile-compose": {
+      "clientWidth": 390,
+      "clientHeight": 900,
+      "maxHorizontalOverflow": 4,
+      "minScrollHeight": 900,
+      "maxScrollHeight": 22000,
+      "tolerancePx": 2
+    }
+  }
+}

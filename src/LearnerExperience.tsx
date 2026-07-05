@@ -58,18 +58,85 @@ import {
   LearnerActivityRail,
   LearnerCommandDeck,
   LearnerMobileStepBar,
+  LearnerWorkspaceSearchPanel,
+  ProductChangelogPanel,
+  PromptLintFixPanel,
+  ProofArtifactVault,
   ProofDeployStatusPanel,
   ProofIntakePanel,
   type LearnerActivityItem,
+  type LearnerProofVaultItem,
+  type LearnerSearchResult,
+  type ProductChangelogItem,
+  type PromptLintFix,
 } from "./LearnerWorkflowPanels";
 import { BUILD_STATUS } from "./buildStatus";
 import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
+const PROOF_VAULT_KEY = "prompt-atelier-proof-vault-v1";
 
 function addPercent(score: number) {
   return `${Math.max(0, Math.min(100, Math.round(score)))}%`;
+}
+
+function readProofVault(): LearnerProofVaultItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROOF_VAULT_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, 24) as LearnerProofVaultItem[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeProofVault(items: LearnerProofVaultItem[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PROOF_VAULT_KEY, JSON.stringify(items.slice(0, 24)));
+}
+
+function buildPromptLintFixes(prompt: string): PromptLintFix[] {
+  const text = prompt.toLowerCase();
+  const fixes: PromptLintFix[] = [];
+  if (!/mobile|responsive|breakpoint|viewport/.test(text)) {
+    fixes.push({
+      id: "mobile-proof",
+      label: "Add mobile proof",
+      detail: "The prompt should require mobile layout and screenshot verification.",
+      patch: "Responsive proof: verify desktop and mobile screenshots, text wrapping, navigation behavior, and no horizontal overflow.",
+      severity: "fix",
+    });
+  }
+  if (!/https?:\/\/|\/assets|\/logo|image|video/.test(text)) {
+    fixes.push({
+      id: "asset-specificity",
+      label: "Specify assets",
+      detail: "Great website prompts usually pin real media, image paths, or explicit asset fallback rules.",
+      patch: "Assets: include exact image/video URLs or named local asset paths, plus fallback behavior if an asset fails to load.",
+      severity: "watch",
+    });
+  }
+  if (!/no |avoid|do not|without|must not/.test(text)) {
+    fixes.push({
+      id: "no-go-rules",
+      label: "Add no-go rules",
+      detail: "The prompt needs guardrails for visual style, scope, and unwanted sections.",
+      patch: "No-go rules: do not add unrelated sections, marketing filler, decorative blobs, hidden overflow, or unrequested libraries.",
+      severity: "fix",
+    });
+  }
+  if (!/console|build|lint|screenshot|qa|verify|playwright/.test(text)) {
+    fixes.push({
+      id: "verification-gates",
+      label: "Add verification gates",
+      detail: "Require build, browser, screenshot, and console proof so the result can be judged.",
+      patch: "Verification: run lint/build, capture desktop and mobile screenshots, check console/network errors, and confirm media is nonblank.",
+      severity: "fix",
+    });
+  }
+  return fixes.slice(0, 4);
 }
 
 function ScoreRing({ score, label }: { score: number; label: string }) {
@@ -422,6 +489,7 @@ export function LearnView({
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [selectedSessionId, setSelectedSessionId] = useState("");
   const [learnerActivity, setLearnerActivity] = useState<LearnerActivityItem[]>([]);
+  const [proofVault, setProofVault] = useState<LearnerProofVaultItem[]>(() => readProofVault());
   const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
   const diffCategories = learnerDiff?.categories.slice(0, 10) ?? [];
   const selectedSession = savedLearnerSessions.find((session) => session.id === selectedSessionId) || savedLearnerSessions[0];
@@ -465,6 +533,50 @@ export function LearnView({
     }),
     [corpusSafety, exportTargetMatrix.readyCount, learnerProofAction, regressionSummary],
   );
+  const workspaceSearchResults = useMemo<LearnerSearchResult[]>(() => [
+    ...savedLearnerSessions.slice(0, 10).map((session) => ({
+      id: `session-${session.id}`,
+      kind: "session" as const,
+      title: session.title,
+      detail: `${session.profileLabel} / strength ${session.dnaScore} / ${session.benchmarkWinner.title}`,
+      actionLabel: "Reopen session",
+    })),
+    ...proofVault.slice(0, 10).map((artifact) => ({
+      id: `proof-vault-${artifact.id}`,
+      kind: "proof" as const,
+      title: artifact.title,
+      detail: `${artifact.rating} / ${artifact.screenshotNotes || artifact.notes}`,
+      actionLabel: "Review proof",
+    })),
+    ...learnerProofGallery.slice(0, 10).map((item) => ({
+      id: `proof-gallery-${item.id}`,
+      kind: "proof" as const,
+      title: item.title,
+      detail: `${item.kind} / ${item.score}% / ${item.detail}`,
+      actionLabel: "Open proof tab",
+    })),
+    ...targetExportPresets.map((preset) => ({
+      id: `export-${preset.id}`,
+      kind: "export" as const,
+      title: preset.label,
+      detail: `${preset.filename} / ${preset.detail}`,
+      actionLabel: "Open exports",
+    })),
+    ...corpusReviewRows.slice(0, 10).map((row) => ({
+      id: `corpus-${row.id}`,
+      kind: "corpus" as const,
+      title: row.title,
+      detail: `${row.decision} / ${row.score}% / ${row.cluster}`,
+      actionLabel: "Open review",
+    })),
+    ...samplePrompts.slice(0, 10).map((sample) => ({
+      id: `sample-${sample.id}`,
+      kind: "sample" as const,
+      title: sample.title,
+      detail: `${sample.archetype} / ${sample.score}%`,
+      actionLabel: "Use sample",
+    })),
+  ], [corpusReviewRows, learnerProofGallery, proofVault, samplePrompts, savedLearnerSessions, targetExportPresets]);
   const styleProfileCards = useMemo(() => buildLearnerStyleProfileCards({ activeProfile: activeLearningProfile, profiles: learningProfiles }), [activeLearningProfile, learningProfiles]);
   const operatingLoop = useMemo(
     () => buildLearnerOperatingLoop({
@@ -492,6 +604,36 @@ export function LearnView({
     () => buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt || improvedPrompt, sourcePrompt: learnerSource }),
     [improvedPrompt, learnedStyleGenerator.prompt, learnerSource],
   );
+  const promptLintFixes = useMemo(
+    () => buildPromptLintFixes(learnerText.trim() || learnedStyleGenerator.prompt || improvedPrompt || briefPrompt),
+    [briefPrompt, improvedPrompt, learnedStyleGenerator.prompt, learnerText],
+  );
+  const changelogItems = useMemo<ProductChangelogItem[]>(() => [
+    {
+      id: "scroll-shell",
+      label: "Normal page-wide scrolling",
+      detail: "The workspace now lets the document scroll naturally instead of trapping scroll in the center panel.",
+      meta: "UX",
+    },
+    {
+      id: "proof-vault",
+      label: "Durable local proof vault",
+      detail: `${proofVault.length} proof artifact(s) are saved in this browser for export and review.`,
+      meta: "Proof",
+    },
+    {
+      id: "export-targets",
+      label: "Target-specific exports",
+      detail: `${targetExportPresets.length} presets now explain how each handoff changes for its target.`,
+      meta: "Export",
+    },
+    {
+      id: "build-status",
+      label: "Build and deploy evidence",
+      detail: BUILD_STATUS.commit ? `${BUILD_STATUS.commit.slice(0, 7)} / ${BUILD_STATUS.deployedAt || BUILD_STATUS.lastSmoke}` : "Local build metadata will populate during CI and Pages deploys.",
+      meta: "Build",
+    },
+  ], [proofVault.length, targetExportPresets.length]);
   const learnerProjectSystem = useMemo(
     () => buildLearnerProjectSystem({ activeProfile: activeLearningProfile, projectSpaces, savedSessions: savedLearnerSessions }),
     [activeLearningProfile, projectSpaces, savedLearnerSessions],
@@ -538,6 +680,20 @@ export function LearnView({
   }
   function handleRecordOutcomeFeedback(rating: OutcomeRating, notes: string, screenshotUrl: string, screenshotNotes: string) {
     onRecordOutcomeFeedback(rating, notes, screenshotUrl, screenshotNotes);
+    const artifact: LearnerProofVaultItem = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      title: screenshotNotes.split(".")[0]?.replace(/^\[[^\]]+\]\s*/, "") || "Saved proof artifact",
+      rating,
+      screenshotUrl,
+      screenshotNotes,
+      notes,
+      createdAt: new Date().toISOString(),
+    };
+    setProofVault((current) => {
+      const next = [artifact, ...current].slice(0, 24);
+      writeProofVault(next);
+      return next;
+    });
     recordActivity("Proof saved", `${rating} result saved with ${screenshotUrl ? "visual proof" : "notes only"}.`, rating === "great" ? "good" : "watch");
   }
   function handleReviewCorpusCandidate(row: CorpusReviewRow, action: "import" | "gold" | "bad" | "quarantine" | "merge", notes: string) {
@@ -559,6 +715,29 @@ export function LearnView({
   function handleSaveImproved() {
     onSaveImproved();
     recordActivity("Prompt revised", "Improved prompt saved from the compose step.", "good");
+  }
+  function handleApplyLintFix(fix: PromptLintFix) {
+    const base = learnerText.trim() || learnedStyleGenerator.prompt || improvedPrompt || briefPrompt;
+    setLearnerText(`${base}\n\n${fix.patch}`);
+    recordActivity("Prompt lint fixed", fix.label, fix.severity === "fix" ? "good" : "watch");
+  }
+  function handleUseSearchResult(result: LearnerSearchResult) {
+    if (result.kind === "sample") {
+      const sample = samplePrompts.find((item) => `sample-${item.id}` === result.id);
+      if (sample) onUseSamplePrompt(sample.prompt);
+    }
+    if (result.kind === "session") {
+      const session = savedLearnerSessions.find((item) => `session-${item.id}` === result.id);
+      if (session) onOpenLearnerSession(session);
+    }
+    if (result.kind === "export") {
+      setActiveWorkspaceTab("export");
+      setExportModalOpen(true);
+    }
+    if (result.kind === "proof" || result.kind === "corpus") {
+      setActiveWorkspaceTab("review");
+    }
+    recordActivity("Workspace search", `${result.kind}: ${result.title}`, "neutral");
   }
   return (
     <div className="learn-grid">
@@ -590,6 +769,11 @@ export function LearnView({
         />
 
         <BeginnerPromptPath onUseBriefPrompt={handleUseBriefPrompt} score={learnerEvaluation.score || dnaScore} />
+
+        <div className="self-serve-grid cockpit-tool-grid">
+          <LearnerWorkspaceSearchPanel results={workspaceSearchResults} onUseResult={handleUseSearchResult} />
+          <PromptLintFixPanel fixes={promptLintFixes} onApplyFix={handleApplyLintFix} />
+        </div>
 
         <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
           <div className="loop-summary">
@@ -1041,6 +1225,8 @@ export function LearnView({
 
         <ProofIntakePanel onRecordOutcomeFeedback={handleRecordOutcomeFeedback} />
 
+        <ProofArtifactVault artifacts={proofVault} copied={copied} onCopy={onCopy} />
+
         <section className="learner-mini-panel ingestion-safety-panel" data-status={ingestionSummary.status} data-train-section="ingestion-safety">
           <div className="output-header">
             <div>
@@ -1137,6 +1323,10 @@ export function LearnView({
           </div>
         </section>
         <ProofDeployStatusPanel status={proofDeployStatus} />
+        <ProductChangelogPanel
+          items={changelogItems}
+          status={{ label: BUILD_STATUS.workflow || "local", detail: `Latest smoke: ${BUILD_STATUS.lastSmoke}` }}
+        />
         <section className="learner-mini-panel export-target-matrix" data-train-section="export-target-matrix">
           <div className="output-header">
             <div>
