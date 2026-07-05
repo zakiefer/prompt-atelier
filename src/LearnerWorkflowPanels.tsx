@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Check, Clock, Copy, Download, ExternalLink, ImagePlus, ListChecks, MonitorCheck, Save, Search, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, Check, Clock, Copy, Download, ExternalLink, FileText, History, ImagePlus, ListChecks, MonitorCheck, PackageCheck, Save, Search, ShieldCheck, Sparkles, Upload } from "lucide-react";
 import { type OutcomeRating } from "./promptEngine";
 import { type CorpusReviewRow, type LearnerSession, type TargetExportPreset } from "./learnerProduct";
 import {
@@ -65,6 +65,12 @@ export type ProjectSnapshot = {
   profileId: string;
   sourcePrompt: string;
   proofArtifacts: LearnerProofVaultItem[];
+  improvedPrompt?: string;
+  reviewedPrompt?: string;
+  promptScore?: number;
+  proofScore?: number;
+  exportReadyCount?: number;
+  exportPresetCount?: number;
 };
 
 export type ImportFrontDoorItem = {
@@ -85,6 +91,286 @@ export type ProofLeaderboardRow = {
   kind: string;
   detail: string;
 };
+
+export type ProjectStage = {
+  id: LearnerWorkspaceTab | "import";
+  label: string;
+  status: "ready" | "active" | "watch";
+  detail: string;
+  cta: string;
+};
+
+export type CurrentProjectSummary = {
+  name: string;
+  profileLabel: string;
+  sourceWords: number;
+  promptScore: number;
+  proofScore: number;
+  exportReadyCount: number;
+  exportPresetCount: number;
+  proofCount: number;
+  sessionCount: number;
+  savedAt?: string;
+};
+
+export type ProofChecklistItem = {
+  id: string;
+  label: string;
+  ready: boolean;
+  detail: string;
+  target: LearnerWorkspaceTab;
+};
+
+export type PromptQualityReportItem = {
+  label: string;
+  score: number;
+  status: "strong" | "watch" | "missing";
+  detail: string;
+};
+
+export type TrainingSignal = {
+  label: string;
+  detail: string;
+  strength: number;
+};
+
+export function ProjectCockpitPanel({
+  activeStage,
+  project,
+  stages,
+  onRunOneClick,
+  onSaveProject,
+  onSelectStage,
+}: {
+  activeStage: LearnerWorkspaceTab;
+  project: CurrentProjectSummary;
+  stages: ProjectStage[];
+  onRunOneClick: () => void;
+  onSaveProject: () => void;
+  onSelectStage: (stage: ProjectStage) => void;
+}) {
+  return (
+    <section className="project-cockpit-panel" data-train-section="project-cockpit">
+      <div className="project-cockpit-copy">
+        <span>Current project</span>
+        <h3>{project.name}</h3>
+        <p>
+          {project.profileLabel} / {project.sourceWords} words / {project.proofCount} proof item(s) / {project.sessionCount} saved run(s)
+        </p>
+        <div className="button-row compact-row">
+          <button className="primary-button compact-button" type="button" onClick={onRunOneClick}>
+            Run full path
+            <ArrowRight size={15} />
+          </button>
+          <button className="ghost-button compact-button" type="button" onClick={onSaveProject}>
+            <Save size={15} />
+            Save project
+          </button>
+        </div>
+      </div>
+      <div className="project-score-stack" aria-label="Project readiness">
+        <article>
+          <strong>{project.promptScore}</strong>
+          <span>Prompt</span>
+        </article>
+        <article>
+          <strong>{project.proofScore}</strong>
+          <span>Proof</span>
+        </article>
+        <article>
+          <strong>{project.exportReadyCount}/{project.exportPresetCount}</strong>
+          <span>Exports</span>
+        </article>
+      </div>
+      <div className="project-stage-grid">
+        {stages.map((stage) => (
+          <button
+            data-active={stage.id === activeStage ? "true" : "false"}
+            data-status={stage.status}
+            key={stage.id}
+            type="button"
+            onClick={() => onSelectStage(stage)}
+          >
+            <span>{stage.status}</span>
+            <strong>{stage.label}</strong>
+            <p>{stage.detail}</p>
+            <small>{stage.cta}</small>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ProofRunnerChecklistPanel({
+  items,
+  onSelectItem,
+}: {
+  items: ProofChecklistItem[];
+  onSelectItem: (item: ProofChecklistItem) => void;
+}) {
+  const ready = items.filter((item) => item.ready).length;
+  return (
+    <section className="learner-mini-panel proof-runner-checklist" data-train-section="proof-runner-checklist">
+      <div className="output-header">
+        <div>
+          <h3>Automatic proof runner</h3>
+          <p>Every export should leave with visible desktop/mobile proof, console health, and acceptance gates.</p>
+        </div>
+        <span className="selected-meta">{ready}/{items.length} ready</span>
+      </div>
+      <div className="proof-checklist-grid">
+        {items.map((item) => (
+          <button data-ready={item.ready ? "true" : "false"} key={item.id} type="button" onClick={() => onSelectItem(item)}>
+            {item.ready ? <Check size={16} /> : <ListChecks size={16} />}
+            <strong>{item.label}</strong>
+            <p>{item.detail}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function PromptQualityReportPanel({
+  items,
+  onImprove,
+  score,
+  summary,
+}: {
+  items: PromptQualityReportItem[];
+  onImprove: () => void;
+  score: number;
+  summary: string;
+}) {
+  return (
+    <section className="learner-mini-panel prompt-quality-report" data-train-section="prompt-quality-report">
+      <div className="output-header">
+        <div>
+          <h3>Prompt quality report</h3>
+          <p>{summary}</p>
+        </div>
+        <div className="mini-score-badge">
+          <strong>{score}</strong>
+          <span>quality</span>
+        </div>
+      </div>
+      <div className="quality-report-grid">
+        {items.map((item) => (
+          <article data-status={item.status} key={item.label}>
+            <span>{item.status}</span>
+            <strong>{item.label}</strong>
+            <p>{item.detail}</p>
+            <small>{item.score}/100</small>
+          </article>
+        ))}
+      </div>
+      <button className="primary-button compact-button" type="button" onClick={onImprove}>
+        Improve from report
+        <ArrowRight size={15} />
+      </button>
+    </section>
+  );
+}
+
+export function TrainingImpactPanel({
+  onLearn,
+  signals,
+}: {
+  onLearn: () => void;
+  signals: TrainingSignal[];
+}) {
+  return (
+    <section className="learner-mini-panel training-impact-panel" data-train-section="training-impact">
+      <div className="output-header">
+        <div>
+          <h3>Learn from this prompt</h3>
+          <p>Show exactly what the corpus will remember before this example becomes training signal.</p>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onLearn}>
+          <Sparkles size={15} />
+          Learn signal
+        </button>
+      </div>
+      <div className="training-signal-list">
+        {signals.map((signal) => (
+          <article key={signal.label}>
+            <strong>{signal.label}</strong>
+            <p>{signal.detail}</p>
+            <span>{signal.strength}/100</span>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ExportDeliverablesPanel({
+  onOpenExport,
+  presets,
+}: {
+  onOpenExport: () => void;
+  presets: TargetExportPreset[];
+}) {
+  const featured = presets.filter((preset) => ["codex", "claude", "v0", "lovable", "raw", "jsonl"].includes(preset.id)).slice(0, 6);
+  return (
+    <section className="learner-mini-panel export-deliverables-panel" data-train-section="export-deliverables">
+      <div className="output-header">
+        <div>
+          <h3>Export deliverables</h3>
+          <p>Each handoff explains who it is for, what proof it needs, and what file it produces.</p>
+        </div>
+        <button className="primary-button compact-button" type="button" onClick={onOpenExport}>
+          <PackageCheck size={15} />
+          Package exports
+        </button>
+      </div>
+      <div className="deliverable-grid">
+        {featured.map((preset) => (
+          <article key={preset.id}>
+            <FileText size={16} />
+            <strong>{preset.label}</strong>
+            <p>{preset.detail}</p>
+            <span>{preset.filename}</span>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function ProjectHistoryPanel({
+  history,
+  onRestore,
+}: {
+  history: ProjectSnapshot[];
+  onRestore: (snapshot: ProjectSnapshot) => void;
+}) {
+  return (
+    <section className="learner-mini-panel project-history-panel" data-train-section="project-history">
+      <div className="output-header">
+        <div>
+          <h3>Project history</h3>
+          <p>Saved snapshots keep prompt text, profile, proof, and export readiness together.</p>
+        </div>
+        <History size={16} />
+      </div>
+      <div className="project-history-list">
+        {history.slice(0, 5).map((snapshot) => (
+          <button key={snapshot.id} type="button" onClick={() => onRestore(snapshot)}>
+            <ShieldCheck size={15} />
+            <div>
+              <strong>{snapshot.label}</strong>
+              <p>{new Date(snapshot.savedAt).toLocaleString()} / prompt {snapshot.promptScore ?? 0} / proof {snapshot.proofScore ?? 0}</p>
+            </div>
+            <span>{snapshot.exportReadyCount ?? 0}/{snapshot.exportPresetCount ?? 0}</span>
+          </button>
+        ))}
+        {!history.length ? <p className="selected-meta">No project snapshots yet.</p> : null}
+      </div>
+    </section>
+  );
+}
 
 export function LearnerCommandDeck({
   activeTab,

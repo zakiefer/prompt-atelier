@@ -790,7 +790,7 @@ button:disabled {
 }
 
 .command-session-card {
-  align-content: end;
+  align-content: start;
   display: grid;
   gap: 8px;
 }
@@ -1872,8 +1872,215 @@ button:disabled {
 .import-front-door-panel,
 .project-persistence-panel,
 .proof-quality-leaderboard,
-.production-hardening-panel {
+.production-hardening-panel,
+.proof-runner-checklist,
+.prompt-quality-report,
+.training-impact-panel,
+.export-deliverables-panel,
+.project-history-panel {
   background: rgba(255, 255, 255, 0.84);
+}
+
+.project-cockpit-panel {
+  align-items: stretch;
+  background: linear-gradient(135deg, rgba(20, 34, 29, 0.98), rgba(18, 58, 49, 0.92));
+  border: 1px solid rgba(31, 122, 104, 0.28);
+  border-radius: 24px;
+  color: #fff;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.05fr) auto minmax(0, 1.55fr);
+  overflow: hidden;
+  padding: 18px;
+  position: relative;
+}
+
+.project-cockpit-panel::before {
+  background: radial-gradient(circle at 15% 0%, rgba(212, 245, 236, 0.18), transparent 36%);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.project-cockpit-copy,
+.project-score-stack,
+.project-stage-grid {
+  position: relative;
+  z-index: 1;
+}
+
+.project-cockpit-copy {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.project-cockpit-copy span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.project-cockpit-copy h3 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 4.2rem);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+  margin: 0;
+}
+
+.project-cockpit-copy p {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 520px;
+}
+
+.project-cockpit-panel .ghost-button {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.project-score-stack {
+  display: grid;
+  gap: 8px;
+  min-width: 112px;
+}
+
+.project-score-stack article {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+}
+
+.project-score-stack strong {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.project-score-stack span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.project-stage-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.project-stage-grid button {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  color: #fff;
+  cursor: pointer;
+  display: grid;
+  gap: 7px;
+  min-height: 150px;
+  padding: 13px;
+  text-align: left;
+}
+
+.project-stage-grid button:hover,
+.project-stage-grid button[data-active="true"] {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.project-stage-grid span,
+.project-stage-grid small {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.project-stage-grid strong {
+  font-size: 1rem;
+}
+
+.project-stage-grid p {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.project-stage-grid button[data-status="ready"] span {
+  color: #bfeee1;
+}
+
+.project-stage-grid button[data-status="active"] span,
+.project-stage-grid button[data-status="watch"] span {
+  color: #f1c97b;
+}
+
+.guided-product-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+}
+
+.guided-product-grid > * {
+  min-width: 0;
+}
+
+.learner-tools-drawer {
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.learner-tools-drawer summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.learner-tools-drawer summary::-webkit-details-marker {
+  display: none;
+}
+
+.learner-tools-drawer summary span {
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 900;
+}
+
+.learner-tools-drawer summary strong {
+  color: var(--muted);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.learner-tools-stack {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding: 14px;
 }
 
 .workspace-search-results,
@@ -2122,6 +2329,154 @@ button:disabled {
   font-family: var(--font-display);
   font-size: 1.6rem;
   line-height: 1;
+}
+
+.proof-checklist-grid,
+.quality-report-grid,
+.training-signal-list,
+.deliverable-grid,
+.project-history-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.proof-checklist-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quality-report-grid,
+.deliverable-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.proof-checklist-grid button,
+.quality-report-grid article,
+.training-signal-list article,
+.deliverable-grid article,
+.project-history-list button {
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  text-align: left;
+}
+
+.proof-checklist-grid button {
+  cursor: pointer;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.proof-checklist-grid button p {
+  grid-column: 1 / -1;
+}
+
+.proof-checklist-grid button:hover,
+.project-history-list button:hover {
+  background: #fff;
+  border-color: rgba(31, 122, 104, 0.3);
+  transform: translateY(-1px);
+}
+
+.proof-checklist-grid button[data-ready="true"],
+.quality-report-grid article[data-status="strong"] {
+  border-color: rgba(31, 122, 104, 0.3);
+}
+
+.proof-checklist-grid button[data-ready="false"],
+.quality-report-grid article[data-status="watch"] {
+  border-color: rgba(185, 130, 42, 0.3);
+}
+
+.quality-report-grid article[data-status="missing"] {
+  border-color: rgba(164, 72, 63, 0.28);
+}
+
+.proof-checklist-grid strong,
+.quality-report-grid strong,
+.training-signal-list strong,
+.deliverable-grid strong,
+.project-history-list strong {
+  display: block;
+  font-size: 0.86rem;
+  line-height: 1.2;
+}
+
+.proof-checklist-grid p,
+.quality-report-grid p,
+.training-signal-list p,
+.deliverable-grid p,
+.project-history-list p {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.38;
+  margin: 0;
+}
+
+.quality-report-grid span,
+.quality-report-grid small,
+.training-signal-list span,
+.deliverable-grid span,
+.project-history-list span {
+  color: var(--teal-dark);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.mini-score-badge {
+  align-items: center;
+  background: rgba(31, 122, 104, 0.09);
+  border: 1px solid rgba(31, 122, 104, 0.18);
+  border-radius: 999px;
+  color: var(--teal-dark);
+  display: flex;
+  flex-direction: column;
+  height: 72px;
+  justify-content: center;
+  width: 72px;
+}
+
+.mini-score-badge strong {
+  font-family: var(--font-display);
+  font-size: 1.95rem;
+  font-weight: 400;
+  line-height: 0.9;
+}
+
+.mini-score-badge span {
+  font-size: 0.56rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.training-signal-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.training-signal-list article {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.training-signal-list p {
+  grid-column: 1 / -1;
+}
+
+.deliverable-grid article svg,
+.project-history-list button svg {
+  color: var(--teal-dark);
+}
+
+.project-history-list button {
+  align-items: center;
+  cursor: pointer;
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 .corpus-triage-toolbar {
@@ -6006,6 +6361,15 @@ button.preset-card {
 	  .train-section-nav,
 	  .train-focus-grid,
 	  .screenshot-dropzone,
+	  .project-cockpit-panel,
+	  .project-stage-grid,
+	  .project-score-stack,
+	  .guided-product-grid,
+	  .proof-checklist-grid,
+	  .quality-report-grid,
+	  .training-signal-list,
+	  .deliverable-grid,
+	  .project-history-list button,
 	  .one-click-proof-layout,
 	  .one-click-proof-steps,
 	  .production-hardening-grid {

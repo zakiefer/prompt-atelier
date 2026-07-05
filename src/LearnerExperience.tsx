@@ -53,6 +53,7 @@ import {
 import {
   BeginnerPromptPath,
   CorpusTriageToolbar,
+  ExportDeliverablesPanel,
   ExportPresetPreview,
   ImportFrontDoorPanel,
   LearnedPromptSectionEditor,
@@ -61,23 +62,33 @@ import {
   LearnerMobileStepBar,
   LearnerWorkspaceSearchPanel,
   OneClickProofRail,
+  ProjectCockpitPanel,
+  ProjectHistoryPanel,
   ProductionHardeningPanel,
   ProductChangelogPanel,
   ProjectPersistencePanel,
+  PromptQualityReportPanel,
+  ProofRunnerChecklistPanel,
   PromptLintFixPanel,
   ProofQualityLeaderboardPanel,
   ProofArtifactVault,
   ProofDeployStatusPanel,
   ProofIntakePanel,
+  TrainingImpactPanel,
+  type CurrentProjectSummary,
   type ImportFrontDoorItem,
   type LearnerActivityItem,
   type LearnerProofVaultItem,
   type LearnerSearchResult,
   type OneClickProofStep,
+  type ProjectStage,
   type ProjectSnapshot,
+  type PromptQualityReportItem,
+  type ProofChecklistItem,
   type ProofLeaderboardRow,
   type ProductChangelogItem,
   type PromptLintFix,
+  type TrainingSignal,
 } from "./LearnerWorkflowPanels";
 import { BUILD_STATUS } from "./buildStatus";
 import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
@@ -86,6 +97,7 @@ const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
 const PROOF_VAULT_KEY = "prompt-atelier-proof-vault-v1";
 const PROJECT_SNAPSHOT_KEY = "prompt-atelier-project-snapshot-v1";
+const PROJECT_HISTORY_KEY = "prompt-atelier-project-history-v1";
 
 function addPercent(score: number) {
   return `${Math.max(0, Math.min(100, Math.round(score)))}%`;
@@ -122,6 +134,22 @@ function readProjectSnapshot(): ProjectSnapshot | undefined {
 function writeProjectSnapshot(snapshot: ProjectSnapshot) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(PROJECT_SNAPSHOT_KEY, JSON.stringify(snapshot));
+}
+
+function readProjectHistory(): ProjectSnapshot[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PROJECT_HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, 12) as ProjectSnapshot[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeProjectHistory(history: ProjectSnapshot[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PROJECT_HISTORY_KEY, JSON.stringify(history.slice(0, 12)));
 }
 
 function classifyImportFile(filename: string, text: string): Omit<ImportFrontDoorItem, "id" | "filename" | "text"> {
@@ -541,6 +569,7 @@ export function LearnView({
   const [learnerActivity, setLearnerActivity] = useState<LearnerActivityItem[]>([]);
   const [proofVault, setProofVault] = useState<LearnerProofVaultItem[]>(() => readProofVault());
   const [projectSnapshot, setProjectSnapshot] = useState<ProjectSnapshot | undefined>(() => readProjectSnapshot());
+  const [projectHistory, setProjectHistory] = useState<ProjectSnapshot[]>(() => readProjectHistory());
   const [importFrontDoorItems, setImportFrontDoorItems] = useState<ImportFrontDoorItem[]>([]);
   const learnerSource = learnerText.trim() || selectedPrompt?.text || "";
   const diffCategories = learnerDiff?.categories.slice(0, 10) ?? [];
@@ -767,6 +796,119 @@ export function LearnView({
       detail: BUILD_STATUS.lastSmoke || "Hosted smoke metadata is populated by CI or local verification.",
     },
   ], []);
+  const currentProject = useMemo<CurrentProjectSummary>(() => ({
+    name: projectSnapshot?.label ?? `${activeLearningProfile.label} website prompt`,
+    profileLabel: activeLearningProfile.label,
+    sourceWords: countWords(learnerSource || learnerText || improvedPrompt),
+    promptScore: learnerEvaluation.score || dnaScore,
+    proofScore: learnerProofAction.score,
+    exportReadyCount: exportTargetMatrix.readyCount,
+    exportPresetCount: exportTargetMatrix.rows.length,
+    proofCount: proofVault.length + learnerProofGallery.length,
+    sessionCount: savedLearnerSessions.length,
+    savedAt: projectSnapshot?.savedAt,
+  }), [activeLearningProfile.label, dnaScore, exportTargetMatrix.readyCount, exportTargetMatrix.rows.length, improvedPrompt, learnerEvaluation.score, learnerProofAction.score, learnerProofGallery.length, learnerSource, learnerText, projectSnapshot, proofVault.length, savedLearnerSessions.length]);
+  const projectStages = useMemo<ProjectStage[]>(() => [
+    {
+      id: "import",
+      label: "Import",
+      status: learnerSource || importFrontDoorItems.some((item) => item.status === "ready") ? "ready" : "active",
+      detail: learnerSource ? `${countWords(learnerSource)} words loaded.` : "Start with a strong prompt or drop files into the import door.",
+      cta: learnerSource ? "Review source" : "Open import",
+    },
+    {
+      id: "compose",
+      label: "Improve",
+      status: promptLintFixes.length ? "active" : learnerSource ? "ready" : "watch",
+      detail: promptLintFixes.length ? `${promptLintFixes.length} fix(es) can sharpen the prompt.` : "Revision and learned style are ready.",
+      cta: "Open compose",
+    },
+    {
+      id: "review",
+      label: "Prove",
+      status: proofVault.length || learnerProofGallery.length ? "ready" : "active",
+      detail: proofVault.length || learnerProofGallery.length ? `${proofVault.length + learnerProofGallery.length} proof item(s) attached.` : "Add screenshot or proof notes before promotion.",
+      cta: "Open proof",
+    },
+    {
+      id: "export",
+      label: "Export",
+      status: exportTargetMatrix.readyCount >= 6 ? "ready" : "active",
+      detail: `${exportTargetMatrix.readyCount}/${exportTargetMatrix.rows.length} export targets are ready.`,
+      cta: "Package files",
+    },
+  ], [exportTargetMatrix.readyCount, exportTargetMatrix.rows.length, importFrontDoorItems, learnerProofGallery.length, learnerSource, promptLintFixes.length, proofVault.length]);
+  const proofChecklist = useMemo<ProofChecklistItem[]>(() => [
+    {
+      id: "desktop-mobile",
+      label: "Desktop and mobile screenshots",
+      ready: proofVault.some((item) => /desktop|mobile|screenshot/i.test(`${item.screenshotNotes} ${item.notes}`)) || learnerProofGallery.length > 0,
+      detail: "Capture first viewport proof with no blank media, clipping, or horizontal overflow.",
+      target: "review",
+    },
+    {
+      id: "console-health",
+      label: "Console and media health",
+      ready: /visual|smoke|console|media/i.test(BUILD_STATUS.lastSmoke) || learnerProofAction.ready.some((item) => /smoke|console|media/i.test(item)),
+      detail: "Prove the build has no relevant console errors, request failures, or missing media.",
+      target: "review",
+    },
+    {
+      id: "acceptance-gates",
+      label: "Acceptance gates",
+      ready: /verify|qa|screenshot|build|lint|playwright/i.test(learnerSource || improvedPrompt),
+      detail: "The prompt should name the exact QA commands or rendered checks expected.",
+      target: "compose",
+    },
+    {
+      id: "export-proof",
+      label: "Proof travels with export",
+      ready: exportTargetMatrix.readyCount >= 6 && (proofVault.length > 0 || learnerProofGallery.length > 0),
+      detail: "Export packages should carry proof references and target-specific acceptance notes.",
+      target: "export",
+    },
+  ], [exportTargetMatrix.readyCount, improvedPrompt, learnerProofAction.ready, learnerProofGallery.length, learnerSource, proofVault, BUILD_STATUS.lastSmoke]);
+  const qualityReportRows = useMemo<PromptQualityReportItem[]>(() => {
+    const dimensions: PromptQualityReportItem[] = dnaExplanation.dimensions.slice(0, 4).map((dimension) => ({
+      label: dimension.label,
+      score: dimension.score,
+      status: dimension.score >= 85 ? "strong" as const : dimension.score >= 60 ? "watch" as const : "missing" as const,
+      detail: dimension.why,
+    }));
+    const proofScore = learnerProofAction.score;
+    const proofStatus: PromptQualityReportItem["status"] = proofScore >= 85 ? "strong" : proofScore >= 50 ? "watch" : "missing";
+    return [
+      ...dimensions,
+      {
+        label: "Proof readiness",
+        score: proofScore,
+        status: proofStatus,
+        detail: learnerProofAction.missing[0] || "Proof evidence is attached and ready for export.",
+      },
+    ].slice(0, 5);
+  }, [dnaExplanation.dimensions, learnerProofAction.missing, learnerProofAction.score]);
+  const trainingSignals = useMemo<TrainingSignal[]>(() => [
+    {
+      label: "Archetype",
+      detail: activeLearningProfile.description,
+      strength: activeLearningProfile.score,
+    },
+    {
+      label: "Visual signature",
+      detail: selectedAnalysis?.tags.slice(0, 5).join(" / ") || learnedStyleGenerator.ingredients[0]?.detail || "No dominant visual signature detected yet.",
+      strength: learnerEvaluation.score || dnaScore,
+    },
+    {
+      label: "Stack pattern",
+      detail: selectedAnalysis?.stack.join(" + ") || "Stack is inferred from the working prompt and learned profile.",
+      strength: selectedAnalysis?.stack.length ? 92 : 58,
+    },
+    {
+      label: "Proof habit",
+      detail: proofChecklist.filter((item) => item.ready).map((item) => item.label).join(" / ") || "Add proof before this becomes a gold example.",
+      strength: Math.round((proofChecklist.filter((item) => item.ready).length / proofChecklist.length) * 100),
+    },
+  ], [activeLearningProfile.description, activeLearningProfile.score, dnaScore, learnedStyleGenerator.ingredients, learnerEvaluation.score, proofChecklist, selectedAnalysis]);
   const learnerProjectSystem = useMemo(
     () => buildLearnerProjectSystem({ activeProfile: activeLearningProfile, projectSpaces, savedSessions: savedLearnerSessions }),
     [activeLearningProfile, projectSpaces, savedLearnerSessions],
@@ -902,19 +1044,52 @@ export function LearnView({
       profileId: activeLearningProfile.id,
       sourcePrompt: learnerText,
       proofArtifacts: proofVault,
+      improvedPrompt,
+      reviewedPrompt,
+      promptScore: currentProject.promptScore,
+      proofScore: currentProject.proofScore,
+      exportReadyCount: currentProject.exportReadyCount,
+      exportPresetCount: currentProject.exportPresetCount,
     };
     writeProjectSnapshot(snapshot);
     setProjectSnapshot(snapshot);
+    setProjectHistory((current) => {
+      const next = [snapshot, ...current.filter((item) => item.id !== snapshot.id)].slice(0, 12);
+      writeProjectHistory(next);
+      return next;
+    });
     recordActivity("Project snapshot saved", `${snapshot.label} saved with ${proofVault.length} proof artifact(s).`, "good");
     return snapshot;
   }
   function handleRestoreProjectSnapshot(snapshot: ProjectSnapshot) {
-    setLearnerText(snapshot.sourcePrompt);
+    setLearnerText(snapshot.sourcePrompt || snapshot.improvedPrompt || "");
     setProofVault(snapshot.proofArtifacts);
     writeProofVault(snapshot.proofArtifacts);
+    writeProjectSnapshot(snapshot);
+    setProjectSnapshot(snapshot);
     setActiveLearningProfileId(snapshot.profileId);
     setActiveWorkspaceTab("compose");
     recordActivity("Project snapshot restored", `${snapshot.label} restored.`, "good");
+  }
+  function handleSelectProjectStage(stage: ProjectStage) {
+    if (stage.id === "import") {
+      setActiveWorkspaceTab("compose");
+      recordActivity("Project stage opened", "Import tools are available in the compose workspace.", "neutral");
+      return;
+    }
+    setActiveWorkspaceTab(stage.id);
+    if (stage.id === "export") setExportModalOpen(true);
+    recordActivity("Project stage opened", `${stage.label}: ${stage.cta}.`, stage.status === "ready" ? "good" : "neutral");
+  }
+  function handleSelectProofChecklistItem(item: ProofChecklistItem) {
+    setActiveWorkspaceTab(item.target);
+    if (item.target === "export") setExportModalOpen(true);
+    recordActivity("Proof checklist opened", `${item.label}: ${item.ready ? "ready" : "needs proof"}.`, item.ready ? "good" : "watch");
+  }
+  function handleLearnFromPromptSignal() {
+    onSaveLearnerSession(reviewedPrompt, acceptedDiffLabels, rejectedDiffLabels);
+    const snapshot = handleSaveProjectSnapshot();
+    recordActivity("Training signal saved", `${snapshot.label} saved as a restorable learning run.`, "good");
   }
   function handleSelectProofLeaderboardRow(row: ProofLeaderboardRow) {
     if (row.id.startsWith("session-")) {
@@ -955,42 +1130,75 @@ export function LearnView({
           <ScoreRing score={learnerEvaluation.score || dnaScore} label="Strength" />
         </div>
 
-        <LearnerCommandDeck
-          activeTab={activeWorkspaceTab}
-          currentAction={operatingLoop.currentAction}
-          latestSession={savedLearnerSessions[0]}
-          onOpenLatest={onOpenLearnerSession}
-          onSetTab={setActiveWorkspaceTab}
-          steps={operatingLoop.steps}
-          stats={{
-            exportReadyCount: exportTargetMatrix.readyCount,
-            presetCount: targetExportPresets.length,
-            proofItems: learnerProofGallery.length,
-            proofScore: learnerProofAction.score,
-            promptScore: learnerEvaluation.score || dnaScore,
-            sessions: savedLearnerSessions.length,
-          }}
+        <ProjectCockpitPanel
+          activeStage={activeWorkspaceTab}
+          onRunOneClick={handleRunOneClickProofPath}
+          onSaveProject={handleSaveProjectSnapshot}
+          onSelectStage={handleSelectProjectStage}
+          project={currentProject}
+          stages={projectStages}
         />
 
-        <BeginnerPromptPath onUseBriefPrompt={handleUseBriefPrompt} score={learnerEvaluation.score || dnaScore} />
-
-        <OneClickProofRail onRun={handleRunOneClickProofPath} score={oneClickScore} steps={oneClickSteps} />
-
-        <div className="self-serve-grid cockpit-tool-grid">
-          <LearnerWorkspaceSearchPanel results={workspaceSearchResults} onUseResult={handleUseSearchResult} />
-          <PromptLintFixPanel fixes={promptLintFixes} onApplyFix={handleApplyLintFix} />
+        <div className="guided-product-grid">
+          <LearnerCommandDeck
+            activeTab={activeWorkspaceTab}
+            currentAction={operatingLoop.currentAction}
+            latestSession={savedLearnerSessions[0]}
+            onOpenLatest={onOpenLearnerSession}
+            onSetTab={setActiveWorkspaceTab}
+            steps={operatingLoop.steps}
+            stats={{
+              exportReadyCount: exportTargetMatrix.readyCount,
+              presetCount: targetExportPresets.length,
+              proofItems: learnerProofGallery.length,
+              proofScore: learnerProofAction.score,
+              promptScore: learnerEvaluation.score || dnaScore,
+              sessions: savedLearnerSessions.length,
+            }}
+          />
+          <ProofRunnerChecklistPanel items={proofChecklist} onSelectItem={handleSelectProofChecklistItem} />
         </div>
 
-        <div className="self-serve-grid cockpit-tool-grid">
-          <ImportFrontDoorPanel items={importFrontDoorItems} onFiles={handleImportFrontDoorFiles} onUseItem={handleUseImportFrontDoorItem} />
-          <ProjectPersistencePanel
-            activeSnapshot={projectSnapshot}
-            copied={copied}
-            onCopy={onCopy}
-            onRestore={handleRestoreProjectSnapshot}
-            onSave={handleSaveProjectSnapshot}
+        <div className="guided-product-grid">
+          <OneClickProofRail onRun={handleRunOneClickProofPath} score={oneClickScore} steps={oneClickSteps} />
+          <PromptQualityReportPanel
+            items={qualityReportRows}
+            onImprove={handleSaveImproved}
+            score={learnerEvaluation.score || dnaScore}
+            summary={dnaExplanation.summary[0] ?? "Quality report is based on prompt strength, proof readiness, and export safety."}
           />
         </div>
+
+        <div className="guided-product-grid">
+          <BeginnerPromptPath onUseBriefPrompt={handleUseBriefPrompt} score={learnerEvaluation.score || dnaScore} />
+          <TrainingImpactPanel onLearn={handleLearnFromPromptSignal} signals={trainingSignals} />
+        </div>
+
+        <details className="learner-tools-drawer" data-train-section="advanced-workspace-tools">
+          <summary>
+            <span>Workspace tools</span>
+            <strong>Search, imports, lint fixes, and snapshots</strong>
+          </summary>
+          <div className="learner-tools-stack">
+            <div className="self-serve-grid cockpit-tool-grid">
+              <LearnerWorkspaceSearchPanel results={workspaceSearchResults} onUseResult={handleUseSearchResult} />
+              <PromptLintFixPanel fixes={promptLintFixes} onApplyFix={handleApplyLintFix} />
+            </div>
+
+            <div className="self-serve-grid cockpit-tool-grid">
+              <ImportFrontDoorPanel items={importFrontDoorItems} onFiles={handleImportFrontDoorFiles} onUseItem={handleUseImportFrontDoorItem} />
+              <ProjectPersistencePanel
+                activeSnapshot={projectSnapshot}
+                copied={copied}
+                onCopy={onCopy}
+                onRestore={handleRestoreProjectSnapshot}
+                onSave={handleSaveProjectSnapshot}
+              />
+            </div>
+
+            <ProjectHistoryPanel history={projectHistory} onRestore={handleRestoreProjectSnapshot} />
+          </div>
+        </details>
 
         <section className="learner-operating-loop" aria-label="Prompt operating loop" data-train-section="prompt-operating-loop">
           <div className="loop-summary">
@@ -1547,6 +1755,7 @@ export function LearnView({
           status={{ label: BUILD_STATUS.workflow || "local", detail: `Latest smoke: ${BUILD_STATUS.lastSmoke}` }}
         />
         <ProductionHardeningPanel checks={productionChecks} copied={copied} onCopy={onCopy} />
+        <ExportDeliverablesPanel onOpenExport={() => setExportModalOpen(true)} presets={targetExportPresets} />
         <section className="learner-mini-panel export-target-matrix" data-train-section="export-target-matrix">
           <div className="output-header">
             <div>

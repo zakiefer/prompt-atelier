@@ -63,13 +63,18 @@ const trainHeadings = [
 ];
 const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
+  "Current project",
   "Next best action",
+  "Automatic proof runner",
   "Guided start",
   "One-click prompt path",
+  "Prompt quality report",
+  "Learn from this prompt",
   "Workspace search",
   "Prompt lint fixes",
   "Import front door",
   "Project persistence",
+  "Project history",
   "Proof-first action",
   "Brief builder",
   "Generated prompt section editor",
@@ -93,6 +98,7 @@ const learnerHeadings = [
   "Proof and deploy status",
   "Product changelog",
   "Production hardening",
+  "Export deliverables",
   "Export target matrix",
   "Corpus safety",
   "Regression guard",
@@ -184,13 +190,19 @@ try {
             ]
           : [
               "public-learner",
+              "project-cockpit",
               "learner-command-deck",
+              "proof-runner-checklist",
               "beginner-prompt-path",
               "one-click-proof-rail",
+              "prompt-quality-report",
+              "training-impact",
+              "advanced-workspace-tools",
               "workspace-search",
               "prompt-lint-fixes",
               "import-front-door",
               "project-persistence",
+              "project-history",
               "guided-first-run",
               "prompt-diagnosis",
               "proof-first-action",
@@ -211,6 +223,7 @@ try {
               "proof-deploy-status",
               "product-changelog",
               "production-hardening",
+              "export-deliverables",
               "export-target-matrix",
               "export-target-differences",
               "corpus-safety",
@@ -298,6 +311,25 @@ async function runLearnerInteractions(page) {
   if (await sampleButton.count()) {
     await sampleButton.click();
     checked.push("sample prompt loaded");
+  }
+
+  const saveProjectButton = page.locator('[data-train-section="project-cockpit"] button').filter({ hasText: /Save project/ }).first();
+  if (await saveProjectButton.count()) {
+    await saveProjectButton.click();
+    checked.push("project snapshot saved");
+  }
+
+  const proofChecklistButton = page.locator('[data-train-section="proof-runner-checklist"] button').first();
+  if (await proofChecklistButton.count()) {
+    await proofChecklistButton.click();
+    checked.push("proof checklist opened");
+    await openLearnerTab(page, "Compose");
+  }
+
+  const learnSignalButton = page.locator('[data-train-section="training-impact"] button').filter({ hasText: /Learn signal/ }).first();
+  if (await learnSignalButton.count()) {
+    await learnSignalButton.click();
+    checked.push("training signal saved");
   }
 
   const briefButton = page.locator('[data-train-section="brief-builder"] button').filter({ hasText: /Use brief prompt/ }).first();
@@ -439,7 +471,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
+  if (!checked.includes("project snapshot saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {
@@ -447,6 +479,9 @@ async function runLearnerInteractions(page) {
   }
   if (state.historyCount < 2) {
     throw new Error("Learner interaction smoke did not persist saved prompt history.");
+  }
+  if (state.projectHistoryCount < 1) {
+    throw new Error("Learner interaction smoke did not persist project history.");
   }
   return { ...state, checked };
 }
@@ -476,10 +511,12 @@ async function readLearnerPersistenceState(page) {
     };
     const sessions = safeParse("prompt-atelier-learner-sessions");
     const history = safeParse("prompt-atelier-version-history");
+    const projectHistory = safeParse("prompt-atelier-project-history-v1");
     const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
     return {
       activeProfile,
       historyCount: history.length,
+      projectHistoryCount: projectHistory.length,
       sessionCount: sessions.length,
     };
   });

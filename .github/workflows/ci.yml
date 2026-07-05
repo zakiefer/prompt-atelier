@@ -45,6 +45,18 @@ jobs:
       - name: Credential boundary audit
         run: npm run audit:security-boundary -- --out output/security-boundary-ci
 
+      - name: Upload proof report artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prompt-atelier-proof-reports
+          path: |
+            output/holdout-regression-ci
+            output/proof-seed-ci
+            output/regression-timeline-ci
+            output/security-boundary-ci
+          if-no-files-found: ignore
+
       - name: API route tests
         run: npm run test:api
 
