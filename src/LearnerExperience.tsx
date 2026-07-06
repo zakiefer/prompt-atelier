@@ -93,6 +93,7 @@ import {
   MobileOperatorPanel,
   TrainingImpactPanel,
   VisualRepairLoopPanel,
+  WebsiteReferencePromptPanel,
   WorkflowOsPanel,
   type CurrentProjectSummary,
   type CorpusHealthDecision,
@@ -147,6 +148,12 @@ import {
   type GalleryFilter,
   type ProjectBundle,
 } from "./learnerProductHardening";
+import {
+  buildWebsiteReferencePrompt,
+  createWebsiteReferenceInput,
+  type WebsiteReferenceInput,
+  type WebsiteReferencePromptResult,
+} from "./websiteReferencePrompt";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
 const dnaOrder = Object.keys(dnaLabels) as DnaKey[];
@@ -162,6 +169,8 @@ const TASTE_PROFILE_VERSIONS_KEY = "prompt-atelier-taste-profile-versions-v1";
 const PROJECT_BUNDLES_KEY = "prompt-atelier-project-bundles-v1";
 const RESULT_GALLERY_FILTER_KEY = "prompt-atelier-result-gallery-filter-v1";
 const ACCESSIBILITY_QA_RUN_KEY = "prompt-atelier-accessibility-qa-run-v1";
+const WEBSITE_REFERENCE_INPUT_KEY = "prompt-atelier-website-reference-input-v1";
+const WEBSITE_REFERENCE_RUNS_KEY = "prompt-atelier-website-reference-runs-v1";
 
 type GeneratedPromptRecord = {
   id: string;
@@ -170,6 +179,15 @@ type GeneratedPromptRecord = {
   prompt: string;
   score: number;
   source: string;
+  createdAt: string;
+};
+
+type WebsiteReferenceRun = {
+  id: string;
+  title: string;
+  url: string;
+  prompt: string;
+  score: number;
   createdAt: string;
 };
 
@@ -254,6 +272,18 @@ function readLocalString(key: string) {
 function writeLocalString(key: string, value: string) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, value);
+}
+
+function readLocalObject<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? { ...fallback, ...parsed } as T : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function downloadLocalFile(filename: string, text: string, type = "application/json") {
@@ -709,6 +739,12 @@ export function LearnView({
   const [selectedRepairResult, setSelectedRepairResult] = useState<ResultGalleryItem | undefined>();
   const [tasteProfileVersions, setTasteProfileVersions] = useState<TasteProfileVersion[]>(() => readLocalArray<TasteProfileVersion>(TASTE_PROFILE_VERSIONS_KEY, 16));
   const [projectBundles, setProjectBundles] = useState<ProjectBundle[]>(() => readLocalArray<ProjectBundle>(PROJECT_BUNDLES_KEY, 10));
+  const [websiteReferenceInput, setWebsiteReferenceInput] = useState<WebsiteReferenceInput>(() =>
+    readLocalObject(WEBSITE_REFERENCE_INPUT_KEY, createWebsiteReferenceInput(activeLearningProfile)),
+  );
+  const [websiteReferenceRuns, setWebsiteReferenceRuns] = useState<WebsiteReferenceRun[]>(() =>
+    readLocalArray<WebsiteReferenceRun>(WEBSITE_REFERENCE_RUNS_KEY, 12),
+  );
   const [resultGalleryFilter, setResultGalleryFilter] = useState<GalleryFilter>(() => {
     const stored = readLocalString(RESULT_GALLERY_FILTER_KEY);
     return ["all", "gold", "watch", "weak", "generated", "proof"].includes(stored) ? stored as GalleryFilter : "all";
@@ -891,6 +927,10 @@ export function LearnView({
       sourcePrompt: learnerSource,
     }),
     [activeLearningProfile, briefInput, improvedPrompt, learnerDiagnosis, learnerProofAction, learnerSource],
+  );
+  const websiteReferenceResult = useMemo<WebsiteReferencePromptResult>(
+    () => buildWebsiteReferencePrompt(websiteReferenceInput, activeLearningProfile.rules),
+    [activeLearningProfile.rules, websiteReferenceInput],
   );
   const learnedPromptSections = useMemo(
     () => buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt || improvedPrompt, sourcePrompt: learnerSource }),
@@ -1388,6 +1428,57 @@ export function LearnView({
       proofRuns: remoteProofRuns.length,
       generatedPrompts: remoteGenerated.length,
     });
+  }
+  function handleUpdateWebsiteReferenceInput(key: keyof WebsiteReferenceInput, value: string) {
+    setWebsiteReferenceInput((current) => {
+      const next = { ...current, [key]: value };
+      writeLocalString(WEBSITE_REFERENCE_INPUT_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+  function saveWebsiteReferenceRun(result: WebsiteReferencePromptResult) {
+    const record: WebsiteReferenceRun = {
+      id: `website-reference-${Date.now()}`,
+      title: result.title,
+      url: websiteReferenceInput.url,
+      prompt: result.prompt,
+      score: result.score,
+      createdAt: new Date().toISOString(),
+    };
+    setWebsiteReferenceRuns((current) => {
+      const next = [record, ...current.filter((item) => item.prompt !== record.prompt)].slice(0, 12);
+      writeLocalArray(WEBSITE_REFERENCE_RUNS_KEY, next, 12);
+      return next;
+    });
+    const generatedRecord: GeneratedPromptRecord = {
+      id: `generated-reference-${Date.now()}`,
+      projectId: projectSnapshot?.id || "browser-current-project",
+      title: result.title,
+      prompt: result.prompt,
+      score: Math.max(result.score, Math.min(100, currentProject.promptScore + 5)),
+      source: "website-reference-prompt",
+      createdAt: record.createdAt,
+    };
+    setGeneratedPrompts((current) => {
+      const next = [generatedRecord, ...current.filter((item) => item.prompt !== generatedRecord.prompt)].slice(0, 24);
+      writeLocalArray(GENERATED_PROMPTS_KEY, next, 24);
+      return next;
+    });
+    addEvalHistoryRecord("Reference website prompt", `Built a new prompt from ${websiteReferenceInput.url || "reference site input"}.`, {
+      promptScore: generatedRecord.score,
+      proofScore: currentProject.proofScore,
+    });
+    return record;
+  }
+  function handleGenerateWebsiteReferencePrompt() {
+    const record = saveWebsiteReferenceRun(websiteReferenceResult);
+    recordActivity("Reference website prompt", `${record.title} saved at ${record.score}/100.`, record.score >= 70 ? "good" : "watch");
+  }
+  function handleUseWebsiteReferencePrompt() {
+    const record = saveWebsiteReferenceRun(websiteReferenceResult);
+    setLearnerText(websiteReferenceResult.prompt);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Reference prompt applied", `${record.title} is now the working prompt.`, "good");
   }
   function handleGenerateGreatPrompt() {
     const basePrompt = learnedStyleGenerator.prompt || briefPrompt || improvedPrompt || learnerSource;
@@ -1929,6 +2020,17 @@ export function LearnView({
           onOpenImport={handleOpenImportFrontDoor}
           onStart={handleStartFirstRun}
           onUseSample={handleUseStarterPrompt}
+        />
+
+        <WebsiteReferencePromptPanel
+          copied={copied}
+          input={websiteReferenceInput}
+          onChange={handleUpdateWebsiteReferenceInput}
+          onCopy={onCopy}
+          onGenerate={handleGenerateWebsiteReferencePrompt}
+          onUse={handleUseWebsiteReferencePrompt}
+          result={websiteReferenceResult}
+          runCount={websiteReferenceRuns.length}
         />
 
         <LearnerSurfaceNavPanel cards={surfaceNavCards} onSelectTarget={handleSelectWorkflowTarget} onStart={handleStartFirstRun} />

@@ -65,6 +65,8 @@ const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
   "Current project",
   "Start guided run",
+  "Reference website prompt",
+  "Turn a current website into a new build prompt.",
   "Workbench map",
   "Workflow OS",
   "Mobile operator mode",
@@ -215,6 +217,7 @@ try {
               "public-learner",
               "project-cockpit",
               "first-run-start",
+              "website-reference-prompt",
               "learner-surface-nav",
               "workflow-os",
               "mobile-operator",
@@ -360,6 +363,29 @@ async function runLearnerInteractions(page) {
   if (await firstRunButton.count()) {
     await firstRunButton.click();
     checked.push("first-run guided start clicked");
+  }
+
+  const referencePanel = page.locator('[data-train-section="website-reference-prompt"]').first();
+  if (await referencePanel.count()) {
+    await page.locator('[data-reference-field="url"]').fill("https://example.com/current-site");
+    await page.locator('[data-reference-field="newBrand"]').fill("Northstar Studio");
+    await page.locator('[data-reference-field="newOffer"]').fill("AI-native design system for product teams");
+    await page.locator('[data-reference-field="audience"]').fill("Founders, product leaders, and design teams");
+    await page.locator('[data-reference-field="keep"]').fill("Keep the editorial hero hierarchy, restrained navigation, proof-oriented section pacing, and calm interaction density.");
+    await page.locator('[data-reference-field="change"]').fill("Create a new brand, new copy, new visual system, new assets, sharper mobile CTA behavior, and no copied source marks.");
+    await page.locator('[data-reference-field="pageNotes"]').fill("Reference notes: desktop hero has a clear nav, centered headline, measured subtext, card rhythm, themed dropdowns, and mobile should scroll from anywhere.");
+    await page.locator('[data-reference-action="generate"]').click();
+    await page.waitForFunction(() => {
+      const raw = globalThis.localStorage.getItem("prompt-atelier-website-reference-runs-v1") || "[]";
+      return raw.includes("Northstar Studio") && globalThis.document.body.textContent?.includes("SOURCE WEBSITE REFERENCE");
+    }, null, { timeout: 5000 });
+    checked.push("reference website prompt generated");
+    await page.locator('[data-reference-action="use"]').click();
+    await page.waitForFunction(() => {
+      const promptBox = globalThis.document.querySelector(".learner-input-card textarea");
+      return promptBox?.tagName === "TEXTAREA" && "value" in promptBox && String(promptBox.value).includes("SOURCE WEBSITE REFERENCE");
+    }, null, { timeout: 5000 });
+    checked.push("reference prompt used");
   }
 
   const surfaceProveButton = page.locator('[data-train-section="learner-surface-nav"] button').filter({ hasText: /Prove/ }).first();
@@ -673,7 +699,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("first-run guided start clicked") || !checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("visual repair prompt built") || !checked.includes("proof repair draft built") || !checked.includes("result gallery filtered") || !checked.includes("accessibility qa scored") || !checked.some((item) => item.startsWith("project bundle exported")) || !checked.includes("taste version saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
+  if (!checked.includes("first-run guided start clicked") || !checked.includes("reference website prompt generated") || !checked.includes("reference prompt used") || !checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("visual repair prompt built") || !checked.includes("proof repair draft built") || !checked.includes("result gallery filtered") || !checked.includes("accessibility qa scored") || !checked.some((item) => item.startsWith("project bundle exported")) || !checked.includes("taste version saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {
@@ -685,7 +711,7 @@ async function runLearnerInteractions(page) {
   if (state.projectHistoryCount < 1) {
     throw new Error("Learner interaction smoke did not persist project history.");
   }
-  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2 || state.tasteVersionCount < 1 || state.projectBundleCount < 1 || !state.accessibilityQaReady || !state.repairPromptReady) {
+  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2 || state.tasteVersionCount < 1 || state.projectBundleCount < 1 || state.websiteReferenceRunCount < 1 || !state.accessibilityQaReady || !state.repairPromptReady) {
     throw new Error("Learner interaction smoke did not persist production project records.");
   }
   return { ...state, checked };
@@ -722,6 +748,7 @@ async function readLearnerPersistenceState(page) {
     const evalHistory = safeParse("prompt-atelier-eval-history-v1");
     const tasteVersions = safeParse("prompt-atelier-taste-profile-versions-v1");
     const projectBundles = safeParse("prompt-atelier-project-bundles-v1");
+    const websiteReferenceRuns = safeParse("prompt-atelier-website-reference-runs-v1");
     const repairPrompt = globalThis.localStorage.getItem("prompt-atelier-visual-repair-prompt-v1") || "";
     const accessibilityQaRun = globalThis.localStorage.getItem("prompt-atelier-accessibility-qa-run-v1") || "";
     const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
@@ -737,6 +764,7 @@ async function readLearnerPersistenceState(page) {
       repairPromptReady: repairPrompt.length > 200,
       sessionCount: sessions.length,
       tasteVersionCount: tasteVersions.length,
+      websiteReferenceRunCount: websiteReferenceRuns.length,
     };
   });
 }
