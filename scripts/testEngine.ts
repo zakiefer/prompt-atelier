@@ -688,6 +688,24 @@ const analyzedBusinessPrompt = buildWebsiteReferencePrompt(urlOnlyReferenceInput
 });
 assert.ok(analyzedBusinessPrompt.prompt.includes("Tri-State All Star Cheerleading & Dance"), "Analyzed reference generation should infer the business from page title.");
 assert.ok(analyzedBusinessPrompt.prompt.includes("cheerleading, dance, tumbling"), "Analyzed reference generation should infer the business offer from metadata.");
+const roofingReferencePrompt = buildWebsiteReferencePrompt(urlOnlyReferenceInput, learningProfiles[0].rules, {
+  analysis: {
+    ...manualReferenceAnalysis,
+    status: "ready",
+    url: "https://tristateallstar.com/",
+    title: "All Star Roofing - Roofing, Shingles, Metal, Roofing",
+    description: "We specialize in shingles, metal roofing, rural, residential and commercial projects.",
+    headings: ["PROUDLY SERVING THE ROOFING NEEDS OF THE TRI-STATE AREA", "Storm damage: Hail, Wind, Fallen trees?", "Quick Approval"],
+    navLabels: ["Home", "Financing", "Privacy Policy"],
+    ctaLabels: ["free Estimates & Inspections", "(270) 454-4801", "Find out more"],
+    colorHints: ["#CE2029", "#000", "rgb(206,32,41)"],
+    assetHints: ["//img1.wsimg.com/logo.png", "//img1.wsimg.com/roof.jpg"],
+  },
+});
+assert.ok(roofingReferencePrompt.prompt.includes('H1: "Roofing that protects the Tri-State area."'), "Roofing reference generation should emit concrete hero copy.");
+assert.ok(roofingReferencePrompt.prompt.includes("--brand #CE2029"), "Roofing reference generation should emit concrete brand color tokens.");
+assert.ok(!roofingReferencePrompt.prompt.includes("Specify font import"), "Reference generation should not emit meta prompt scaffolding.");
+assert.ok(!roofingReferencePrompt.prompt.includes("Learned taste hints"), "Reference generation should not leak training notes into observation notes.");
 const learnedPromptSections = buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt, sourcePrompt: exactPrompt });
 assert.equal(learnedPromptSections.length, 7, "Learned prompt editor should expose seven editable sections.");
 assert.ok(learnedPromptSections.some((section) => section.id === "verification" && section.content.toLowerCase().includes("screenshot")), "Learned prompt sections should preserve proof language.");
@@ -1807,4 +1825,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 363, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 367, score: score.score, snapshot: snapshot.label }, null, 2));
