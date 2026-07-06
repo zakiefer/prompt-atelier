@@ -369,6 +369,17 @@ async function runLearnerInteractions(page) {
   const referencePanel = page.locator('[data-train-section="website-reference-prompt"]').first();
   if (await referencePanel.count()) {
     await page.locator('[data-reference-field="url"]').fill("https://example.com/current-site");
+    await page.locator('[data-reference-field="newBrand"]').fill("");
+    await page.locator('[data-reference-field="newOffer"]').fill("");
+    await page.locator('[data-reference-field="audience"]').fill("");
+    await page.locator('[data-reference-action="generate"]').click();
+    await page.waitForFunction(() => {
+      const output = globalThis.document.querySelector("[data-reference-output]");
+      const value = output && "value" in output ? String(output.value) : "";
+      return value.includes("URL-FIRST DRAFT MODE") && value.includes("TARGET DETAILS TO CUSTOMIZE") && !value.includes('"the new brand"');
+    }, null, { timeout: 5000 });
+    checked.push("reference URL-only draft generated");
+
     await page.locator('[data-reference-field="newBrand"]').fill("Northstar Studio");
     await page.locator('[data-reference-field="newOffer"]').fill("AI-native design system for product teams");
     await page.locator('[data-reference-field="audience"]').fill("Founders, product leaders, and design teams");

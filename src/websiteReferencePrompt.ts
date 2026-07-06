@@ -127,6 +127,52 @@ function block(value: string, fallback: string) {
   return next || fallback;
 }
 
+function isGenericReferenceLabel(value: string) {
+  return /^(current reference website|manual reference notes|reference|reference site|source site)$/i.test(clean(value));
+}
+
+function referenceHostLabel(value: string) {
+  const normalized = normalizeReferenceUrl(value);
+  if (!normalized) return "";
+  try {
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.replace(/^www\./i, "");
+    const domain = host.split(".").filter(Boolean)[0] ?? "";
+    return domain
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  } catch {
+    return "";
+  }
+}
+
+function referenceLabel(input: WebsiteReferenceInput, analysis?: WebsiteReferenceAnalysis) {
+  const analyzedTitle = clean(analysis?.title ?? "");
+  if (analyzedTitle && !isGenericReferenceLabel(analyzedTitle)) return analyzedTitle;
+  const namedReference = clean(input.referenceName);
+  if (namedReference && !isGenericReferenceLabel(namedReference)) return namedReference;
+  return referenceHostLabel(input.url) || namedReference || "reference site";
+}
+
+function referenceTarget(input: WebsiteReferenceInput, analysis?: WebsiteReferenceAnalysis) {
+  const referenceName = referenceLabel(input, analysis);
+  const hasBrand = Boolean(clean(input.newBrand));
+  const hasOffer = countWords(input.newOffer) >= 5;
+  const hasAudience = countWords(input.audience) >= 4;
+  return {
+    audience: block(input.audience, "People who need the new product, service, or content experience."),
+    draftMode: !hasBrand || !hasOffer,
+    hasAudience,
+    hasBrand,
+    hasOffer,
+    newBrand: block(input.newBrand, `New ${referenceName} concept`),
+    newOffer: block(input.newOffer, `A new website concept inspired by ${referenceName}'s layout structure, content hierarchy, and interaction patterns.`),
+    referenceName,
+  };
+}
+
 function countWords(value: string) {
   return clean(value).split(/\s+/).filter(Boolean).length;
 }
@@ -250,11 +296,14 @@ export function scoreWebsiteReferenceInput(input: WebsiteReferenceInput) {
   else warnings.push("Add a valid reference website URL.");
 
   if (clean(input.referenceName)) score += 6;
-  if (countWords(input.newBrand) >= 1) score += 8;
-  else warnings.push("Name the new brand or product.");
-  if (countWords(input.newOffer) >= 5) score += 14;
-  else warnings.push("Describe what the new site sells or explains.");
-  if (countWords(input.audience) >= 4) score += 8;
+  const target = referenceTarget(input);
+  if (target.hasBrand) score += 8;
+  if (target.hasOffer) score += 14;
+  if (!target.hasBrand || !target.hasOffer) {
+    warnings.push("URL-first draft mode: add the new brand and one-sentence site idea before final builder handoff.");
+  }
+  if (target.hasAudience) score += 8;
+  else warnings.push("Add the audience when you know who the new site should serve.");
   if (countWords(input.stack) >= 6) score += 10;
   if (countWords(input.keep) >= 8) score += 13;
   else warnings.push("Say what to preserve from the reference.");
@@ -293,18 +342,16 @@ export function buildWebsiteReferencePrompt(
   context: WebsiteReferencePromptContext = {},
 ): WebsiteReferencePromptResult {
   const normalizedUrl = normalizeReferenceUrl(input.url);
-  const referenceName = block(input.referenceName, "current reference website");
-  const newBrand = block(input.newBrand, "the new brand");
-  const newOffer = block(input.newOffer, "a new website experience inspired by the reference structure");
-  const audience = block(input.audience, "the target audience for the new product or service");
+  const score = scoreWebsiteReferenceInput(input);
+  const analysis = activeAnalysis(input, context.analysis);
+  const target = referenceTarget(input, analysis);
+  const { audience, draftMode, newBrand, newOffer, referenceName } = target;
   const stack = block(input.stack, "React + TypeScript + Vite + Tailwind CSS");
   const keep = block(input.keep, "Preserve only the reference site's useful structure, pacing, hierarchy, and interaction ideas.");
   const change = block(input.change, "Create new copy, styling, media, assets, brand marks, and interaction details.");
   const pageNotes = block(input.pageNotes, "Inspect the reference manually and record visible layout, navigation, media, motion, and responsive behavior before building.");
   const assets = block(input.assets, "Use new, licensed, generated, or provided assets only.");
   const constraints = block(input.constraints, "Do not copy private assets, protected copy, brand marks, secrets, or provider keys.");
-  const score = scoreWebsiteReferenceInput(input);
-  const analysis = activeAnalysis(input, context.analysis);
   const screenshots = context.screenshots?.slice(0, 6) ?? [];
   const ruleBlock = learnedRules.length
     ? learnedRules.slice(0, 6).map((rule) => `- ${rule}`).join("\n")
@@ -312,7 +359,7 @@ export function buildWebsiteReferencePrompt(
   const analysisBlock = analysisIsReady(analysis)
     ? [
         `- Extracted status: ${analysis.status}`,
-        `- Page title: ${analysis.title || referenceName}`,
+        `- Page title: ${analysis.title && !isGenericReferenceLabel(analysis.title) ? analysis.title : referenceName}`,
         `- Meta summary: ${analysis.description || "No meta description captured."}`,
         "",
         "Visible headings:",
@@ -333,6 +380,7 @@ export function buildWebsiteReferencePrompt(
     : "- No screenshots attached yet. Capture desktop and mobile first-view evidence before build acceptance.";
 
   const sections = [
+    `Mode: ${draftMode ? "URL-first draft; customize target before final build" : "target brief ready"}.`,
     `Reference source: ${normalizedUrl || "Add URL before build"} (${referenceName}).`,
     `New target: ${newBrand} - ${newOffer}.`,
     `Audience: ${audience}.`,
@@ -342,8 +390,19 @@ export function buildWebsiteReferencePrompt(
   ];
 
   const prompt = [
-    `Build a new website prompt for "${newBrand}" using ${referenceName} as a reference, not as a clone.`,
+    draftMode
+      ? `Build a URL-first reference draft for "${newBrand}" using ${referenceName} as evidence for a new site prompt.`
+      : `Build a new website prompt for "${newBrand}" using ${referenceName} as a reference, not as a clone.`,
     toneInstruction(context.variantTone),
+    draftMode
+      ? [
+          "",
+          "URL-FIRST DRAFT MODE",
+          "- The current website has been supplied before the new brand or offer is fully defined.",
+          "- Treat the target below as a temporary working direction, not final copy.",
+          "- Before handing this to a builder, replace the temporary brand, offer, audience, and copy with the real new-site brief.",
+        ].join("\n")
+      : "",
     "",
     "SOURCE WEBSITE REFERENCE",
     `- Reference URL: ${normalizedUrl || "[paste the current website URL]"}`,
@@ -363,6 +422,16 @@ export function buildWebsiteReferencePrompt(
     `- Audience: ${audience}`,
     `- What should carry over: ${keep}`,
     `- What must change: ${change}`,
+    draftMode
+      ? [
+          "",
+          "TARGET DETAILS TO CUSTOMIZE",
+          `- Replace temporary brand/product "${newBrand}" with the real new brand, product, or organization name.`,
+          `- Replace temporary offer "${newOffer}" with one sentence explaining what the new site sells, teaches, books, or promotes.`,
+          `- Replace temporary audience "${audience}" with the people the new site should serve.`,
+          "- Rewrite all example headlines, CTAs, badges, stats, and proof so they belong to the new site, not the source.",
+        ].join("\n")
+      : "",
     "",
     "1. Stack and dependencies",
     `Use ${stack}. Name every dependency, icon set, animation/runtime library, and any library that is explicitly not allowed. Keep the first screen a real usable website surface, not a marketing explanation page.`,
@@ -412,7 +481,9 @@ export function buildWebsiteReferencePrompt(
   return {
     score: score.score,
     title: `${newBrand} from reference website`,
-    summary: `Uses ${referenceName} as source evidence while producing a new implementation prompt for ${newBrand}.`,
+    summary: draftMode
+      ? `URL-first draft from ${referenceName}. Add the new brand and site idea to turn it into a final implementation prompt.`
+      : `Uses ${referenceName} as source evidence while producing a new implementation prompt for ${newBrand}.`,
     warnings: score.warnings,
     sections,
     prompt,
@@ -433,11 +504,12 @@ export function scoreReferenceDifferentiation(
     sourceHost = "";
   }
   const referenceName = clean(input.referenceName);
+  const target = referenceTarget(input, analysis);
   const checks: WebsiteReferenceCloneCheck[] = [
     {
       label: "New brand target",
-      ready: countWords(input.newBrand) >= 1 && (!referenceName || !new RegExp(`\\b${referenceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(input.newBrand)),
-      detail: input.newBrand ? `${input.newBrand} is named as the build target.` : "Name the new brand before export.",
+      ready: target.hasBrand && (!referenceName || !new RegExp(`\\b${referenceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(input.newBrand)),
+      detail: target.hasBrand ? `${input.newBrand} is named as the build target.` : "URL-first draft: name the real new brand before final export.",
     },
     {
       label: "New offer and audience",
@@ -509,15 +581,19 @@ export function buildWebsiteReferenceExports(
   cloneScore: WebsiteReferenceCloneScore,
 ): WebsiteReferenceExport[] {
   const bestVariant = [...variants].sort((a, b) => b.score - a.score)[0] ?? variants[0];
+  const target = referenceTarget(input);
   const compact = [
-    `Create a new website for ${block(input.newBrand, "the new brand")} inspired by ${normalizeReferenceUrl(input.url) || "the provided reference URL"}.`,
+    `Create a new website for ${target.newBrand} inspired by ${normalizeReferenceUrl(input.url) || "the provided reference URL"}.`,
+    target.draftMode ? "This is a URL-first draft: replace the temporary target details with the real brand, offer, and audience before final build." : "",
     `Use the reference for structure and interaction evidence only; clone-safety score is ${cloneScore.score}/100.`,
     result.prompt,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
   const json = {
     schema: "prompt-atelier.website-reference-export.v1",
     sourceUrl: normalizeReferenceUrl(input.url),
-    newBrand: input.newBrand,
+    draftMode: target.draftMode,
+    newBrand: target.newBrand,
+    originalNewBrandInput: input.newBrand,
     selectedVariant: bestVariant?.id,
     cloneScore,
     prompt: result.prompt,
@@ -571,8 +647,10 @@ export function buildWebsiteReferenceRepairPrompt(
   notes = "",
 ) {
   const failingChecks = cloneScore.checks.filter((check) => !check.ready);
+  const target = referenceTarget(input);
   return [
-    `Repair the website-reference prompt for ${block(input.newBrand, "the new brand")}.`,
+    `Repair the website-reference prompt for ${target.newBrand}.`,
+    target.draftMode ? "This repair is still in URL-first draft mode; add the real new brand, offer, and audience before final builder handoff." : "",
     "",
     "Current issue summary:",
     failingChecks.length
@@ -605,9 +683,10 @@ export function buildWebsiteReferenceProject(
   repairPrompt: string,
 ): WebsiteReferenceProject {
   const createdAt = new Date().toISOString();
+  const target = referenceTarget(input, analysis);
   return {
     id: `reference-project-${Date.now()}`,
-    title: `${block(input.newBrand, "New site")} from ${block(input.referenceName, "reference")}`,
+    title: `${target.newBrand} from ${target.referenceName}`,
     url: normalizeReferenceUrl(input.url),
     input,
     analysis: activeAnalysis(input, analysis),
