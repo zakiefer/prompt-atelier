@@ -376,7 +376,10 @@ async function runLearnerInteractions(page) {
     await page.waitForFunction(() => {
       const output = globalThis.document.querySelector("[data-reference-output]");
       const value = output && "value" in output ? String(output.value) : "";
-      return value.includes("SITE-INFERRED BUSINESS BRIEF") && value.includes("INFERRED DETAILS TO VERIFY") && !value.includes('"the new brand"');
+      return value.includes("SITE-INFERRED BUSINESS BRIEF")
+        && value.includes("INFERRED DETAILS TO VERIFY")
+        && !value.includes('"the new brand"')
+        && !value.includes("Specify font import");
     }, null, { timeout: 5000 });
     checked.push("reference URL-only business inferred");
 

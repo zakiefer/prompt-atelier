@@ -200,6 +200,9 @@ function inferBusinessOffer(analysis?: WebsiteReferenceAnalysis, brand = "the bu
   if (countWords(description) >= 5 && !/^(home|welcome)$/i.test(description)) return description;
   const headingOffer = firstUsefulPhrase(analysis?.headings ?? [], /^(home|welcome|contact|about|services)$/i, 4);
   if (headingOffer) return headingOffer;
+  if (/roof|shingle|metal|storm|hail|wind|inspection|estimate/i.test(lower)) {
+    return `${brand} provides shingle roofing, metal roofing, storm-damage inspections, and residential/commercial roofing services.`;
+  }
   if (/cheer|tumbling|dance|all[-\s]?star|gymnast/i.test(lower)) {
     return `${brand} provides all-star cheer, dance, tumbling, and youth training programs.`;
   }
@@ -228,6 +231,9 @@ function inferAudience(analysis?: WebsiteReferenceAnalysis, brand = "the busines
     ...(analysis?.sectionLabels ?? []),
     ...(analysis?.navLabels ?? []),
   ].filter(Boolean).join(" ").toLowerCase();
+  if (/roof|shingle|metal|storm|hail|wind|inspection|estimate/i.test(combined)) {
+    return "Homeowners, rural property owners, commercial property managers, and storm-damage leads in the Tri-State area.";
+  }
   if (/cheer|tumbling|dance|all[-\s]?star|gymnast/i.test(combined)) {
     return "Athletes, parents, families, and local teams evaluating programs, schedules, tryouts, and proof of trust.";
   }
@@ -247,6 +253,98 @@ function inferAudience(analysis?: WebsiteReferenceAnalysis, brand = "the busines
     return "Prospective clients evaluating creative fit, credibility, case studies, services, and inquiry options.";
   }
   return `Prospective customers, returning clients, and visitors evaluating ${brand}.`;
+}
+
+function combinedReferenceText(analysis?: WebsiteReferenceAnalysis) {
+  return [
+    analysis?.title,
+    analysis?.description,
+    ...(analysis?.headings ?? []),
+    ...(analysis?.navLabels ?? []),
+    ...(analysis?.ctaLabels ?? []),
+    ...(analysis?.sectionLabels ?? []),
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+function inferBusinessCategory(analysis?: WebsiteReferenceAnalysis) {
+  const text = combinedReferenceText(analysis);
+  if (/roof|shingle|metal|storm|hail|wind|inspection|estimate/i.test(text)) return "roofing";
+  if (/cheer|tumbling|dance|all[-\s]?star|gymnast/i.test(text)) return "youth athletics";
+  if (/dentist|dental|orthodont|smile|clinic/i.test(text)) return "dental clinic";
+  if (/restaurant|menu|reservation|dining|cafe|bar/i.test(text)) return "restaurant";
+  if (/real estate|homes|property|listing|realtor/i.test(text)) return "real estate";
+  if (/saas|software|platform|automation|dashboard|analytics/i.test(text)) return "software product";
+  if (/agency|studio|portfolio|creative|design/i.test(text)) return "creative services";
+  return "local service business";
+}
+
+function sourceAssetEvidence(analysis?: WebsiteReferenceAnalysis) {
+  const assets = (analysis?.assetHints ?? []).slice(0, 4).map((asset) => {
+    const trimmed = clean(asset);
+    return trimmed.startsWith("//") ? `https:${trimmed}` : trimmed;
+  });
+  return assets.length
+    ? assets.map((asset, index) => `- Source asset ${index + 1}: ${asset}`).join("\n")
+    : "- No source media URL was captured. Define explicit logo, hero image, gallery, and fallback slots.";
+}
+
+function cleanObservationNotes(value: string) {
+  const next = clean(value);
+  if (!next || /^Learned taste hints:/i.test(next)) {
+    return "No manual observation notes were added; use the source URL analysis and screenshots as evidence.";
+  }
+  return next;
+}
+
+function concreteReferenceBrief(target: ReturnType<typeof referenceTarget>, analysis: WebsiteReferenceAnalysis, stack: string, assets: string) {
+  const category = inferBusinessCategory(analysis);
+  const sourceColors = (analysis.colorHints ?? []).slice(0, 8).join(", ") || "No source colors captured.";
+  const sourceAssets = sourceAssetEvidence(analysis);
+  const base = {
+    category,
+    stack: `Use ${stack.replace(/\.+$/, "")}. Keep the page buildable in one Vite app, with no backend, routing, CMS, Supabase, or placeholder feature prose unless explicitly requested.`,
+    fonts: "Import Google Fonts: Sora weights 500/600/700 for headings and Inter weights 400/500/600 for body/UI. Set CSS variables --font-display: 'Sora', sans-serif and --font-body: 'Inter', sans-serif. Body uses Inter; h1-h3, logo, and large stats use Sora.",
+    palette: "Use --background #F8F6F1, --foreground #171717, --surface #FFFFFF, --surface-muted #EFE9DD, --muted #5E5E5E, --line rgba(27,27,27,0.12), --brand #CE2029, --brand-dark #8E1319, --accent #F5B02E, and --success #2F6F4E. Keep source red as a brand cue but modernize the surrounding palette.",
+    assets: `Use current-source assets only when the client owns them; otherwise replace with new licensed/generated roof, team, project, and texture imagery. Captured source color hints: ${sourceColors}.\n${sourceAssets}\nAsset plan from operator: ${assets}`,
+    layout: [
+      "Full homepage, not just a hero. Section order: sticky header, split hero, trust strip, services grid, storm-damage CTA band, financing/quick approval panel, project proof/gallery, customer commitment section, contact/estimate form, footer.",
+      "Use max-w-7xl mx-auto px-5 sm:px-8 lg:px-12. Hero min-height: 88vh desktop and auto mobile with generous top padding.",
+      "Hero layout: left copy column and right inspection card/photo stack on desktop; stacked on mobile.",
+      "Use rounded-[20px] cards, crisp borders, white surfaces, and red/charcoal action areas. Avoid generic SaaS gradients.",
+    ].join("\n- "),
+    nav: "Header: logo/wordmark left, desktop links Home, Roofing Services, Storm Damage, Financing, Contact, and a right-side phone pill '(270) 454-4801'. Mobile uses Menu/X and a full-width themed drawer with the same links plus 'Free Estimates'.",
+    copy: [
+      `H1: "Roofing that protects the Tri-State area."`,
+      `Eyebrow: "Shingles • Metal Roofing • Storm Damage"`,
+      `Subtext: "${target.newBrand} handles shingle, metal, rural, residential, and commercial roofing with free inspections, fast estimates, and storm-damage support."`,
+      `Primary CTA: "Get a free inspection"`,
+      `Secondary CTA: "Call (270) 454-4801"`,
+      `Trust strip labels: "Free estimates", "Storm damage help", "Financing options", "Residential + commercial"`,
+      `Service cards: "Shingle Roofing", "Metal Roofing", "Storm Damage Repair", "Commercial Projects"`,
+      `Storm CTA headline: "Hail, wind, or fallen tree damage?" with body "Start with a clear inspection, photo documentation, and a straightforward repair plan."`,
+      `Financing panel headline: "Quick approval when the roof cannot wait."`,
+      `Contact form fields: Name, Phone, Email, Project type, Message. Submit label: "Request my inspection".`,
+    ].join("\n- "),
+    motion: "Use simple fade-rise reveals at 0.7s ease-out with 0.08s stagger for hero copy/cards. Buttons use transition-transform hover:scale-[1.02] active:scale-[0.98]. Respect prefers-reduced-motion by disabling reveal transforms.",
+    responsive: "Mobile: header stays compact, hero stacks with CTA buttons full-width, cards become one column, phone CTA remains visible, form fields stack, no horizontal overflow. Tablet: services grid 2 columns. Desktop: services grid 4 columns and split hero.",
+    qa: "Verify desktop 1440px and mobile 390px screenshots, no clipped text, no horizontal overflow, no center-only scroll trap, visible focus rings, working mobile drawer, form labels/aria labels, and console with no errors.",
+  };
+  if (category !== "roofing") {
+    return {
+      ...base,
+      palette: "Use --background #F8F6F1, --foreground #171717, --surface #FFFFFF, --surface-muted #EFE9DD, --muted #5E5E5E, --line rgba(27,27,27,0.12), --brand #CE2029, --brand-dark #8E1319, and --accent #F5B02E. Use source colors as evidence, then refine into a cleaner modern service-business palette.",
+      copy: [
+        `H1: "${target.newBrand} rebuilt for clearer trust, faster decisions, and stronger conversion."`,
+        `Eyebrow: "${category.toUpperCase()} WEBSITE REDESIGN"`,
+        `Subtext: "${target.newOffer}"`,
+        `Primary CTA: "Start a conversation"`,
+        `Secondary CTA: "Explore services"`,
+        `Trust strip labels: "Clear services", "Local proof", "Fast contact", "Mobile-first"`,
+        `Core sections: "Services", "Proof", "Process", "Customer questions", "Contact"`,
+      ].join("\n- "),
+    };
+  }
+  return base;
 }
 
 function referenceTarget(input: WebsiteReferenceInput, analysis?: WebsiteReferenceAnalysis) {
@@ -313,7 +411,6 @@ export function normalizeReferenceUrl(value: string) {
 
 export function createWebsiteReferenceInput(profile?: { label?: string; rules?: string[] }): WebsiteReferenceInput {
   const profileLabel = profile?.label ? `${profile.label} prompt craft` : "high-fidelity website prompt craft";
-  const ruleHints = profile?.rules?.slice(0, 2).join("; ");
   return {
     url: "",
     referenceName: "current reference website",
@@ -322,8 +419,8 @@ export function createWebsiteReferenceInput(profile?: { label?: string; rules?: 
     audience: "",
     stack: "React + TypeScript + Vite + Tailwind CSS with lucide-react icons. Add motion libraries only if the reference behavior requires them.",
     keep: `Keep the reference site's strongest structural patterns and translate them through ${profileLabel}.`,
-    change: "Create a new brand, new copy, new visual system, new assets, and a cleaner mobile experience. Do not clone the source site.",
-    pageNotes: ruleHints ? `Learned taste hints: ${ruleHints}` : "",
+    change: "Keep the real business identity and services, but rewrite the copy, refresh the visual system, improve the section strategy, and make the mobile conversion path clearer. Do not clone the source layout.",
+    pageNotes: "",
     assets: "Use new, explicitly provided, generated, or public-domain assets. If no assets are available, specify the asset slots and acceptance criteria instead of inventing placeholders.",
     constraints: "Do not include provider keys, private credentials, copied brand marks, copied proprietary copy, or hidden scraping code.",
   };
@@ -447,9 +544,10 @@ export function buildWebsiteReferencePrompt(
   const stack = block(input.stack, "React + TypeScript + Vite + Tailwind CSS");
   const keep = block(input.keep, "Preserve only the reference site's useful structure, pacing, hierarchy, and interaction ideas.");
   const change = block(input.change, "Create new copy, styling, media, assets, brand marks, and interaction details.");
-  const pageNotes = block(input.pageNotes, "Inspect the reference manually and record visible layout, navigation, media, motion, and responsive behavior before building.");
+  const pageNotes = cleanObservationNotes(input.pageNotes);
   const assets = block(input.assets, "Use new, licensed, generated, or provided assets only.");
   const constraints = block(input.constraints, "Do not copy private assets, protected copy, brand marks, secrets, or provider keys.");
+  const concrete = concreteReferenceBrief(target, analysis, stack, assets);
   const screenshots = context.screenshots?.slice(0, 6) ?? [];
   const ruleBlock = learnedRules.length
     ? learnedRules.slice(0, 6).map((rule) => `- ${rule}`).join("\n")
@@ -488,7 +586,8 @@ export function buildWebsiteReferencePrompt(
   ];
 
   const prompt = [
-    `Build a new website prompt for "${newBrand}" using its current website (${referenceName}) as source evidence for a redesigned site, not as a clone.`,
+    `Create a redesigned website for "${newBrand}" using React + TypeScript + Vite + Tailwind CSS.`,
+    `Use its current website (${referenceName}) as source evidence for the real business, services, trust signals, CTAs, visual cues, and conversion needs. The result must be a fresh implementation, not a clone.`,
     toneInstruction(context.variantTone),
     inferenceMode
       ? [
@@ -530,37 +629,46 @@ export function buildWebsiteReferencePrompt(
       : "",
     "",
     "1. Stack and dependencies",
-    `Use ${stack}. Name every dependency, icon set, animation/runtime library, and any library that is explicitly not allowed. Keep the first screen a real usable website surface, not a marketing explanation page.`,
+    concrete.stack,
+    "Use lucide-react icons for all interface icons. Do not add shadcn/ui, Supabase, routing, or chart libraries. The first screen must be the usable website, not an explanation about the redesign.",
     "",
     "2. Fonts and global CSS",
-    "Specify font import URLs or local font-face blocks, exact weights, CSS variables or Tailwind font extensions, body smoothing, root sizing, and which parts use each font. If the reference has distinct display/body voices, translate that split into a new type system.",
+    concrete.fonts,
+    "Set html, body, #root to min-height: 100%; apply antialiased text rendering; use body background var(--background) and color var(--foreground).",
     "",
     "3. Color system",
-    "Define background, foreground, muted text, border, surface, accent, hover, active, focus, and disabled colors with hex/HSL/rgba values. Preserve the reference's contrast logic and hierarchy, but use a refreshed palette for the business.",
+    concrete.palette,
+    "Buttons: primary bg var(--brand) text-white hover:bg var(--brand-dark); secondary bg var(--charcoal) text-white; ghost links text var(--foreground) hover:text var(--brand). Focus rings use 3px rgba(206,32,41,0.22).",
     "",
     "4. Assets and media behavior",
-    `Asset plan: ${assets}`,
-    "Describe every video/image/logo/icon slot with source rules, object-fit, focal point, load behavior, fallback behavior, and overlay rules. If a reference asset is inspected, describe its role and replace it with a new licensed/provided/generated asset.",
+    concrete.assets,
+    "Hero image: roof/project/team image, object-cover, rounded-[28px], aspect-[4/3] desktop and aspect-[16/11] mobile. Logo: keep the client-owned logo if available; otherwise build a clean text wordmark. Every image needs alt text and a neutral background fallback.",
     "",
     "5. Layout and layer order",
-    "Document the full section structure from top to bottom. Include max widths, grid/flex behavior, z-index/layer order, sticky/fixed regions, spacing, viewport rules, scroll behavior, and how the reference composition should be reinterpreted for the new site.",
+    concrete.layout,
+    "Layer order: page background, subtle roofline/texture accent if used, sticky header z-30, hero/content z-10, mobile drawer z-50. Avoid nested cards inside cards.",
     "",
     "6. Navigation and interactive controls",
-    "Specify desktop and mobile navigation, dropdowns, menus, buttons, inputs, toggles, focus states, aria labels, disabled states, and hover/active transitions. Menus and dropdowns must match the new site's visual theme.",
+    concrete.nav,
+    "Controls: all buttons need hover, active, focus-visible states. Mobile drawer opens with state, locks body scroll while open, closes on link click and Escape, and uses themed white/charcoal/red styling.",
     "",
     "7. Copy, sections, and exact styling",
-    "Write the exact headline, subtext, CTAs, labels, badges, cards, stats, and footer/marquee content for the redesigned business site. Provide class-level or CSS-level styling for each visible element, including sizes, line heights, tracking, radius, padding, and alignment.",
+    concrete.copy,
+    "Styling: h1 text-5xl sm:text-6xl lg:text-7xl leading-[0.96] tracking-[-0.04em] max-w-4xl; body copy text-base sm:text-lg leading-relaxed text var(--muted); CTA row flex-col mobile and row desktop; service cards min-h-[220px].",
     "",
     "8. Motion and state mechanics",
-    "Translate the reference motion into concrete state logic: animation triggers, duration, easing, stagger, loop behavior, requestAnimationFrame/ref cleanup when needed, reduced-motion handling, and interaction feedback. Avoid decorative motion that has no job.",
+    concrete.motion,
+    "Do not use continuous decorative parallax unless the source media requires it. Motion should clarify hierarchy and interaction state.",
     "",
     "9. Responsive behavior",
-    "Define mobile, tablet, desktop, and wide desktop behavior. Include text wrapping, nav collapse, media focal changes, card/grid changes, touch target sizes, scroll rules, and no horizontal overflow.",
+    concrete.responsive,
+    "Touch targets must be at least 44px high. Long phone/CTA labels must wrap cleanly or shrink inside their containers.",
     "",
     "10. Constraints and QA",
     `Constraints: ${constraints}`,
     "Inspired-not-cloned acceptance gates:",
-    "- New brand name, copy, assets, color system, type scale, CTAs, and iconography are visibly different from the source.",
+    "- The business name, services, phone number, and client-owned brand assets may remain because this is a redesign for the same business.",
+    "- Layout, copywriting, section strategy, typography, color treatment, interaction states, and responsive behavior must be visibly refreshed from the source.",
     "- The reference is cited only as evidence for structure, pacing, hierarchy, interaction behavior, and responsive decisions.",
     "- Desktop and mobile screenshots prove the new implementation has no clipped text, no horizontal overflow, no center-only scroll trap, and no framework error overlay.",
     "- Console health is clean; media renders nonblank; dropdowns and menus match the new theme; keyboard focus is visible.",
@@ -613,8 +721,8 @@ export function scoreReferenceDifferentiation(
     },
     {
       label: "Explicit change list",
-      ready: /new brand|new copy|new asset|new visual|do not clone|not as a clone/i.test(input.change),
-      detail: "The change field should require new copy, visual system, assets, and mobile behavior.",
+      ready: /new brand|new copy|new asset|new visual|rewrite|refresh|redesign|do not clone|not as a clone/i.test(input.change),
+      detail: "The change field should require refreshed copy, visual system, assets, and mobile behavior.",
     },
     {
       label: "Protected source boundaries",
