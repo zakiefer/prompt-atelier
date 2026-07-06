@@ -29,6 +29,7 @@ import {
   type RegressionTrendSummary,
   type SurfaceNavCard,
 } from "./learnerProductHardening";
+import { type WebsiteReferenceInput, type WebsiteReferencePromptResult } from "./websiteReferencePrompt";
 
 export type LearnerWorkspaceTab = "compose" | "review" | "export";
 
@@ -350,6 +351,118 @@ export function LearnerSurfaceNavPanel({
         Run all
         <ArrowRight size={14} />
       </button>
+    </section>
+  );
+}
+
+export function WebsiteReferencePromptPanel({
+  copied,
+  input,
+  onChange,
+  onCopy,
+  onGenerate,
+  onUse,
+  result,
+  runCount,
+}: {
+  copied: string;
+  input: WebsiteReferenceInput;
+  onChange: (key: keyof WebsiteReferenceInput, value: string) => void;
+  onCopy: (value: string, key: string) => void;
+  onGenerate: () => void;
+  onUse: () => void;
+  result: WebsiteReferencePromptResult;
+  runCount: number;
+}) {
+  const field = (key: keyof WebsiteReferenceInput, label: string, placeholder: string, textarea = false) => (
+    <label className="reference-site-field" key={key}>
+      <span>{label}</span>
+      {textarea ? (
+        <textarea
+          data-reference-field={key}
+          value={input[key]}
+          onChange={(event) => onChange(key, event.target.value)}
+          placeholder={placeholder}
+        />
+      ) : (
+        <input
+          data-reference-field={key}
+          value={input[key]}
+          onChange={(event) => onChange(key, event.target.value)}
+          placeholder={placeholder}
+        />
+      )}
+    </label>
+  );
+
+  return (
+    <section className="website-reference-panel" data-train-section="website-reference-prompt">
+      <div className="reference-site-copy">
+        <span><ExternalLink size={14} /> Reference website prompt</span>
+        <h3>Turn a current website into a new build prompt.</h3>
+        <p>Paste the source URL, say what to preserve, then redirect it into a new brand, new copy, new assets, and proof-ready implementation rules.</p>
+        <div className="reference-site-score" data-ready={result.score >= 70 ? "true" : "false"}>
+          <strong>{result.score}</strong>
+          <span>reference readiness</span>
+        </div>
+      </div>
+      <div className="reference-site-form">
+        <div className="reference-field-grid">
+          {field("url", "Current website URL", "https://example.com")}
+          {field("newBrand", "New brand", "Northstar Studio")}
+          {field("newOffer", "New website offer", "AI-native design system for product teams")}
+          {field("audience", "Audience", "Product leaders, founders, and design teams")}
+        </div>
+        <div className="reference-field-grid two-up">
+          {field("keep", "Keep from reference", "Editorial hierarchy, calm navigation, proof-oriented section pacing", true)}
+          {field("change", "Change for new site", "New copy, brand system, assets, colors, and mobile CTA behavior", true)}
+          {field("pageNotes", "Visible site notes", "Hero, nav, motion, cards, dropdowns, scroll behavior, mobile layout, screenshots", true)}
+          {field("constraints", "No-go rules", "No cloned copy, no source brand marks, no credentials, no hidden scraping", true)}
+        </div>
+        <details className="reference-advanced">
+          <summary>Stack and asset details</summary>
+          <div className="reference-field-grid two-up">
+            {field("stack", "Stack", "React + TypeScript + Vite + Tailwind CSS", true)}
+            {field("assets", "Asset plan", "Use new or provided media. Describe asset slots if URLs are unknown.", true)}
+          </div>
+        </details>
+        <div className="button-row compact-row">
+          <button className="primary-button compact-button" data-reference-action="generate" type="button" onClick={onGenerate}>
+            <Sparkles size={15} />
+            Generate reference prompt
+          </button>
+          <button className="ghost-button compact-button" data-reference-action="use" type="button" onClick={onUse} disabled={!result.prompt}>
+            Use as working prompt
+          </button>
+          <button className="ghost-button compact-button" data-reference-action="copy" type="button" onClick={() => onCopy(result.prompt, "website-reference-prompt")} disabled={!result.prompt}>
+            {copied === "website-reference-prompt" ? <Check size={15} /> : <Copy size={15} />}
+            Copy
+          </button>
+        </div>
+      </div>
+      <div className="reference-site-output">
+        <div className="output-header">
+          <div>
+            <h4>{result.title}</h4>
+            <p>{result.summary}</p>
+          </div>
+          <span className="selected-meta">{runCount} run{runCount === 1 ? "" : "s"}</span>
+        </div>
+        {result.warnings.length ? (
+          <div className="reference-warning-list">
+            {result.warnings.map((warning) => (
+              <span key={warning}><ShieldCheck size={13} /> {warning}</span>
+            ))}
+          </div>
+        ) : (
+          <div className="reference-section-tags">
+            {result.sections.slice(0, 4).map((section) => (
+              <span key={section}>{section}</span>
+            ))}
+          </div>
+        )}
+        <textarea className="generated-output reference-output" data-reference-output readOnly value={result.prompt} />
+      </div>
     </section>
   );
 }

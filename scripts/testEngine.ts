@@ -188,6 +188,7 @@ import {
   buildLearnerRegressionSummary,
   buildLearnedStyleGenerator,
 } from "../src/learnerViewModel";
+import { buildWebsiteReferencePrompt } from "../src/websiteReferencePrompt";
 
 function readCuratedSeedPrompts() {
   return readdirSync("src/prompts")
@@ -611,6 +612,23 @@ const learnedStyleGenerator = buildLearnedStyleGenerator({
 });
 assert.ok(learnedStyleGenerator.prompt.includes("Use the learned house style"), "Learned-style generator should emit house-style instructions.");
 assert.ok(learnedStyleGenerator.ingredients.length >= 4, "Learned-style generator should expose prompt ingredients.");
+const websiteReferencePrompt = buildWebsiteReferencePrompt({
+  url: "example.com/current-site",
+  referenceName: "current reference website",
+  newBrand: "Northstar Studio",
+  newOffer: "AI-native design system for product teams",
+  audience: "Founders, product leaders, and design teams",
+  stack: "React + TypeScript + Vite + Tailwind CSS with lucide-react icons.",
+  keep: "Keep the editorial hero hierarchy, restrained navigation, proof-oriented section pacing, and calm interaction density.",
+  change: "Create a new brand, new copy, new visual system, new assets, and sharper mobile CTA behavior.",
+  pageNotes: "Reference notes include desktop hero, navigation, cards, dropdown theme, scroll behavior, and mobile screenshots.",
+  assets: "Use new or provided media only.",
+  constraints: "No cloned copy, no source brand marks, no credentials, and no hidden scraping code.",
+}, learningProfiles[0].rules);
+assert.ok(websiteReferencePrompt.prompt.includes("https://example.com/current-site"), "Reference prompt should normalize the source URL.");
+assert.ok(websiteReferencePrompt.prompt.includes("Northstar Studio"), "Reference prompt should preserve the new brand target.");
+assert.ok(websiteReferencePrompt.prompt.includes("Do not copy protected copy"), "Reference prompt should include anti-clone constraints.");
+assert.ok(websiteReferencePrompt.prompt.includes("10. Constraints and QA"), "Reference prompt should preserve the ten-section quality format.");
 const learnedPromptSections = buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt, sourcePrompt: exactPrompt });
 assert.equal(learnedPromptSections.length, 7, "Learned prompt editor should expose seven editable sections.");
 assert.ok(learnedPromptSections.some((section) => section.id === "verification" && section.content.toLowerCase().includes("screenshot")), "Learned prompt sections should preserve proof language.");
@@ -1730,4 +1748,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 344, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 348, score: score.score, snapshot: snapshot.label }, null, 2));
