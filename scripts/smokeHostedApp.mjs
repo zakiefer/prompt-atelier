@@ -1,4 +1,5 @@
-import { mkdir } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 
@@ -65,8 +66,8 @@ const learnerHeadings = [
   "Paste, score, improve, battle, prove, export.",
   "Current project",
   "Start guided run",
-  "Reference website prompt",
-  "Turn a current website into a new build prompt.",
+  "Reference site studio",
+  "Turn a current website into a new prompt.",
   "Workbench map",
   "Workflow OS",
   "Mobile operator mode",
@@ -374,6 +375,27 @@ async function runLearnerInteractions(page) {
     await page.locator('[data-reference-field="keep"]').fill("Keep the editorial hero hierarchy, restrained navigation, proof-oriented section pacing, and calm interaction density.");
     await page.locator('[data-reference-field="change"]').fill("Create a new brand, new copy, new visual system, new assets, sharper mobile CTA behavior, and no copied source marks.");
     await page.locator('[data-reference-field="pageNotes"]').fill("Reference notes: desktop hero has a clear nav, centered headline, measured subtext, card rhythm, themed dropdowns, and mobile should scroll from anywhere.");
+    await page.locator('[data-reference-action="analyze"]').click();
+    await page.waitForFunction(() => {
+      const raw = globalThis.localStorage.getItem("prompt-atelier-website-reference-analysis-v1") || "{}";
+      return raw.includes("current reference website") || raw.includes("Manual reference notes") || raw.includes("Northstar");
+    }, null, { timeout: 8000 });
+    checked.push("reference URL analyzed or manual fallback stored");
+
+    const referenceScreenshotPath = join(outDir, "reference-mobile.png");
+    await writeFile(referenceScreenshotPath, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mNk+M9QzwAEjDAGNgYAQk0EA6ZWtDgAAAAASUVORK5CYII=", "base64"));
+    await page.locator('[data-reference-action="screenshots"]').setInputFiles(referenceScreenshotPath);
+    await page.waitForFunction(() => {
+      const raw = globalThis.localStorage.getItem("prompt-atelier-website-reference-screenshots-v1") || "[]";
+      return raw.includes("reference-mobile.png");
+    }, null, { timeout: 5000 });
+    checked.push("reference screenshot uploaded");
+
+    const boldVariant = page.locator(".reference-variant-grid button").filter({ hasText: /Bold reinterpretation/ }).first();
+    if (await boldVariant.count()) {
+      await boldVariant.click();
+      checked.push("reference variant selected");
+    }
     await page.locator('[data-reference-action="generate"]').click();
     await page.waitForFunction(() => {
       const raw = globalThis.localStorage.getItem("prompt-atelier-website-reference-runs-v1") || "[]";
@@ -386,6 +408,23 @@ async function runLearnerInteractions(page) {
       return promptBox?.tagName === "TEXTAREA" && "value" in promptBox && String(promptBox.value).includes("SOURCE WEBSITE REFERENCE");
     }, null, { timeout: 5000 });
     checked.push("reference prompt used");
+
+    const outputDrawer = page.locator(".reference-site-output details.reference-studio-drawer summary").first();
+    if (await outputDrawer.count()) {
+      await outputDrawer.click();
+      await page.locator('[data-reference-action="save-project"]').click();
+      await page.waitForFunction(() => {
+        const raw = globalThis.localStorage.getItem("prompt-atelier-website-reference-projects-v1") || "[]";
+        return raw.includes("Northstar Studio");
+      }, null, { timeout: 5000 });
+      checked.push("reference project saved");
+      await page.locator('[data-reference-action="use-repair"]').click();
+      await page.waitForFunction(() => {
+        const promptBox = globalThis.document.querySelector(".learner-input-card textarea");
+        return promptBox?.tagName === "TEXTAREA" && "value" in promptBox && String(promptBox.value).includes("Repair the website-reference prompt");
+      }, null, { timeout: 5000 });
+      checked.push("reference repair prompt used");
+    }
   }
 
   const surfaceProveButton = page.locator('[data-train-section="learner-surface-nav"] button').filter({ hasText: /Prove/ }).first();
@@ -711,8 +750,21 @@ async function runLearnerInteractions(page) {
   if (state.projectHistoryCount < 1) {
     throw new Error("Learner interaction smoke did not persist project history.");
   }
-  if (state.generatedPromptCount < 1 || state.projectProofRunCount < 1 || state.evalHistoryCount < 2 || state.tasteVersionCount < 1 || state.projectBundleCount < 1 || state.websiteReferenceRunCount < 1 || !state.accessibilityQaReady || !state.repairPromptReady) {
-    throw new Error("Learner interaction smoke did not persist production project records.");
+  if (
+    state.generatedPromptCount < 1 ||
+    state.projectProofRunCount < 1 ||
+    state.evalHistoryCount < 2 ||
+    state.tasteVersionCount < 1 ||
+    state.projectBundleCount < 1 ||
+    state.websiteReferenceRunCount < 1 ||
+    state.websiteReferenceProjectCount < 1 ||
+    state.websiteReferenceScreenshotCount < 1 ||
+    !state.websiteReferenceAnalysisReady ||
+    !state.websiteReferenceSelectedVariant ||
+    !state.accessibilityQaReady ||
+    !state.repairPromptReady
+  ) {
+    throw new Error(`Learner interaction smoke did not persist production project records: ${JSON.stringify(state)}`);
   }
   return { ...state, checked };
 }
@@ -749,6 +801,10 @@ async function readLearnerPersistenceState(page) {
     const tasteVersions = safeParse("prompt-atelier-taste-profile-versions-v1");
     const projectBundles = safeParse("prompt-atelier-project-bundles-v1");
     const websiteReferenceRuns = safeParse("prompt-atelier-website-reference-runs-v1");
+    const websiteReferenceScreenshots = safeParse("prompt-atelier-website-reference-screenshots-v1");
+    const websiteReferenceProjects = safeParse("prompt-atelier-website-reference-projects-v1");
+    const websiteReferenceAnalysis = globalThis.localStorage.getItem("prompt-atelier-website-reference-analysis-v1") || "";
+    const websiteReferenceSelectedVariant = globalThis.localStorage.getItem("prompt-atelier-website-reference-selected-variant-v1") || "";
     const repairPrompt = globalThis.localStorage.getItem("prompt-atelier-visual-repair-prompt-v1") || "";
     const accessibilityQaRun = globalThis.localStorage.getItem("prompt-atelier-accessibility-qa-run-v1") || "";
     const activeProfile = globalThis.localStorage.getItem("prompt-atelier-active-learning-profile") || "";
@@ -764,7 +820,11 @@ async function readLearnerPersistenceState(page) {
       repairPromptReady: repairPrompt.length > 200,
       sessionCount: sessions.length,
       tasteVersionCount: tasteVersions.length,
+      websiteReferenceAnalysisReady: websiteReferenceAnalysis.length > 20,
+      websiteReferenceProjectCount: websiteReferenceProjects.length,
       websiteReferenceRunCount: websiteReferenceRuns.length,
+      websiteReferenceScreenshotCount: websiteReferenceScreenshots.length,
+      websiteReferenceSelectedVariant,
     };
   });
 }

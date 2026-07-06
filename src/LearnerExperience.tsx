@@ -117,7 +117,7 @@ import {
 } from "./LearnerWorkflowPanels";
 import { BUILD_STATUS } from "./buildStatus";
 import { type HoldoutBenchmarkReport, type ProjectSpacesReport } from "./productEvolution";
-import { getProjectCollections, runProjectProofViaApi, saveProjectToApi } from "./promptApi";
+import { analyzeReferenceSiteViaApi, getProjectCollections, runProjectProofViaApi, saveProjectToApi, saveReferenceProjectViaApi } from "./promptApi";
 import {
   buildCiProofCards,
   buildCoverageIntelligence,
@@ -149,10 +149,17 @@ import {
   type ProjectBundle,
 } from "./learnerProductHardening";
 import {
-  buildWebsiteReferencePrompt,
+  buildManualWebsiteReferenceAnalysis,
+  buildWebsiteReferenceStudio,
+  createEmptyWebsiteReferenceAnalysis,
   createWebsiteReferenceInput,
+  type WebsiteReferenceAnalysis,
+  type WebsiteReferenceExport,
   type WebsiteReferenceInput,
   type WebsiteReferencePromptResult,
+  type WebsiteReferenceProject,
+  type WebsiteReferenceScreenshot,
+  type WebsiteReferenceVariantTone,
 } from "./websiteReferencePrompt";
 
 const categoryOrder = Object.keys(categoryLabels) as CategoryKey[];
@@ -171,6 +178,10 @@ const RESULT_GALLERY_FILTER_KEY = "prompt-atelier-result-gallery-filter-v1";
 const ACCESSIBILITY_QA_RUN_KEY = "prompt-atelier-accessibility-qa-run-v1";
 const WEBSITE_REFERENCE_INPUT_KEY = "prompt-atelier-website-reference-input-v1";
 const WEBSITE_REFERENCE_RUNS_KEY = "prompt-atelier-website-reference-runs-v1";
+const WEBSITE_REFERENCE_ANALYSIS_KEY = "prompt-atelier-website-reference-analysis-v1";
+const WEBSITE_REFERENCE_SCREENSHOTS_KEY = "prompt-atelier-website-reference-screenshots-v1";
+const WEBSITE_REFERENCE_PROJECTS_KEY = "prompt-atelier-website-reference-projects-v1";
+const WEBSITE_REFERENCE_VARIANT_KEY = "prompt-atelier-website-reference-selected-variant-v1";
 
 type GeneratedPromptRecord = {
   id: string;
@@ -188,8 +199,13 @@ type WebsiteReferenceRun = {
   url: string;
   prompt: string;
   score: number;
+  variant: WebsiteReferenceVariantTone;
   createdAt: string;
 };
+
+function isWebsiteReferenceVariantTone(value: string): value is WebsiteReferenceVariantTone {
+  return value === "faithful" || value === "bold" || value === "conversion";
+}
 
 function addPercent(score: number) {
   return `${Math.max(0, Math.min(100, Math.round(score)))}%`;
@@ -745,6 +761,23 @@ export function LearnView({
   const [websiteReferenceRuns, setWebsiteReferenceRuns] = useState<WebsiteReferenceRun[]>(() =>
     readLocalArray<WebsiteReferenceRun>(WEBSITE_REFERENCE_RUNS_KEY, 12),
   );
+  const [websiteReferenceAnalysis, setWebsiteReferenceAnalysis] = useState<WebsiteReferenceAnalysis>(() =>
+    readLocalObject(WEBSITE_REFERENCE_ANALYSIS_KEY, createEmptyWebsiteReferenceAnalysis()),
+  );
+  const [websiteReferenceScreenshots, setWebsiteReferenceScreenshots] = useState<WebsiteReferenceScreenshot[]>(() =>
+    readLocalArray<WebsiteReferenceScreenshot>(WEBSITE_REFERENCE_SCREENSHOTS_KEY, 8),
+  );
+  const [websiteReferenceProjects, setWebsiteReferenceProjects] = useState<WebsiteReferenceProject[]>(() =>
+    readLocalArray<WebsiteReferenceProject>(WEBSITE_REFERENCE_PROJECTS_KEY, 12),
+  );
+  const [websiteReferenceSelectedVariantId, setWebsiteReferenceSelectedVariantId] = useState<WebsiteReferenceVariantTone>(() => {
+    const stored = readLocalString(WEBSITE_REFERENCE_VARIANT_KEY);
+    return isWebsiteReferenceVariantTone(stored) ? stored : "faithful";
+  });
+  const [websiteReferenceAnalyzeState, setWebsiteReferenceAnalyzeState] = useState<{ status: "idle" | "loading" | "ready" | "error"; detail: string }>({
+    status: "idle",
+    detail: "URL analysis can read public HTML when the local API is running; manual notes are used as fallback.",
+  });
   const [resultGalleryFilter, setResultGalleryFilter] = useState<GalleryFilter>(() => {
     const stored = readLocalString(RESULT_GALLERY_FILTER_KEY);
     return ["all", "gold", "watch", "weak", "generated", "proof"].includes(stored) ? stored as GalleryFilter : "all";
@@ -928,10 +961,17 @@ export function LearnView({
     }),
     [activeLearningProfile, briefInput, improvedPrompt, learnerDiagnosis, learnerProofAction, learnerSource],
   );
-  const websiteReferenceResult = useMemo<WebsiteReferencePromptResult>(
-    () => buildWebsiteReferencePrompt(websiteReferenceInput, activeLearningProfile.rules),
-    [activeLearningProfile.rules, websiteReferenceInput],
+  const websiteReferenceStudio = useMemo(
+    () => buildWebsiteReferenceStudio(
+      websiteReferenceInput,
+      activeLearningProfile.rules,
+      websiteReferenceAnalysis,
+      websiteReferenceScreenshots,
+      websiteReferenceSelectedVariantId,
+    ),
+    [activeLearningProfile.rules, websiteReferenceAnalysis, websiteReferenceInput, websiteReferenceScreenshots, websiteReferenceSelectedVariantId],
   );
+  const websiteReferenceResult = websiteReferenceStudio.result;
   const learnedPromptSections = useMemo(
     () => buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt || improvedPrompt, sourcePrompt: learnerSource }),
     [improvedPrompt, learnedStyleGenerator.prompt, learnerSource],
@@ -1436,6 +1476,83 @@ export function LearnView({
       return next;
     });
   }
+  async function handleAnalyzeWebsiteReference() {
+    setWebsiteReferenceAnalyzeState({ status: "loading", detail: "Analyzing the public URL for headings, navigation, CTAs, assets, colors, and responsive hints." });
+    try {
+      const payload = await analyzeReferenceSiteViaApi({ url: websiteReferenceInput.url });
+      setWebsiteReferenceAnalysis(payload.analysis);
+      writeLocalString(WEBSITE_REFERENCE_ANALYSIS_KEY, JSON.stringify(payload.analysis));
+      setWebsiteReferenceAnalyzeState({
+        status: "ready",
+        detail: `${payload.analysis.title || "Reference"} analyzed with ${payload.analysis.headings.length} heading(s), ${payload.analysis.navLabels.length} nav label(s), and ${payload.analysis.ctaLabels.length} CTA label(s).`,
+      });
+      recordActivity("Reference URL analyzed", payload.analysis.title || payload.analysis.url, "good");
+    } catch (error) {
+      const fallback = buildManualWebsiteReferenceAnalysis(websiteReferenceInput);
+      setWebsiteReferenceAnalysis(fallback);
+      writeLocalString(WEBSITE_REFERENCE_ANALYSIS_KEY, JSON.stringify(fallback));
+      setWebsiteReferenceAnalyzeState({
+        status: "error",
+        detail: error instanceof Error ? `${error.message}. Manual notes are being used as fallback.` : "URL analysis failed. Manual notes are being used as fallback.",
+      });
+      recordActivity("Reference analysis fallback", "Manual notes are active; run npm run api for live URL analysis.", "watch");
+    }
+  }
+  async function readReferenceScreenshot(file: File, index: number): Promise<WebsiteReferenceScreenshot> {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Could not read screenshot."));
+      reader.readAsDataURL(file);
+    });
+    const dimensions = await new Promise<{ width?: number; height?: number }>((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => resolve({});
+      image.src = dataUrl;
+    });
+    const label = /mobile|phone|375|390|430/i.test(file.name)
+      ? "mobile"
+      : /tablet|ipad/i.test(file.name)
+        ? "tablet"
+        : index === 0
+          ? "desktop"
+          : `evidence ${index + 1}`;
+    return {
+      id: `reference-screenshot-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+      label,
+      name: file.name,
+      dataUrl,
+      notes: `${label} screenshot evidence for reference-inspired prompt generation.`,
+      ...dimensions,
+      createdAt: new Date().toISOString(),
+    };
+  }
+  async function handleWebsiteReferenceScreenshots(files: FileList | File[]) {
+    const list = Array.from(files).slice(0, 6);
+    if (!list.length) return;
+    const screenshots = await Promise.all(list.map((file, index) => readReferenceScreenshot(file, index)));
+    setWebsiteReferenceScreenshots((current) => {
+      const next = [...screenshots, ...current].slice(0, 8);
+      writeLocalArray(WEBSITE_REFERENCE_SCREENSHOTS_KEY, next, 8);
+      return next;
+    });
+    recordActivity("Reference screenshots added", `${screenshots.length} screenshot(s) attached to the reference studio.`, "good");
+  }
+  function handleRemoveWebsiteReferenceScreenshot(id: string) {
+    setWebsiteReferenceScreenshots((current) => {
+      const next = current.filter((item) => item.id !== id);
+      writeLocalArray(WEBSITE_REFERENCE_SCREENSHOTS_KEY, next, 8);
+      return next;
+    });
+    recordActivity("Reference screenshot removed", "Screenshot evidence was removed from the studio.", "neutral");
+  }
+  function handleSelectWebsiteReferenceVariant(id: WebsiteReferenceVariantTone) {
+    setWebsiteReferenceSelectedVariantId(id);
+    writeLocalString(WEBSITE_REFERENCE_VARIANT_KEY, id);
+    const variant = websiteReferenceStudio.variants.find((item) => item.id === id);
+    recordActivity("Reference variant selected", variant?.label || id, "neutral");
+  }
   function saveWebsiteReferenceRun(result: WebsiteReferencePromptResult) {
     const record: WebsiteReferenceRun = {
       id: `website-reference-${Date.now()}`,
@@ -1443,6 +1560,7 @@ export function LearnView({
       url: websiteReferenceInput.url,
       prompt: result.prompt,
       score: result.score,
+      variant: websiteReferenceStudio.selectedVariant.id,
       createdAt: new Date().toISOString(),
     };
     setWebsiteReferenceRuns((current) => {
@@ -1479,6 +1597,35 @@ export function LearnView({
     setLearnerText(websiteReferenceResult.prompt);
     setActiveWorkspaceTab("compose");
     recordActivity("Reference prompt applied", `${record.title} is now the working prompt.`, "good");
+  }
+  function handleCopyWebsiteReferenceExport(target: WebsiteReferenceExport) {
+    onCopy(target.content, `website-reference-export-${target.id}`);
+    recordActivity("Reference export copied", `${target.label} export is ready.`, "good");
+  }
+  function handleUseWebsiteReferenceRepair() {
+    setLearnerText(websiteReferenceStudio.repairPrompt);
+    setActiveWorkspaceTab("compose");
+    recordActivity("Reference repair applied", "Repair prompt is now the working prompt.", "good");
+  }
+  function handleSaveWebsiteReferenceProject() {
+    const project = {
+      ...websiteReferenceStudio.project,
+      id: `reference-project-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+    };
+    setWebsiteReferenceProjects((current) => {
+      const next = [project, ...current.filter((item) => item.id !== project.id)].slice(0, 12);
+      writeLocalArray(WEBSITE_REFERENCE_PROJECTS_KEY, next, 12);
+      return next;
+    });
+    addEvalHistoryRecord("Reference project saved", `${project.title} saved with ${project.cloneScore.score}/100 clone safety.`, {
+      promptScore: project.result.score,
+      proofScore: Math.max(currentProject.proofScore, project.cloneScore.score),
+    });
+    recordActivity("Reference project saved", `${project.title} saved locally.`, "good");
+    void saveReferenceProjectViaApi(project as unknown as Record<string, unknown>)
+      .then(() => recordActivity("Reference project synced", `${project.title} synced to API collections.`, "good"))
+      .catch(() => recordActivity("Reference project local", "Project is saved locally; API sync can happen later.", "watch"));
   }
   function handleGenerateGreatPrompt() {
     const basePrompt = learnedStyleGenerator.prompt || briefPrompt || improvedPrompt || learnerSource;
@@ -2023,14 +2170,30 @@ export function LearnView({
         />
 
         <WebsiteReferencePromptPanel
+          analysis={websiteReferenceAnalysis}
+          analyzeState={websiteReferenceAnalyzeState}
+          cloneScore={websiteReferenceStudio.cloneScore}
           copied={copied}
+          exports={websiteReferenceStudio.exports}
           input={websiteReferenceInput}
+          onAnalyze={handleAnalyzeWebsiteReference}
           onChange={handleUpdateWebsiteReferenceInput}
           onCopy={onCopy}
+          onCopyExport={handleCopyWebsiteReferenceExport}
           onGenerate={handleGenerateWebsiteReferencePrompt}
+          onRemoveScreenshot={handleRemoveWebsiteReferenceScreenshot}
+          onSaveProject={handleSaveWebsiteReferenceProject}
+          onScreenshots={handleWebsiteReferenceScreenshots}
+          onSelectVariant={handleSelectWebsiteReferenceVariant}
           onUse={handleUseWebsiteReferencePrompt}
+          onUseRepair={handleUseWebsiteReferenceRepair}
+          projectCount={websiteReferenceProjects.length}
+          repairPrompt={websiteReferenceStudio.repairPrompt}
           result={websiteReferenceResult}
           runCount={websiteReferenceRuns.length}
+          screenshots={websiteReferenceScreenshots}
+          selectedVariantId={websiteReferenceStudio.selectedVariant.id}
+          variants={websiteReferenceStudio.variants}
         />
 
         <LearnerSurfaceNavPanel cards={surfaceNavCards} onSelectTarget={handleSelectWorkflowTarget} onStart={handleStartFirstRun} />

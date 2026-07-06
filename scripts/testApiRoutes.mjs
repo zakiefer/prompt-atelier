@@ -72,6 +72,7 @@ try {
     "projectProofRuns",
     "generatedPrompts",
     "evalHistory",
+    "websiteReferenceProjects",
   ];
   if (!health.ok || !expectedCollections.every((collection) => health.collections.includes(collection))) throw new Error("Health route missing expected collections.");
   if (!health.authRequired) throw new Error("Health route should report authRequired when token is configured.");
@@ -452,6 +453,45 @@ try {
     throw new Error("Corpus analyze route should return cluster intelligence.");
   }
 
+  const referenceAnalyze = await fetch(`${base}/api/reference-site/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({
+      url: "https://example.com/reference",
+      html: `
+        <html>
+          <head><title>Reference Studio</title><meta name="description" content="Elegant prompt studio reference." /></head>
+          <body>
+            <nav><a>Home</a><a>Pricing</a><a>Contact</a></nav>
+            <section aria-label="Hero"><h1>Build prompts from sites</h1><button>Start now</button></section>
+            <style>.hero{color:#123456;background:rgba(255,255,255,.8)}</style>
+            <img src="/hero.png" alt="Hero" />
+          </body>
+        </html>
+      `,
+    }),
+  });
+  const referenceAnalyzePayload = await referenceAnalyze.json();
+  if (
+    !referenceAnalyze.ok ||
+    referenceAnalyzePayload.analysis?.title !== "Reference Studio" ||
+    !referenceAnalyzePayload.analysis?.navLabels?.includes("Pricing") ||
+    !referenceAnalyzePayload.analysis?.ctaLabels?.includes("Start now") ||
+    !referenceAnalyzePayload.analysis?.colorHints?.some((hint) => hint.includes("#123456"))
+  ) {
+    throw new Error("Reference-site analyzer route should parse supplied HTML into prompt evidence.");
+  }
+
+  const referenceProject = await fetch(`${base}/api/reference-site/project`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
+    body: JSON.stringify({ project: { id: "reference-project-test", title: "Reference project", cloneScore: { score: 92 } } }),
+  });
+  const referenceProjectPayload = await referenceProject.json();
+  if (!referenceProject.ok || !referenceProjectPayload.collections?.websiteReferenceProjects?.length) {
+    throw new Error("Reference project route should persist website reference projects.");
+  }
+
   const benchmarkV2 = await fetch(`${base}/api/benchmark/v2`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer test-token" },
@@ -495,6 +535,7 @@ try {
     !payload.collections?.corpusClusterRuns?.length ||
     !payload.collections?.benchmarkV2Runs?.length ||
     !payload.collections?.evaluationArtifacts?.length ||
+    !payload.collections?.websiteReferenceProjects?.length ||
     payload.collections?.activeWorkspace !== "hero" ||
     JSON.stringify(payload.collections).includes("sk-ant-api03-")
   ) throw new Error("Snapshot route did not include synced collections.");

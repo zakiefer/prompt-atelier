@@ -6,6 +6,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
 
 const PORT = Number(process.env.PORT || process.env.PROMPT_LAB_API_PORT || 8787);
 const HOST = process.env.HOST || process.env.PROMPT_LAB_API_HOST || "127.0.0.1";
@@ -66,6 +67,7 @@ const COLLECTION_KEYS = [
   "projectProofRuns",
   "generatedPrompts",
   "evalHistory",
+  "websiteReferenceProjects",
 ];
 const SKILL_PATH = join(homedir(), ".codex", "skills", "website-prompt-atelier", "SKILL.md");
 
@@ -216,6 +218,7 @@ function projectCollectionsPayload() {
     generatedPrompts: Array.isArray(collections.generatedPrompts) ? collections.generatedPrompts : [],
     evalHistory: Array.isArray(collections.evalHistory) ? collections.evalHistory : [],
     curationDecisions: Array.isArray(collections.curationDecisions) ? collections.curationDecisions : [],
+    websiteReferenceProjects: Array.isArray(collections.websiteReferenceProjects) ? collections.websiteReferenceProjects : [],
   };
 }
 
@@ -298,6 +301,185 @@ function buildApiBenchmarkV2Report(examples) {
       "Local fallback mode uses deterministic corpus traits.",
     ],
   };
+}
+
+function cleanText(value) {
+  return String(value || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function decodeHtml(value) {
+  return cleanText(value)
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'");
+}
+
+function stripTags(value) {
+  return decodeHtml(String(value || "").replace(/<[^>]+>/g, " "));
+}
+
+function uniqueStrings(values, limit = 10) {
+  const seen = new Set();
+  const next = [];
+  for (const value of values) {
+    const cleaned = stripTags(value).replace(/^[-*]\s*/, "").trim();
+    const key = cleaned.toLowerCase();
+    if (!cleaned || cleaned.length < 2 || seen.has(key)) continue;
+    seen.add(key);
+    next.push(cleaned.slice(0, 140));
+    if (next.length >= limit) break;
+  }
+  return next;
+}
+
+function regexAll(text, pattern, mapper = (match) => match[1]) {
+  const matches = [];
+  for (const match of text.matchAll(pattern)) matches.push(mapper(match));
+  return matches;
+}
+
+function attributeValue(tag, name) {
+  const pattern = new RegExp(`${name}\\s*=\\s*["']([^"']+)["']`, "i");
+  return tag.match(pattern)?.[1] || "";
+}
+
+function referenceUrlFromInput(rawUrl) {
+  const value = String(rawUrl || "").trim();
+  if (!value) throw new Error("Reference URL is required.");
+  const parsed = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Reference URL must use http or https.");
+  parsed.hash = "";
+  return parsed;
+}
+
+function isPrivateIpv4(address) {
+  const parts = address.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => Number.isNaN(part))) return false;
+  return (
+    parts[0] === 10 ||
+    parts[0] === 127 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168) ||
+    (parts[0] === 169 && parts[1] === 254) ||
+    parts[0] === 0
+  );
+}
+
+function isBlockedReferenceAddress(hostname, address = "") {
+  const host = String(hostname || "").toLowerCase();
+  const target = String(address || host).toLowerCase();
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
+  if (target === "::1" || target === "0:0:0:0:0:0:0:1" || target.startsWith("fc") || target.startsWith("fd") || target.startsWith("fe80:")) return true;
+  return isPrivateIpv4(target);
+}
+
+async function assertPublicReferenceUrl(parsedUrl) {
+  if (isBlockedReferenceAddress(parsedUrl.hostname)) {
+    throw new Error("Reference analyzer only fetches public HTTP(S) URLs.");
+  }
+  const records = await lookup(parsedUrl.hostname, { all: true, verbatim: true });
+  if (!records.length || records.some((record) => isBlockedReferenceAddress(parsedUrl.hostname, record.address))) {
+    throw new Error("Reference URL resolves to a blocked private or loopback address.");
+  }
+}
+
+function extractMetaDescription(html) {
+  const meta = html.match(/<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]*>/i)?.[0]
+    || html.match(/<meta[^>]+content=["'][^"']+["'][^>]+(?:name|property)=["'](?:description|og:description)["'][^>]*>/i)?.[0]
+    || "";
+  return decodeHtml(attributeValue(meta, "content"));
+}
+
+function parseReferenceHtml(htmlInput, urlValue) {
+  const html = String(htmlInput || "").slice(0, 300_000);
+  const parsedUrl = referenceUrlFromInput(urlValue || "https://reference.local");
+  const title = stripTags(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "");
+  const description = extractMetaDescription(html);
+  const headings = uniqueStrings(regexAll(html, /<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi), 12);
+  const navHtml = regexAll(html, /<nav[^>]*>([\s\S]*?)<\/nav>/gi).join("\n");
+  const navLabels = uniqueStrings(regexAll(navHtml || html, /<a[^>]*>([\s\S]*?)<\/a>/gi), 10);
+  const buttonLabels = regexAll(html, /<button[^>]*>([\s\S]*?)<\/button>/gi);
+  const ctaLabels = uniqueStrings([
+    ...buttonLabels,
+    ...regexAll(html, /<a[^>]*(?:class|aria-label|data-[^=]+)=["'][^"']*(?:button|cta|primary|signup|login|contact|demo|start)[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi),
+  ], 10);
+  const sectionLabels = uniqueStrings([
+    ...regexAll(html, /<section[^>]+(?:aria-label|data-section|id)=["']([^"']+)["'][^>]*>/gi),
+    ...headings,
+  ], 12);
+  const colors = uniqueStrings([
+    ...regexAll(html, /#[0-9a-f]{3,8}\b/gi, (match) => match[0]),
+    ...regexAll(html, /rgba?\([^)]+\)/gi, (match) => match[0]),
+    ...regexAll(html, /hsla?\([^)]+\)/gi, (match) => match[0]),
+  ], 12);
+  const assetHints = uniqueStrings([
+    ...regexAll(html, /<(?:img|video|source)[^>]+(?:src|poster)=["']([^"']+)["'][^>]*>/gi),
+    ...regexAll(html, /background(?:-image)?:\s*url\(["']?([^"')]+)["']?\)/gi),
+  ], 12);
+  const text = stripTags(html).toLowerCase();
+  const motionHints = uniqueStrings([
+    /parallax|mousemove|cursor/.test(text) ? "Pointer or parallax-driven motion appears in the source." : "",
+    /marquee|ticker|scrolling logo/.test(text) ? "Marquee or continuous scroller appears in the source." : "",
+    /video|autoplay|loop/.test(text) ? "Video or looping media appears in the source." : "",
+    /fade|stagger|motion|animate|transition/.test(text) ? "Animated reveal or transition behavior appears in the source." : "",
+  ], 6);
+  const layoutHints = uniqueStrings([
+    /hero/.test(text) ? "Hero section is a key reference structure." : "",
+    /grid|columns|split/.test(text) ? "Grid or split-column layout signals are present." : "",
+    /sticky|fixed/.test(text) ? "Sticky or fixed layer behavior may be present." : "",
+    /card|panel/.test(text) ? "Card or panel rhythm appears in the source." : "",
+    /footer|marquee/.test(text) ? "Bottom/footer proof or marquee region appears in the source." : "",
+  ], 8);
+  const responsiveHints = uniqueStrings([
+    /mobile|hamburger|menu/.test(text) ? "Mobile menu behavior should be inspected." : "",
+    /responsive|breakpoint|viewport|media query/.test(text) ? "Responsive breakpoint behavior is visible in source text/classes." : "",
+    /overflow|scroll/.test(text) ? "Scroll and overflow behavior should be verified." : "",
+  ], 8);
+  return {
+    status: "ready",
+    url: parsedUrl.toString(),
+    title: title || parsedUrl.hostname,
+    description,
+    headings,
+    navLabels,
+    ctaLabels,
+    sectionLabels,
+    colorHints: colors,
+    assetHints,
+    motionHints,
+    layoutHints,
+    responsiveHints,
+    extractedAt: now(),
+  };
+}
+
+async function analyzeReferenceSite(body) {
+  const parsedUrl = referenceUrlFromInput(body.url || body.referenceUrl || body.href);
+  if (typeof body.html === "string" && body.html.trim()) {
+    return parseReferenceHtml(redactSensitiveText(body.html).text, parsedUrl.toString());
+  }
+  await assertPublicReferenceUrl(parsedUrl);
+  const controller = new globalThis.AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(parsedUrl.toString(), {
+      headers: {
+        accept: "text/html,application/xhtml+xml",
+        "user-agent": "PromptAtelierReferenceAnalyzer/1.0",
+      },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    const contentType = response.headers.get("content-type") || "";
+    if (!response.ok) throw new Error(`Reference fetch failed with HTTP ${response.status}.`);
+    if (!/html|text/i.test(contentType)) throw new Error(`Reference URL did not return HTML (${contentType || "unknown content type"}).`);
+    const html = (await response.text()).slice(0, 300_000);
+    return parseReferenceHtml(redactSensitiveText(html).text, response.url || parsedUrl.toString());
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
 }
 
 function mergeRedactionFindings(left = [], right = []) {
@@ -876,6 +1058,36 @@ async function handle(request, response) {
         redactions: redaction.findings,
       });
       jsonResponse(response, 200, { ok: true, redactions: redaction.findings, collections: projectCollectionsPayload() });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/reference-site/analyze") {
+      const body = await readBody(request);
+      const analysis = await analyzeReferenceSite(body);
+      logEvent("reference-site-analyze", {
+        url: analysis.url,
+        title: analysis.title,
+        headings: analysis.headings.length,
+        navLabels: analysis.navLabels.length,
+        ctaLabels: analysis.ctaLabels.length,
+      });
+      jsonResponse(response, 200, { ok: true, analysis });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/reference-site/project") {
+      const body = await readBody(request);
+      const redaction = redactSensitiveValue(body);
+      const project = body.project && typeof body.project === "object"
+        ? { ...redaction.value.project, updatedAt: now() }
+        : null;
+      if (!project?.id) {
+        jsonResponse(response, 400, { ok: false, error: "project.id is required." });
+        return;
+      }
+      const websiteReferenceProjects = appendCollectionRecord("websiteReferenceProjects", project, 100);
+      logEvent("reference-site-project", { projectId: project.id, redactions: redaction.findings });
+      jsonResponse(response, 200, { ok: true, redactions: redaction.findings, collections: { websiteReferenceProjects } });
       return;
     }
 

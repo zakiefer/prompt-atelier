@@ -1,3 +1,5 @@
+import { type WebsiteReferenceAnalysis } from "./websiteReferencePrompt";
+
 const LOCAL_API_BASE = "http://127.0.0.1:8787";
 const API_BASE_KEY = "prompt-atelier-api-base";
 const API_TOKEN_KEY = "prompt-atelier-api-token";
@@ -118,6 +120,7 @@ export type ProjectCollectionsPayload = {
   generatedPrompts: unknown[];
   evalHistory: unknown[];
   curationDecisions: unknown[];
+  websiteReferenceProjects?: unknown[];
 };
 
 export function getApiHealth() {
@@ -154,6 +157,20 @@ export function runProjectProofViaApi(payload: Record<string, unknown>) {
   return requestJson<{ ok: boolean; redactions?: unknown[]; proofRun: unknown; collections: ProjectCollectionsPayload }>("/api/projects/proof-run", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function analyzeReferenceSiteViaApi(payload: { url: string; html?: string }) {
+  return requestJson<{ ok: boolean; analysis: WebsiteReferenceAnalysis }>("/api/reference-site/analyze", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function saveReferenceProjectViaApi(project: Record<string, unknown>) {
+  return requestJson<{ ok: boolean; redactions?: unknown[]; collections: { websiteReferenceProjects: unknown[] } }>("/api/reference-site/project", {
+    method: "POST",
+    body: JSON.stringify({ project }),
   });
 }
 

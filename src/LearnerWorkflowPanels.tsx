@@ -29,7 +29,16 @@ import {
   type RegressionTrendSummary,
   type SurfaceNavCard,
 } from "./learnerProductHardening";
-import { type WebsiteReferenceInput, type WebsiteReferencePromptResult } from "./websiteReferencePrompt";
+import {
+  type WebsiteReferenceAnalysis,
+  type WebsiteReferenceCloneScore,
+  type WebsiteReferenceExport,
+  type WebsiteReferenceInput,
+  type WebsiteReferencePromptResult,
+  type WebsiteReferenceScreenshot,
+  type WebsiteReferenceVariant,
+  type WebsiteReferenceVariantTone,
+} from "./websiteReferencePrompt";
 
 export type LearnerWorkspaceTab = "compose" | "review" | "export";
 
@@ -356,23 +365,55 @@ export function LearnerSurfaceNavPanel({
 }
 
 export function WebsiteReferencePromptPanel({
+  analysis,
+  analyzeState,
+  cloneScore,
   copied,
+  exports,
   input,
   onChange,
+  onAnalyze,
   onCopy,
+  onCopyExport,
   onGenerate,
+  onRemoveScreenshot,
+  onSaveProject,
+  onScreenshots,
+  onSelectVariant,
   onUse,
+  onUseRepair,
+  projectCount,
+  repairPrompt,
   result,
   runCount,
+  screenshots,
+  selectedVariantId,
+  variants,
 }: {
+  analysis: WebsiteReferenceAnalysis;
+  analyzeState: { status: "idle" | "loading" | "ready" | "error"; detail: string };
+  cloneScore: WebsiteReferenceCloneScore;
   copied: string;
+  exports: WebsiteReferenceExport[];
   input: WebsiteReferenceInput;
   onChange: (key: keyof WebsiteReferenceInput, value: string) => void;
+  onAnalyze: () => void;
   onCopy: (value: string, key: string) => void;
+  onCopyExport: (target: WebsiteReferenceExport) => void;
   onGenerate: () => void;
+  onRemoveScreenshot: (id: string) => void;
+  onSaveProject: () => void;
+  onScreenshots: (files: FileList | File[]) => void;
+  onSelectVariant: (id: WebsiteReferenceVariantTone) => void;
   onUse: () => void;
+  onUseRepair: () => void;
+  projectCount: number;
+  repairPrompt: string;
   result: WebsiteReferencePromptResult;
   runCount: number;
+  screenshots: WebsiteReferenceScreenshot[];
+  selectedVariantId: WebsiteReferenceVariantTone;
+  variants: WebsiteReferenceVariant[];
 }) {
   const field = (key: keyof WebsiteReferenceInput, label: string, placeholder: string, textarea = false) => (
     <label className="reference-site-field" key={key}>
@@ -394,16 +435,40 @@ export function WebsiteReferencePromptPanel({
       )}
     </label>
   );
+  const selectedVariant = variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
+  const analysisReady = analysis.status === "ready" || analysis.status === "manual";
+  const evidenceCount = [
+    analysis.headings.length,
+    analysis.navLabels.length,
+    analysis.ctaLabels.length,
+    analysis.layoutHints.length,
+    analysis.assetHints.length,
+  ].reduce((total, count) => total + count, 0);
+  const beforeSignals = [
+    ...analysis.headings.slice(0, 3),
+    ...analysis.navLabels.slice(0, 3),
+    ...analysis.layoutHints.slice(0, 2),
+  ].slice(0, 7);
+  const afterSignals = [
+    input.newBrand ? `New brand: ${input.newBrand}` : "New brand still needed",
+    input.newOffer ? `New offer: ${input.newOffer}` : "New offer still needed",
+    input.change || "Change list still needed",
+    `${cloneScore.score}/100 inspired-not-cloned score`,
+  ];
 
   return (
     <section className="website-reference-panel" data-train-section="website-reference-prompt">
       <div className="reference-site-copy">
-        <span><ExternalLink size={14} /> Reference website prompt</span>
-        <h3>Turn a current website into a new build prompt.</h3>
-        <p>Paste the source URL, say what to preserve, then redirect it into a new brand, new copy, new assets, and proof-ready implementation rules.</p>
+        <span><ExternalLink size={14} /> Reference site studio</span>
+        <h3>Turn a current website into a new prompt.</h3>
+        <p>Analyze the source, attach screenshots, choose a direction, then export a prompt that is inspired by the site without cloning it.</p>
         <div className="reference-site-score" data-ready={result.score >= 70 ? "true" : "false"}>
           <strong>{result.score}</strong>
           <span>reference readiness</span>
+        </div>
+        <div className="reference-clone-mini" data-status={cloneScore.status}>
+          <strong>{cloneScore.score}</strong>
+          <span>clone safety</span>
         </div>
       </div>
       <div className="reference-site-form">
@@ -427,9 +492,27 @@ export function WebsiteReferencePromptPanel({
           </div>
         </details>
         <div className="button-row compact-row">
+          <button className="ghost-button compact-button" data-reference-action="analyze" type="button" onClick={onAnalyze} disabled={analyzeState.status === "loading"}>
+            <ExternalLink size={15} />
+            {analyzeState.status === "loading" ? "Analyzing..." : "Analyze URL"}
+          </button>
+          <label className="ghost-button compact-button reference-file-button">
+            <ImagePlus size={15} />
+            Add screenshots
+            <input
+              accept="image/*"
+              data-reference-action="screenshots"
+              multiple
+              type="file"
+              onChange={(event) => {
+                if (event.target.files?.length) onScreenshots(event.target.files);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
           <button className="primary-button compact-button" data-reference-action="generate" type="button" onClick={onGenerate}>
             <Sparkles size={15} />
-            Generate reference prompt
+            Generate
           </button>
           <button className="ghost-button compact-button" data-reference-action="use" type="button" onClick={onUse} disabled={!result.prompt}>
             Use as working prompt
@@ -439,14 +522,50 @@ export function WebsiteReferencePromptPanel({
             Copy
           </button>
         </div>
+        <details className="reference-advanced reference-studio-drawer">
+          <summary>Evidence and screenshots</summary>
+          <div className="reference-evidence-stack">
+            <div className="reference-analysis-card" data-ready={analysisReady ? "true" : "false"}>
+              <strong>{analysisReady ? analysis.title || "Reference analyzed" : "Analyze a URL or add manual notes"}</strong>
+              <p>{analyzeState.detail || analysis.description || "URL analysis extracts headings, nav, CTAs, colors, assets, layout, motion, and responsive hints."}</p>
+              <div className="reference-section-tags compact-tags">
+                <span>{analysis.status}</span>
+                <span>{evidenceCount} signals</span>
+                <span>{screenshots.length} screenshot{screenshots.length === 1 ? "" : "s"}</span>
+              </div>
+            </div>
+            <div className="reference-screenshot-grid">
+              {screenshots.length ? screenshots.map((screenshot) => (
+                <article key={screenshot.id}>
+                  {screenshot.dataUrl ? <img alt={screenshot.label} src={screenshot.dataUrl} /> : null}
+                  <div>
+                    <strong>{screenshot.label}</strong>
+                    <span>{screenshot.width && screenshot.height ? `${screenshot.width}x${screenshot.height}` : screenshot.name}</span>
+                  </div>
+                  <button type="button" onClick={() => onRemoveScreenshot(screenshot.id)}>Remove</button>
+                </article>
+              )) : (
+                <p className="selected-meta">Add desktop/mobile screenshots so the prompt carries visual proof instead of vague notes.</p>
+              )}
+            </div>
+          </div>
+        </details>
       </div>
       <div className="reference-site-output">
         <div className="output-header">
           <div>
             <h4>{result.title}</h4>
-            <p>{result.summary}</p>
+            <p>{selectedVariant?.summary || result.summary}</p>
           </div>
-          <span className="selected-meta">{runCount} run{runCount === 1 ? "" : "s"}</span>
+          <span className="selected-meta">{runCount} run{runCount === 1 ? "" : "s"} / {projectCount} saved</span>
+        </div>
+        <div className="reference-variant-grid">
+          {variants.map((variant) => (
+            <button data-active={variant.id === selectedVariantId ? "true" : "false"} key={variant.id} type="button" onClick={() => onSelectVariant(variant.id)}>
+              <span>{variant.score}</span>
+              <strong>{variant.label}</strong>
+            </button>
+          ))}
         </div>
         {result.warnings.length ? (
           <div className="reference-warning-list">
@@ -462,6 +581,57 @@ export function WebsiteReferencePromptPanel({
           </div>
         )}
         <textarea className="generated-output reference-output" data-reference-output readOnly value={result.prompt} />
+        <details className="reference-advanced reference-studio-drawer">
+          <summary>Clone score, diff, exports, and repair</summary>
+          <div className="reference-evidence-stack">
+            <div className="reference-clone-card" data-status={cloneScore.status}>
+              <div>
+                <strong>{cloneScore.score}/100 inspired-not-cloned</strong>
+                <p>{cloneScore.status === "ready" ? "Ready to export with comparison notes." : "Tighten the blocked checks before promotion."}</p>
+              </div>
+              <div className="reference-check-list">
+                {cloneScore.checks.map((check) => (
+                  <span data-ready={check.ready ? "true" : "false"} key={check.label}>
+                    {check.ready ? <Check size={13} /> : <ShieldCheck size={13} />}
+                    {check.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="reference-diff-grid">
+              <article>
+                <span>Source signals</span>
+                {beforeSignals.length ? beforeSignals.map((signal) => <p key={signal}>{signal}</p>) : <p>Add URL analysis or visible site notes.</p>}
+              </article>
+              <article>
+                <span>New prompt decisions</span>
+                {afterSignals.map((signal) => <p key={signal}>{signal}</p>)}
+              </article>
+            </div>
+            <div className="reference-export-grid">
+              {exports.map((target) => (
+                <button key={target.id} type="button" onClick={() => onCopyExport(target)}>
+                  {copied === `website-reference-export-${target.id}` ? <Check size={14} /> : <Copy size={14} />}
+                  {target.label}
+                </button>
+              ))}
+            </div>
+            <div className="button-row compact-row">
+              <button className="ghost-button compact-button" data-reference-action="save-project" type="button" onClick={onSaveProject}>
+                <Save size={15} />
+                Save project
+              </button>
+              <button className="ghost-button compact-button" data-reference-action="use-repair" type="button" onClick={onUseRepair} disabled={!repairPrompt}>
+                <Wrench size={15} />
+                Use repair loop
+              </button>
+              <button className="ghost-button compact-button" type="button" onClick={() => onCopy(repairPrompt, "website-reference-repair")} disabled={!repairPrompt}>
+                {copied === "website-reference-repair" ? <Check size={15} /> : <Copy size={15} />}
+                Copy repair
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
     </section>
   );

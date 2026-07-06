@@ -188,7 +188,15 @@ import {
   buildLearnerRegressionSummary,
   buildLearnedStyleGenerator,
 } from "../src/learnerViewModel";
-import { buildWebsiteReferencePrompt } from "../src/websiteReferencePrompt";
+import {
+  buildManualWebsiteReferenceAnalysis,
+  buildWebsiteReferenceExports,
+  buildWebsiteReferencePrompt,
+  buildWebsiteReferenceRepairPrompt,
+  buildWebsiteReferenceStudio,
+  buildWebsiteReferenceVariants,
+  scoreReferenceDifferentiation,
+} from "../src/websiteReferencePrompt";
 
 function readCuratedSeedPrompts() {
   return readdirSync("src/prompts")
@@ -612,7 +620,7 @@ const learnedStyleGenerator = buildLearnedStyleGenerator({
 });
 assert.ok(learnedStyleGenerator.prompt.includes("Use the learned house style"), "Learned-style generator should emit house-style instructions.");
 assert.ok(learnedStyleGenerator.ingredients.length >= 4, "Learned-style generator should expose prompt ingredients.");
-const websiteReferencePrompt = buildWebsiteReferencePrompt({
+const websiteReferenceInput = {
   url: "example.com/current-site",
   referenceName: "current reference website",
   newBrand: "Northstar Studio",
@@ -624,11 +632,38 @@ const websiteReferencePrompt = buildWebsiteReferencePrompt({
   pageNotes: "Reference notes include desktop hero, navigation, cards, dropdown theme, scroll behavior, and mobile screenshots.",
   assets: "Use new or provided media only.",
   constraints: "No cloned copy, no source brand marks, no credentials, and no hidden scraping code.",
-}, learningProfiles[0].rules);
+};
+const manualReferenceAnalysis = buildManualWebsiteReferenceAnalysis(websiteReferenceInput);
+const websiteReferencePrompt = buildWebsiteReferencePrompt(websiteReferenceInput, learningProfiles[0].rules, {
+  analysis: manualReferenceAnalysis,
+  screenshots: [{
+    id: "shot-desktop",
+    label: "desktop",
+    name: "desktop.png",
+    notes: "Desktop first viewport evidence.",
+    width: 1440,
+    height: 900,
+    createdAt: "test",
+  }],
+});
 assert.ok(websiteReferencePrompt.prompt.includes("https://example.com/current-site"), "Reference prompt should normalize the source URL.");
 assert.ok(websiteReferencePrompt.prompt.includes("Northstar Studio"), "Reference prompt should preserve the new brand target.");
 assert.ok(websiteReferencePrompt.prompt.includes("Do not copy protected copy"), "Reference prompt should include anti-clone constraints.");
 assert.ok(websiteReferencePrompt.prompt.includes("10. Constraints and QA"), "Reference prompt should preserve the ten-section quality format.");
+assert.ok(manualReferenceAnalysis.status === "manual" && manualReferenceAnalysis.layoutHints.length > 0, "Manual reference analysis should convert notes into layout evidence.");
+const referenceCloneScore = scoreReferenceDifferentiation(websiteReferenceInput, websiteReferencePrompt.prompt, manualReferenceAnalysis);
+assert.ok(referenceCloneScore.score >= 78 && referenceCloneScore.checks.length >= 5, "Reference clone scoring should reward differentiated prompts.");
+const referenceVariants = buildWebsiteReferenceVariants(websiteReferenceInput, learningProfiles[0].rules, manualReferenceAnalysis);
+assert.deepEqual(referenceVariants.map((variant) => variant.id), ["faithful", "bold", "conversion"], "Reference variant builder should expose three prompt directions.");
+assert.ok(referenceVariants.every((variant) => variant.prompt.includes("Variant posture")), "Reference variants should include variant posture instructions.");
+const referenceExports = buildWebsiteReferenceExports(websiteReferenceInput, websiteReferencePrompt, referenceVariants, referenceCloneScore);
+assert.deepEqual(referenceExports.map((target) => target.id), ["codex", "v0", "claude", "lovable", "raw", "json"], "Reference exports should cover all target handoffs.");
+assert.ok(referenceExports.find((target) => target.id === "json")?.content.includes("cloneScore"), "Reference JSON export should include clone score.");
+const referenceRepairPrompt = buildWebsiteReferenceRepairPrompt(websiteReferenceInput, websiteReferencePrompt, referenceCloneScore);
+assert.ok(referenceRepairPrompt.includes("Repair the website-reference prompt"), "Reference repair prompt should be buildable.");
+const referenceStudio = buildWebsiteReferenceStudio(websiteReferenceInput, learningProfiles[0].rules, manualReferenceAnalysis, [], "conversion");
+assert.equal(referenceStudio.selectedVariant.id, "conversion", "Reference studio should preserve the selected variant.");
+assert.ok(referenceStudio.project.exports.length === 6 && referenceStudio.repairPrompt.includes("Current prompt to repair"), "Reference studio should build project exports and repair loop.");
 const learnedPromptSections = buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt, sourcePrompt: exactPrompt });
 assert.equal(learnedPromptSections.length, 7, "Learned prompt editor should expose seven editable sections.");
 assert.ok(learnedPromptSections.some((section) => section.id === "verification" && section.content.toLowerCase().includes("screenshot")), "Learned prompt sections should preserve proof language.");
@@ -1748,4 +1783,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 348, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 357, score: score.score, snapshot: snapshot.label }, null, 2));
