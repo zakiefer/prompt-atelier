@@ -376,9 +376,9 @@ async function runLearnerInteractions(page) {
     await page.waitForFunction(() => {
       const output = globalThis.document.querySelector("[data-reference-output]");
       const value = output && "value" in output ? String(output.value) : "";
-      return value.includes("URL-FIRST DRAFT MODE") && value.includes("TARGET DETAILS TO CUSTOMIZE") && !value.includes('"the new brand"');
+      return value.includes("SITE-INFERRED BUSINESS BRIEF") && value.includes("INFERRED DETAILS TO VERIFY") && !value.includes('"the new brand"');
     }, null, { timeout: 5000 });
-    checked.push("reference URL-only draft generated");
+    checked.push("reference URL-only business inferred");
 
     await page.locator('[data-reference-field="newBrand"]').fill("Northstar Studio");
     await page.locator('[data-reference-field="newOffer"]').fill("AI-native design system for product teams");
@@ -749,7 +749,7 @@ async function runLearnerInteractions(page) {
   const finalPersistence = await waitForLearnerPersistence(page, { minHistory: 2, minSessions: 1, timeoutMs: 15_000 });
   const state = finalPersistence.state;
 
-  if (!checked.includes("first-run guided start clicked") || !checked.includes("reference website prompt generated") || !checked.includes("reference prompt used") || !checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("visual repair prompt built") || !checked.includes("proof repair draft built") || !checked.includes("result gallery filtered") || !checked.includes("accessibility qa scored") || !checked.some((item) => item.startsWith("project bundle exported")) || !checked.includes("taste version saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
+  if (!checked.includes("first-run guided start clicked") || !checked.includes("reference URL-only business inferred") || !checked.includes("reference website prompt generated") || !checked.includes("reference prompt used") || !checked.includes("project snapshot saved") || !checked.includes("great prompt generated") || !checked.includes("corpus health labeled") || !checked.includes("project proof runner saved") || !checked.includes("visual repair prompt built") || !checked.includes("proof repair draft built") || !checked.includes("result gallery filtered") || !checked.includes("accessibility qa scored") || !checked.some((item) => item.startsWith("project bundle exported")) || !checked.includes("taste version saved") || !checked.includes("training signal saved") || !checked.includes("profile switched") || !checked.includes("section editor applied") || !checked.includes("diff accepted") || !checked.includes("learner session saved") || !checked.includes("outcome feedback saved") || !checked.includes("proof intake saved")) {
     throw new Error(`Learner interaction smoke incomplete: ${checked.join(", ")}`);
   }
   if (state.sessionCount < 1) {

@@ -153,6 +153,7 @@ import {
   buildWebsiteReferenceStudio,
   createEmptyWebsiteReferenceAnalysis,
   createWebsiteReferenceInput,
+  normalizeReferenceUrl,
   type WebsiteReferenceAnalysis,
   type WebsiteReferenceExport,
   type WebsiteReferenceInput,
@@ -1476,10 +1477,10 @@ export function LearnView({
       return next;
     });
   }
-  async function handleAnalyzeWebsiteReference() {
+  async function resolveWebsiteReferenceAnalysis(input: WebsiteReferenceInput) {
     setWebsiteReferenceAnalyzeState({ status: "loading", detail: "Analyzing the public URL for headings, navigation, CTAs, assets, colors, and responsive hints." });
     try {
-      const payload = await analyzeReferenceSiteViaApi({ url: websiteReferenceInput.url });
+      const payload = await analyzeReferenceSiteViaApi({ url: input.url });
       setWebsiteReferenceAnalysis(payload.analysis);
       writeLocalString(WEBSITE_REFERENCE_ANALYSIS_KEY, JSON.stringify(payload.analysis));
       setWebsiteReferenceAnalyzeState({
@@ -1487,8 +1488,9 @@ export function LearnView({
         detail: `${payload.analysis.title || "Reference"} analyzed with ${payload.analysis.headings.length} heading(s), ${payload.analysis.navLabels.length} nav label(s), and ${payload.analysis.ctaLabels.length} CTA label(s).`,
       });
       recordActivity("Reference URL analyzed", payload.analysis.title || payload.analysis.url, "good");
+      return payload.analysis;
     } catch (error) {
-      const fallback = buildManualWebsiteReferenceAnalysis(websiteReferenceInput);
+      const fallback = buildManualWebsiteReferenceAnalysis(input);
       setWebsiteReferenceAnalysis(fallback);
       writeLocalString(WEBSITE_REFERENCE_ANALYSIS_KEY, JSON.stringify(fallback));
       setWebsiteReferenceAnalyzeState({
@@ -1496,7 +1498,12 @@ export function LearnView({
         detail: error instanceof Error ? `${error.message}. Manual notes are being used as fallback.` : "URL analysis failed. Manual notes are being used as fallback.",
       });
       recordActivity("Reference analysis fallback", "Manual notes are active; run npm run api for live URL analysis.", "watch");
+      return fallback;
     }
+  }
+
+  async function handleAnalyzeWebsiteReference() {
+    await resolveWebsiteReferenceAnalysis(websiteReferenceInput);
   }
   async function readReferenceScreenshot(file: File, index: number): Promise<WebsiteReferenceScreenshot> {
     const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -1553,14 +1560,14 @@ export function LearnView({
     const variant = websiteReferenceStudio.variants.find((item) => item.id === id);
     recordActivity("Reference variant selected", variant?.label || id, "neutral");
   }
-  function saveWebsiteReferenceRun(result: WebsiteReferencePromptResult) {
+  function saveWebsiteReferenceRun(result: WebsiteReferencePromptResult, variant: WebsiteReferenceVariantTone = websiteReferenceStudio.selectedVariant.id) {
     const record: WebsiteReferenceRun = {
       id: `website-reference-${Date.now()}`,
       title: result.title,
       url: websiteReferenceInput.url,
       prompt: result.prompt,
       score: result.score,
-      variant: websiteReferenceStudio.selectedVariant.id,
+      variant,
       createdAt: new Date().toISOString(),
     };
     setWebsiteReferenceRuns((current) => {
@@ -1588,8 +1595,28 @@ export function LearnView({
     });
     return record;
   }
-  function handleGenerateWebsiteReferencePrompt() {
-    const record = saveWebsiteReferenceRun(websiteReferenceResult);
+  async function handleGenerateWebsiteReferencePrompt() {
+    const normalizedInputUrl = normalizeReferenceUrl(websiteReferenceInput.url);
+    const normalizedAnalysisUrl = normalizeReferenceUrl(websiteReferenceAnalysis.url);
+    const needsFreshAnalysis = Boolean(normalizedInputUrl) && (
+      normalizedInputUrl !== normalizedAnalysisUrl ||
+      websiteReferenceAnalysis.status === "idle" ||
+      websiteReferenceAnalyzeState.status === "error" ||
+      !websiteReferenceInput.newBrand.trim() ||
+      !websiteReferenceInput.newOffer.trim() ||
+      !websiteReferenceInput.audience.trim()
+    );
+    const activeAnalysis = needsFreshAnalysis
+      ? await resolveWebsiteReferenceAnalysis(websiteReferenceInput)
+      : websiteReferenceAnalysis;
+    const studio = buildWebsiteReferenceStudio(
+      websiteReferenceInput,
+      activeLearningProfile.rules,
+      activeAnalysis,
+      websiteReferenceScreenshots,
+      websiteReferenceSelectedVariantId,
+    );
+    const record = saveWebsiteReferenceRun(studio.result, studio.selectedVariant.id);
     recordActivity("Reference website prompt", `${record.title} saved at ${record.score}/100.`, record.score >= 70 ? "good" : "watch");
   }
   function handleUseWebsiteReferencePrompt() {
