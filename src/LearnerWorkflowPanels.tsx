@@ -455,13 +455,14 @@ export function WebsiteReferencePromptPanel({
     input.change || "Change list still needed",
     `${cloneScore.score}/100 inspired-not-cloned score`,
   ];
+  const urlFirstDraft = !input.newBrand.trim() || !input.newOffer.trim();
 
   return (
     <section className="website-reference-panel" data-train-section="website-reference-prompt">
       <div className="reference-site-copy">
         <span><ExternalLink size={14} /> Reference site studio</span>
         <h3>Turn a current website into a new prompt.</h3>
-        <p>Analyze the source, attach screenshots, choose a direction, then export a prompt that is inspired by the site without cloning it.</p>
+        <p>Paste a website URL first. Generate a reference draft immediately, then add the new brand and site idea when you know what the new site should become.</p>
         <div className="reference-site-score" data-ready={result.score >= 70 ? "true" : "false"}>
           <strong>{result.score}</strong>
           <span>reference readiness</span>
@@ -472,10 +473,16 @@ export function WebsiteReferencePromptPanel({
         </div>
       </div>
       <div className="reference-site-form">
+        {urlFirstDraft ? (
+          <div className="reference-guidance-card" data-reference-guidance="url-first">
+            <strong>URL-first draft mode</strong>
+            <p>It is okay to start with only the current website. The output will mark temporary target details so you know what to customize before a builder uses it.</p>
+          </div>
+        ) : null}
         <div className="reference-field-grid">
           {field("url", "Current website URL", "https://example.com")}
-          {field("newBrand", "New brand", "Northstar Studio")}
-          {field("newOffer", "New website offer", "AI-native design system for product teams")}
+          {field("newBrand", "New brand (optional at first)", "Northstar Studio")}
+          {field("newOffer", "New site idea or offer", "AI-native design system for product teams")}
           {field("audience", "Audience", "Product leaders, founders, and design teams")}
         </div>
         <div className="reference-field-grid two-up">
@@ -512,7 +519,7 @@ export function WebsiteReferencePromptPanel({
           </label>
           <button className="primary-button compact-button" data-reference-action="generate" type="button" onClick={onGenerate}>
             <Sparkles size={15} />
-            Generate
+            {urlFirstDraft ? "Make URL draft" : "Generate"}
           </button>
           <button className="ghost-button compact-button" data-reference-action="use" type="button" onClick={onUse} disabled={!result.prompt}>
             Use as working prompt
