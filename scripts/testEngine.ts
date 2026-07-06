@@ -673,10 +673,21 @@ const urlOnlyReferenceInput = {
 const urlOnlyReferencePrompt = buildWebsiteReferencePrompt(urlOnlyReferenceInput, learningProfiles[0].rules, {
   analysis: buildManualWebsiteReferenceAnalysis(urlOnlyReferenceInput),
 });
-assert.ok(urlOnlyReferencePrompt.prompt.includes("URL-FIRST DRAFT MODE"), "URL-only reference generation should mark draft mode.");
-assert.ok(urlOnlyReferencePrompt.prompt.includes("TARGET DETAILS TO CUSTOMIZE"), "URL-only reference generation should include target customization guidance.");
-assert.ok(urlOnlyReferencePrompt.prompt.includes("New Example concept"), "URL-only reference generation should derive a useful temporary target name.");
+assert.ok(urlOnlyReferencePrompt.prompt.includes("SITE-INFERRED BUSINESS BRIEF"), "URL-only reference generation should mark site-inferred mode.");
+assert.ok(urlOnlyReferencePrompt.prompt.includes("INFERRED DETAILS TO VERIFY"), "URL-only reference generation should include inference verification guidance.");
+assert.ok(urlOnlyReferencePrompt.prompt.includes("Business/product (inferred): Example"), "URL-only reference generation should infer a business name from the URL.");
 assert.ok(!urlOnlyReferencePrompt.prompt.includes('"the new brand"'), "URL-only reference generation should not leak placeholder brand copy.");
+const analyzedBusinessPrompt = buildWebsiteReferencePrompt(urlOnlyReferenceInput, learningProfiles[0].rules, {
+  analysis: {
+    ...manualReferenceAnalysis,
+    url: "https://tristateallstar.com/",
+    title: "Tri-State All Star Cheerleading & Dance",
+    description: "Tri-State All Star provides cheerleading, dance, tumbling, camps, and competitive youth programs for local families.",
+    headings: ["Cheerleading and dance programs for every athlete", "Classes, teams, and tryouts"],
+  },
+});
+assert.ok(analyzedBusinessPrompt.prompt.includes("Tri-State All Star Cheerleading & Dance"), "Analyzed reference generation should infer the business from page title.");
+assert.ok(analyzedBusinessPrompt.prompt.includes("cheerleading, dance, tumbling"), "Analyzed reference generation should infer the business offer from metadata.");
 const learnedPromptSections = buildLearnedPromptSections({ prompt: learnedStyleGenerator.prompt, sourcePrompt: exactPrompt });
 assert.equal(learnedPromptSections.length, 7, "Learned prompt editor should expose seven editable sections.");
 assert.ok(learnedPromptSections.some((section) => section.id === "verification" && section.content.toLowerCase().includes("screenshot")), "Learned prompt sections should preserve proof language.");
@@ -1796,4 +1807,4 @@ const securityBoundary = buildSecurityBoundaryReport({
 assert.ok(securityBoundary.auditCommand.includes("audit:security-boundary"), "Security boundary should expose the audit command.");
 assert.ok(securityBoundary.notes.some((note) => /does not change/i.test(note)), "Security boundary should explicitly avoid credential changes.");
 
-console.log(JSON.stringify({ ok: true, assertions: 361, score: score.score, snapshot: snapshot.label }, null, 2));
+console.log(JSON.stringify({ ok: true, assertions: 363, score: score.score, snapshot: snapshot.label }, null, 2));

@@ -455,14 +455,14 @@ export function WebsiteReferencePromptPanel({
     input.change || "Change list still needed",
     `${cloneScore.score}/100 inspired-not-cloned score`,
   ];
-  const urlFirstDraft = !input.newBrand.trim() || !input.newOffer.trim();
+  const inferredBrief = !input.newBrand.trim() || !input.newOffer.trim() || !input.audience.trim();
 
   return (
     <section className="website-reference-panel" data-train-section="website-reference-prompt">
       <div className="reference-site-copy">
         <span><ExternalLink size={14} /> Reference site studio</span>
         <h3>Turn a current website into a new prompt.</h3>
-        <p>Paste a website URL first. Generate a reference draft immediately, then add the new brand and site idea when you know what the new site should become.</p>
+        <p>Paste the current website URL. The app analyzes the site and infers the business, offer, audience, layout, and conversion path; the fields are only overrides.</p>
         <div className="reference-site-score" data-ready={result.score >= 70 ? "true" : "false"}>
           <strong>{result.score}</strong>
           <span>reference readiness</span>
@@ -473,17 +473,17 @@ export function WebsiteReferencePromptPanel({
         </div>
       </div>
       <div className="reference-site-form">
-        {urlFirstDraft ? (
+        {inferredBrief ? (
           <div className="reference-guidance-card" data-reference-guidance="url-first">
-            <strong>URL-first draft mode</strong>
-            <p>It is okay to start with only the current website. The output will mark temporary target details so you know what to customize before a builder uses it.</p>
+            <strong>Auto-infer from website</strong>
+            <p>You can leave the business fields blank. Generate will inspect the URL, infer what the company does, and write the rebuild prompt from that evidence.</p>
           </div>
         ) : null}
         <div className="reference-field-grid">
           {field("url", "Current website URL", "https://example.com")}
-          {field("newBrand", "New brand (optional at first)", "Northstar Studio")}
-          {field("newOffer", "New site idea or offer", "AI-native design system for product teams")}
-          {field("audience", "Audience", "Product leaders, founders, and design teams")}
+          {field("newBrand", "Business name override", "Leave blank to infer from site")}
+          {field("newOffer", "Offer/category override", "Leave blank to infer from site")}
+          {field("audience", "Audience override", "Leave blank to infer from site")}
         </div>
         <div className="reference-field-grid two-up">
           {field("keep", "Keep from reference", "Editorial hierarchy, calm navigation, proof-oriented section pacing", true)}
@@ -519,7 +519,7 @@ export function WebsiteReferencePromptPanel({
           </label>
           <button className="primary-button compact-button" data-reference-action="generate" type="button" onClick={onGenerate}>
             <Sparkles size={15} />
-            {urlFirstDraft ? "Make URL draft" : "Generate"}
+            {inferredBrief ? "Generate from URL" : "Generate"}
           </button>
           <button className="ghost-button compact-button" data-reference-action="use" type="button" onClick={onUse} disabled={!result.prompt}>
             Use as working prompt

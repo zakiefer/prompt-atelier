@@ -156,19 +156,118 @@ function referenceLabel(input: WebsiteReferenceInput, analysis?: WebsiteReferenc
   return referenceHostLabel(input.url) || namedReference || "reference site";
 }
 
+function splitTitleParts(value: string) {
+  return clean(value)
+    .split(/\s+(?:[-–—|:·•]\s+)|\s*[|]\s*/g)
+    .map((part) => clean(part))
+    .filter(Boolean);
+}
+
+function looksGenericTitlePart(value: string) {
+  return /^(home|homepage|welcome|official site|website|about|services|contact|index)$/i.test(clean(value));
+}
+
+function inferBusinessName(input: WebsiteReferenceInput, analysis?: WebsiteReferenceAnalysis) {
+  const host = referenceHostLabel(input.url);
+  const titleParts = isGenericReferenceLabel(analysis?.title ?? "") ? [] : splitTitleParts(analysis?.title ?? "");
+  const usefulTitle = titleParts.find((part) => !looksGenericTitlePart(part) && countWords(part) <= 7)
+    || titleParts.find((part) => !looksGenericTitlePart(part))
+    || "";
+  if (usefulTitle) return usefulTitle;
+  const heading = analysis?.status === "ready"
+    ? analysis.headings.find((value) => {
+        const words = countWords(value);
+        return words >= 1 && words <= 7 && !/^(welcome|home|services|about|contact|get started|learn more)$/i.test(clean(value));
+      })
+    : "";
+  return clean(heading ?? "") || host || block(input.referenceName, "the business");
+}
+
+function firstUsefulPhrase(values: string[], reject: RegExp, minWords = 5) {
+  return values.map(clean).find((value) => countWords(value) >= minWords && !reject.test(value)) || "";
+}
+
+function inferBusinessOffer(analysis?: WebsiteReferenceAnalysis, brand = "the business") {
+  const combined = [
+    analysis?.description,
+    ...(analysis?.headings ?? []),
+    ...(analysis?.sectionLabels ?? []),
+    ...(analysis?.ctaLabels ?? []),
+    ...(analysis?.navLabels ?? []),
+  ].filter(Boolean).join(" ");
+  const lower = combined.toLowerCase();
+  const description = clean(analysis?.description ?? "");
+  if (countWords(description) >= 5 && !/^(home|welcome)$/i.test(description)) return description;
+  const headingOffer = firstUsefulPhrase(analysis?.headings ?? [], /^(home|welcome|contact|about|services)$/i, 4);
+  if (headingOffer) return headingOffer;
+  if (/cheer|tumbling|dance|all[-\s]?star|gymnast/i.test(lower)) {
+    return `${brand} provides all-star cheer, dance, tumbling, and youth training programs.`;
+  }
+  if (/dentist|dental|orthodont|smile|clinic/i.test(lower)) {
+    return `${brand} provides dental care, appointments, patient education, and trust-building clinic information.`;
+  }
+  if (/restaurant|menu|reservation|dining|cafe|bar/i.test(lower)) {
+    return `${brand} provides a restaurant website for menu discovery, reservations, location details, and guest trust.`;
+  }
+  if (/real estate|homes|property|listing|realtor/i.test(lower)) {
+    return `${brand} helps visitors explore properties, local expertise, listings, and lead-capture paths.`;
+  }
+  if (/saas|software|platform|automation|dashboard|analytics/i.test(lower)) {
+    return `${brand} presents a software platform with product education, proof, feature detail, and conversion paths.`;
+  }
+  if (/agency|studio|portfolio|creative|design/i.test(lower)) {
+    return `${brand} presents a creative services website with portfolio proof, service positioning, and inquiry paths.`;
+  }
+  return `A redesigned website for ${brand} that explains the business, services, proof, and conversion path discovered from the current site.`;
+}
+
+function inferAudience(analysis?: WebsiteReferenceAnalysis, brand = "the business") {
+  const combined = [
+    analysis?.description,
+    ...(analysis?.headings ?? []),
+    ...(analysis?.sectionLabels ?? []),
+    ...(analysis?.navLabels ?? []),
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (/cheer|tumbling|dance|all[-\s]?star|gymnast/i.test(combined)) {
+    return "Athletes, parents, families, and local teams evaluating programs, schedules, tryouts, and proof of trust.";
+  }
+  if (/dentist|dental|orthodont|smile|clinic/i.test(combined)) {
+    return "New and returning patients comparing services, appointment options, insurance details, and clinic credibility.";
+  }
+  if (/restaurant|menu|reservation|dining|cafe|bar/i.test(combined)) {
+    return "Guests deciding where to eat, what to order, how to book, and whether the venue fits the occasion.";
+  }
+  if (/real estate|homes|property|listing|realtor/i.test(combined)) {
+    return "Buyers, sellers, renters, and local property leads evaluating listings, expertise, and next steps.";
+  }
+  if (/saas|software|platform|automation|dashboard|analytics/i.test(combined)) {
+    return "Prospective customers, operators, and decision-makers evaluating product fit, proof, pricing, and onboarding.";
+  }
+  if (/agency|studio|portfolio|creative|design/i.test(combined)) {
+    return "Prospective clients evaluating creative fit, credibility, case studies, services, and inquiry options.";
+  }
+  return `Prospective customers, returning clients, and visitors evaluating ${brand}.`;
+}
+
 function referenceTarget(input: WebsiteReferenceInput, analysis?: WebsiteReferenceAnalysis) {
   const referenceName = referenceLabel(input, analysis);
   const hasBrand = Boolean(clean(input.newBrand));
   const hasOffer = countWords(input.newOffer) >= 5;
   const hasAudience = countWords(input.audience) >= 4;
+  const inferredBrand = inferBusinessName(input, analysis);
+  const inferredOffer = inferBusinessOffer(analysis, inferredBrand);
+  const inferredAudience = inferAudience(analysis, inferredBrand);
   return {
-    audience: block(input.audience, "People who need the new product, service, or content experience."),
-    draftMode: !hasBrand || !hasOffer,
+    audience: block(input.audience, inferredAudience),
+    brandInferred: !hasBrand,
+    inferenceMode: !hasBrand || !hasOffer || !hasAudience,
+    offerInferred: !hasOffer,
+    audienceInferred: !hasAudience,
     hasAudience,
     hasBrand,
     hasOffer,
-    newBrand: block(input.newBrand, `New ${referenceName} concept`),
-    newOffer: block(input.newOffer, `A new website concept inspired by ${referenceName}'s layout structure, content hierarchy, and interaction patterns.`),
+    newBrand: block(input.newBrand, inferredBrand),
+    newOffer: block(input.newOffer, inferredOffer),
     referenceName,
   };
 }
@@ -297,13 +396,12 @@ export function scoreWebsiteReferenceInput(input: WebsiteReferenceInput) {
 
   if (clean(input.referenceName)) score += 6;
   const target = referenceTarget(input);
-  if (target.hasBrand) score += 8;
-  if (target.hasOffer) score += 14;
-  if (!target.hasBrand || !target.hasOffer) {
-    warnings.push("URL-first draft mode: add the new brand and one-sentence site idea before final builder handoff.");
+  if (target.newBrand) score += target.hasBrand ? 8 : 6;
+  if (target.newOffer && countWords(target.newOffer) >= 5) score += target.hasOffer ? 14 : 10;
+  if (target.audience && countWords(target.audience) >= 4) score += target.hasAudience ? 8 : 6;
+  if (target.inferenceMode) {
+    warnings.push("Business details were inferred from the website. Review them if the source site title or copy is unclear.");
   }
-  if (target.hasAudience) score += 8;
-  else warnings.push("Add the audience when you know who the new site should serve.");
   if (countWords(input.stack) >= 6) score += 10;
   if (countWords(input.keep) >= 8) score += 13;
   else warnings.push("Say what to preserve from the reference.");
@@ -345,7 +443,7 @@ export function buildWebsiteReferencePrompt(
   const score = scoreWebsiteReferenceInput(input);
   const analysis = activeAnalysis(input, context.analysis);
   const target = referenceTarget(input, analysis);
-  const { audience, draftMode, newBrand, newOffer, referenceName } = target;
+  const { audience, inferenceMode, newBrand, newOffer, referenceName } = target;
   const stack = block(input.stack, "React + TypeScript + Vite + Tailwind CSS");
   const keep = block(input.keep, "Preserve only the reference site's useful structure, pacing, hierarchy, and interaction ideas.");
   const change = block(input.change, "Create new copy, styling, media, assets, brand marks, and interaction details.");
@@ -380,7 +478,7 @@ export function buildWebsiteReferencePrompt(
     : "- No screenshots attached yet. Capture desktop and mobile first-view evidence before build acceptance.";
 
   const sections = [
-    `Mode: ${draftMode ? "URL-first draft; customize target before final build" : "target brief ready"}.`,
+    `Mode: ${inferenceMode ? "site-inferred brief; optional overrides available" : "target brief ready"}.`,
     `Reference source: ${normalizedUrl || "Add URL before build"} (${referenceName}).`,
     `New target: ${newBrand} - ${newOffer}.`,
     `Audience: ${audience}.`,
@@ -390,17 +488,15 @@ export function buildWebsiteReferencePrompt(
   ];
 
   const prompt = [
-    draftMode
-      ? `Build a URL-first reference draft for "${newBrand}" using ${referenceName} as evidence for a new site prompt.`
-      : `Build a new website prompt for "${newBrand}" using ${referenceName} as a reference, not as a clone.`,
+    `Build a new website prompt for "${newBrand}" using its current website (${referenceName}) as source evidence for a redesigned site, not as a clone.`,
     toneInstruction(context.variantTone),
-    draftMode
+    inferenceMode
       ? [
           "",
-          "URL-FIRST DRAFT MODE",
-          "- The current website has been supplied before the new brand or offer is fully defined.",
-          "- Treat the target below as a temporary working direction, not final copy.",
-          "- Before handing this to a builder, replace the temporary brand, offer, audience, and copy with the real new-site brief.",
+          "SITE-INFERRED BUSINESS BRIEF",
+          "- The business name, offer/category, and audience were inferred from the current site's title, metadata, headings, navigation, CTAs, and domain.",
+          "- Use these inferred details as the default brief. Treat manual brand/offer/audience fields as optional overrides.",
+          "- If the source website has weak metadata, preserve the inferred assumptions in the prompt and ask the builder to verify them against screenshots before final copywriting.",
         ].join("\n")
       : "",
     "",
@@ -417,19 +513,19 @@ export function buildWebsiteReferencePrompt(
     screenshotBlock,
     "",
     "NEW SITE BRIEF",
-    `- Brand/product: ${newBrand}`,
-    `- Offer/category: ${newOffer}`,
-    `- Audience: ${audience}`,
+    `- Business/product${target.brandInferred ? " (inferred)" : ""}: ${newBrand}`,
+    `- Offer/category${target.offerInferred ? " (inferred)" : ""}: ${newOffer}`,
+    `- Audience${target.audienceInferred ? " (inferred)" : ""}: ${audience}`,
     `- What should carry over: ${keep}`,
     `- What must change: ${change}`,
-    draftMode
+    inferenceMode
       ? [
           "",
-          "TARGET DETAILS TO CUSTOMIZE",
-          `- Replace temporary brand/product "${newBrand}" with the real new brand, product, or organization name.`,
-          `- Replace temporary offer "${newOffer}" with one sentence explaining what the new site sells, teaches, books, or promotes.`,
-          `- Replace temporary audience "${audience}" with the people the new site should serve.`,
-          "- Rewrite all example headlines, CTAs, badges, stats, and proof so they belong to the new site, not the source.",
+          "INFERRED DETAILS TO VERIFY",
+          `- Business inference: "${newBrand}".`,
+          `- Offer inference: "${newOffer}".`,
+          `- Audience inference: "${audience}".`,
+          "- Keep the business identity and real services from the source site, but rewrite all copy, sections, proof, CTAs, and layout instructions for a stronger new website.",
         ].join("\n")
       : "",
     "",
@@ -440,7 +536,7 @@ export function buildWebsiteReferencePrompt(
     "Specify font import URLs or local font-face blocks, exact weights, CSS variables or Tailwind font extensions, body smoothing, root sizing, and which parts use each font. If the reference has distinct display/body voices, translate that split into a new type system.",
     "",
     "3. Color system",
-    "Define background, foreground, muted text, border, surface, accent, hover, active, focus, and disabled colors with hex/HSL/rgba values. Preserve the reference's contrast logic and hierarchy, but use a new palette for the new brand.",
+    "Define background, foreground, muted text, border, surface, accent, hover, active, focus, and disabled colors with hex/HSL/rgba values. Preserve the reference's contrast logic and hierarchy, but use a refreshed palette for the business.",
     "",
     "4. Assets and media behavior",
     `Asset plan: ${assets}`,
@@ -453,7 +549,7 @@ export function buildWebsiteReferencePrompt(
     "Specify desktop and mobile navigation, dropdowns, menus, buttons, inputs, toggles, focus states, aria labels, disabled states, and hover/active transitions. Menus and dropdowns must match the new site's visual theme.",
     "",
     "7. Copy, sections, and exact styling",
-    "Write the exact headline, subtext, CTAs, labels, badges, cards, stats, and footer/marquee content for the new brand. Provide class-level or CSS-level styling for each visible element, including sizes, line heights, tracking, radius, padding, and alignment.",
+    "Write the exact headline, subtext, CTAs, labels, badges, cards, stats, and footer/marquee content for the redesigned business site. Provide class-level or CSS-level styling for each visible element, including sizes, line heights, tracking, radius, padding, and alignment.",
     "",
     "8. Motion and state mechanics",
     "Translate the reference motion into concrete state logic: animation triggers, duration, easing, stagger, loop behavior, requestAnimationFrame/ref cleanup when needed, reduced-motion handling, and interaction feedback. Avoid decorative motion that has no job.",
@@ -481,8 +577,8 @@ export function buildWebsiteReferencePrompt(
   return {
     score: score.score,
     title: `${newBrand} from reference website`,
-    summary: draftMode
-      ? `URL-first draft from ${referenceName}. Add the new brand and site idea to turn it into a final implementation prompt.`
+    summary: inferenceMode
+      ? `Inferred ${newBrand}'s business brief from ${referenceName} and generated a redesign prompt from the current site.`
       : `Uses ${referenceName} as source evidence while producing a new implementation prompt for ${newBrand}.`,
     warnings: score.warnings,
     sections,
@@ -503,17 +599,16 @@ export function scoreReferenceDifferentiation(
   } catch {
     sourceHost = "";
   }
-  const referenceName = clean(input.referenceName);
   const target = referenceTarget(input, analysis);
   const checks: WebsiteReferenceCloneCheck[] = [
     {
-      label: "New brand target",
-      ready: target.hasBrand && (!referenceName || !new RegExp(`\\b${referenceName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(input.newBrand)),
-      detail: target.hasBrand ? `${input.newBrand} is named as the build target.` : "URL-first draft: name the real new brand before final export.",
+      label: "Business target",
+      ready: countWords(target.newBrand) >= 1,
+      detail: target.hasBrand ? `${input.newBrand} is named as the build target.` : `${target.newBrand} was inferred from the source site.`,
     },
     {
       label: "New offer and audience",
-      ready: countWords(input.newOffer) >= 5 && countWords(input.audience) >= 4,
+      ready: countWords(target.newOffer) >= 5 && countWords(target.audience) >= 4,
       detail: "The prompt should say who the new site serves and what it offers.",
     },
     {
@@ -532,9 +627,9 @@ export function scoreReferenceDifferentiation(
       detail: analysisIsReady(analysis) ? "URL/manual evidence is attached." : "Add URL analysis, screenshots, or manual notes.",
     },
     {
-      label: "No domain carryover",
-      ready: !sourceHost || !new RegExp(sourceHost.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(input.newBrand + input.newOffer),
-      detail: sourceHost ? `The source domain (${sourceHost}) should not become the new brand.` : "No source domain found.",
+      label: "Redesign not clone",
+      ready: /redesigned|new website|new site|not as a clone|rewrite all copy|stronger new website/i.test(prompt),
+      detail: sourceHost ? `The source domain (${sourceHost}) can identify the current business, but layout, copy, and assets must be redesigned.` : "No source domain found.",
     },
   ];
   let score = 36 + checks.filter((check) => check.ready).length * 10;
@@ -584,14 +679,14 @@ export function buildWebsiteReferenceExports(
   const target = referenceTarget(input);
   const compact = [
     `Create a new website for ${target.newBrand} inspired by ${normalizeReferenceUrl(input.url) || "the provided reference URL"}.`,
-    target.draftMode ? "This is a URL-first draft: replace the temporary target details with the real brand, offer, and audience before final build." : "",
+    target.inferenceMode ? "Business details are inferred from the current website; verify them against the source analysis and screenshots before final copywriting." : "",
     `Use the reference for structure and interaction evidence only; clone-safety score is ${cloneScore.score}/100.`,
     result.prompt,
   ].filter(Boolean).join("\n\n");
   const json = {
     schema: "prompt-atelier.website-reference-export.v1",
     sourceUrl: normalizeReferenceUrl(input.url),
-    draftMode: target.draftMode,
+    inferenceMode: target.inferenceMode,
     newBrand: target.newBrand,
     originalNewBrandInput: input.newBrand,
     selectedVariant: bestVariant?.id,
@@ -650,7 +745,7 @@ export function buildWebsiteReferenceRepairPrompt(
   const target = referenceTarget(input);
   return [
     `Repair the website-reference prompt for ${target.newBrand}.`,
-    target.draftMode ? "This repair is still in URL-first draft mode; add the real new brand, offer, and audience before final builder handoff." : "",
+    target.inferenceMode ? "Business details were inferred from the current website; preserve or sharpen that inference instead of asking the user to retype the brief." : "",
     "",
     "Current issue summary:",
     failingChecks.length
